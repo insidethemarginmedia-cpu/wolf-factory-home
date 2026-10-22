@@ -2,9 +2,6 @@ name: Wolf Public Runtime Probe
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feat/public-runtime-probe-20261022
 
 permissions:
   contents: read
