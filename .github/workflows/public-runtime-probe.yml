@@ -1,0 +1,60 @@
+name: Wolf Public Runtime Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/public-runtime-probe-20261022
+
+permissions:
+  contents: read
+
+jobs:
+  public-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: wolf_probe
+          POSTGRES_PASSWORD: local-probe-only
+          POSTGRES_DB: wolf_runtime_probe
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wolf_probe -d wolf_runtime_probe"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      WOLF_REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: wolf_probe
+      PGPASSWORD: local-probe-only
+      PGDATABASE: wolf_runtime_probe
+    steps:
+      - name: Require public execution scope
+        run: |
+          set -euo pipefail
+          test "$WOLF_REPOSITORY_PRIVATE" = "false"
+          echo PUBLIC_REPOSITORY_CONFIRMED
+      - name: Verify Node without private source or inference
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          if(Number(process.versions.node.split('.')[0])<20) throw new Error('NODE_20_OR_NEWER_REQUIRED');
+          console.log('WOLF_PUBLIC_RUNTIME='+JSON.stringify({node:process.version,runner:process.env.RUNNER_OS,inferencePerformed:false,privateSourceFetched:false,credentialsAccessed:false}));
+          NODE
+      - name: Verify isolated PostgreSQL 17
+        run: |
+          set -euo pipefail
+          test "$(psql -X -Atc "select current_setting('server_version_num')::integer >= 170000 and current_setting('server_version_num')::integer < 180000")" = t
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE runtime_probe (id integer PRIMARY KEY, evidence text NOT NULL);
+          INSERT INTO runtime_probe VALUES (1, 'public-runner-local-database-only');
+          SELECT version();
+          SELECT count(*) AS verified_local_rows FROM runtime_probe WHERE id = 1;
+          SQL
+          echo POSTGRESQL_17_LOCAL_RUNTIME_CONFIRMED
