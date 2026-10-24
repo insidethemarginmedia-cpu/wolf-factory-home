@@ -68,8 +68,8 @@ jobs:
     env:
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
-      WOLF_DBOS_FIXTURE_ROOT: ${{ runner.temp }}/wolf-factory-dbos-e2e
-      WOLF_DBOS_SDK_ENTRYPOINT: ${{ runner.temp }}/dbos/dist/src/index.js
+      WOLF_DBOS_FIXTURE_ROOT: /tmp/wolf-factory-dbos-e2e
+      WOLF_DBOS_SDK_ENTRYPOINT: /tmp/dbos/dist/src/index.js
       EUR_SPEND: '0'
       COST_UNKNOWN: DENY
       PAID_FALLBACK: DENY
@@ -105,7 +105,7 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/dbos" rev-parse HEAD)" = "$DBOS_SHA"
           grep -qi '^MIT License' "$RUNNER_TEMP/dbos/LICENSE"
       - name: Build pinned DBOS SDK donor
-        working-directory: ${{ runner.temp }}/dbos
+        working-directory: /tmp/dbos
         run: |
           set -euo pipefail
           npm ci --ignore-scripts --no-audit --no-fund
