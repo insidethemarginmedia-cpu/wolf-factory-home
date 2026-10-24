@@ -100,10 +100,10 @@ jobs:
       - name: Checkout pinned DBOS SDK donor
         run: |
           set -euo pipefail
-          git clone --filter=blob:none https://github.com/dbos-inc/dbos-transact-ts.git "$RUNNER_TEMP/dbos"
-          git -C "$RUNNER_TEMP/dbos" checkout --detach "$DBOS_SHA"
-          test "$(git -C "$RUNNER_TEMP/dbos" rev-parse HEAD)" = "$DBOS_SHA"
-          grep -qi '^MIT License' "$RUNNER_TEMP/dbos/LICENSE"
+          git clone --filter=blob:none https://github.com/dbos-inc/dbos-transact-ts.git /tmp/dbos
+          git -C /tmp/dbos checkout --detach "$DBOS_SHA"
+          test "$(git -C /tmp/dbos rev-parse HEAD)" = "$DBOS_SHA"
+          grep -qi '^MIT License' /tmp/dbos/LICENSE
       - name: Build pinned DBOS SDK donor
         working-directory: /tmp/dbos
         run: |
