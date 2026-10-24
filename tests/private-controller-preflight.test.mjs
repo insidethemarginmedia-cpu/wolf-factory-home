@@ -40,3 +40,27 @@ test('successful preflight exposes no private source hash, key metadata or crede
 test('network exceptions cannot expose a credential marker',async()=>{
  const marker='fixture-sensitive-marker';await assert.rejects(verifyPrivateControllerAccess({env,fetchImpl:async()=>{throw Error(marker);}}),e=>e.message==='PREFLIGHT_NETWORK_FAILED'&&!e.message.includes(marker));
 });
+
+const {verifyOpenRouterAuthentication}=await import('../scripts/private-controller-preflight.mjs');
+test('provider authentication works without repository token and never generates',async()=>{
+ let calls=0;
+ const result=await verifyOpenRouterAuthentication({env:{OPENROUTER_API_KEY:'fixture-only'},fetchImpl:async(url,options)=>{
+ calls++;assert.equal(url,'https://openrouter.ai/api/v1/key');assert.equal(options.method,'GET');assert.equal(options.redirect,'error');assert.equal(options.headers.authorization,'Bearer fixture-only');return {ok:true,json:async()=>({...key,data:{...key.data,label:'must-not-leak'}})};
+ }});
+ assert.equal(calls,1);assert.equal(result.authenticationVerified,true);assert.equal(result.inferencePerformed,false);assert.equal(result.economicAdmission,'PASS');assert.equal(JSON.stringify(result).includes('must-not-leak'),false);
+});
+test('provider diagnostic missing credential makes no requests',async()=>{
+ const result=await verifyOpenRouterAuthentication({env:{},fetchImpl:async()=>{throw Error('unexpected');}});assert.equal(result.state,'BLOCKED');
+});
+test('authenticated key with unknown or nonzero limit never gains economic admission',async()=>{
+ for(const limit of [null,undefined,100]){
+ const result=await verifyOpenRouterAuthentication({env,fetchImpl:async()=>({ok:true,json:async()=>({data:{...key.data,limit}})})});assert.equal(result.economicAdmission,'NOT_VERIFIED');assert.equal(result.inferencePerformed,false);
+ }
+});
+test('provider diagnostic sanitizes transport errors and rejects denied authentication',async()=>{
+ await assert.rejects(verifyOpenRouterAuthentication({env,fetchImpl:async()=>{throw Error('sensitive');}}),{message:'OPENROUTER_AUTH_NETWORK_FAILED'});
+ await assert.rejects(verifyOpenRouterAuthentication({env,fetchImpl:async()=>({ok:false})}),{message:'OPENROUTER_AUTH_HTTP_DENIED'});
+});
+test('provider diagnostic rejects malformed metadata',async()=>{
+ await assert.rejects(verifyOpenRouterAuthentication({env,fetchImpl:async()=>({ok:true,json:async()=>({data:{}})})}),{message:'OPENROUTER_AUTH_RESPONSE_INVALID'});
+});

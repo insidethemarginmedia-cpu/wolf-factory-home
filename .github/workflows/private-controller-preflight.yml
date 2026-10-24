@@ -32,6 +32,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
+      - name: Verify OpenRouter authentication independently (no inference)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: node scripts/private-controller-preflight.mjs --openrouter-auth-only
       - name: Verify service access without inference or private checkout
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

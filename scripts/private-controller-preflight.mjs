@@ -21,7 +21,21 @@ export async function verifyPrivateControllerAccess({env=process.env,fetchImpl=g
  if(model?.pricing?.prompt!=='0'||model?.pricing?.completion!=='0')throw Error('EXACT_FREE_MODEL_REQUIRED');
  return {state:'PREFLIGHT_VERIFIED',privateRepositoryAccess:true,canonicalRefVerified:true,model:model.id,inferencePerformed:false,privateSourceFetched:false,missionExecutionVerified:false};
 }
+
+export async function verifyOpenRouterAuthentication({env=process.env,fetchImpl=globalThis.fetch}={}){
+ const token=env.OPENROUTER_API_KEY;
+ const base={inferencePerformed:false,privateSourceFetched:false};
+ if(typeof token!=='string'||!token.trim())return {...base,state:'BLOCKED',reason:'OPENROUTER_CREDENTIAL_REQUIRED'};
+ let response;
+ try{response=await fetchImpl('https://openrouter.ai/api/v1/key',{method:'GET',headers:{authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});}
+ catch{throw Error('OPENROUTER_AUTH_NETWORK_FAILED');}
+ if(!response.ok)throw Error('OPENROUTER_AUTH_HTTP_DENIED');
+ let key;try{key=(await response.json()).data;}catch{throw Error('OPENROUTER_AUTH_RESPONSE_INVALID');}
+ if(!key||typeof key.is_free_tier!=='boolean')throw Error('OPENROUTER_AUTH_RESPONSE_INVALID');
+ return {...base,state:'AUTHENTICATION_VERIFIED',authenticationVerified:true,economicAdmission:key.is_free_tier===true&&key.limit===0&&key.byok_usage===0?'PASS':'NOT_VERIFIED',missionExecutionVerified:false};
+}
+
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
- try{const result=await verifyPrivateControllerAccess();console.log(JSON.stringify(result));if(result.state!=='PREFLIGHT_VERIFIED')process.exitCode=78;}
+ try{const authOnly=process.argv.includes('--openrouter-auth-only');const result=await (authOnly?verifyOpenRouterAuthentication():verifyPrivateControllerAccess());console.log(JSON.stringify(result));if(!['PREFLIGHT_VERIFIED','AUTHENTICATION_VERIFIED'].includes(result.state))process.exitCode=78;}
  catch{console.error('PREFLIGHT_FAILED: no credential or remote response content logged');process.exitCode=1;}
 }
