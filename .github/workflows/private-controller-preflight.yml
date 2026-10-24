@@ -2,6 +2,10 @@ name: Private Controller Access Preflight
 on:
   workflow_dispatch:
     inputs:
+      verify_private_source:
+        description: Verify private source authorization only, without fetching source
+        type: boolean
+        default: false
       qualify_worker:
         description: Run a bounded free inference qualification
         type: boolean
@@ -11,6 +15,8 @@ on:
     paths:
       - '.github/workflows/private-controller-preflight.yml'
       - 'scripts/private-controller-preflight.mjs'
+      - 'scripts/private-source-authorization.mjs'
+      - 'tests/private-source-authorization.test.mjs'
       - 'tests/private-controller-preflight.test.mjs'
       - 'scripts/existing-worker-qualification.mjs'
       - 'tests/existing-worker-qualification.test.mjs'
@@ -55,6 +61,12 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: node scripts/private-controller-preflight.mjs
+      - name: Verify private source archive authorization without downloading
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_private_source == true
+        env:
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_FACTORY_EXPECTED_SHA: 3a5a4b71ad225e3c7946484776bca36d100a8a60
+        run: node scripts/private-source-authorization.mjs
       - name: Qualify existing private worker adapter with free inference
         if: github.event_name == 'workflow_dispatch' && inputs.qualify_worker == true
         env:
