@@ -28,8 +28,8 @@ export async function verifyOpenRouterAuthentication({env=process.env,fetchImpl=
  if(typeof token!=='string'||!token.trim())return {...base,state:'BLOCKED',reason:'OPENROUTER_CREDENTIAL_REQUIRED'};
  let response;
  try{response=await fetchImpl('https://openrouter.ai/api/v1/key',{method:'GET',headers:{authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});}
- catch{throw Error('OPENROUTER_AUTH_NETWORK_FAILED');}
- if(!response.ok)throw Error('OPENROUTER_AUTH_HTTP_DENIED');
+ catch(error){const code=error?.cause?.code;throw Error(['ETIMEDOUT','ENOTFOUND','ECONNRESET','UND_ERR_CONNECT_TIMEOUT','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE'].includes(code)?'OPENROUTER_AUTH_NETWORK_'+code:'OPENROUTER_AUTH_NETWORK_FAILED');}
+ if(!response.ok){const error=Error('OPENROUTER_AUTH_HTTP_DENIED');error.httpStatus=Number.isInteger(response.status)?response.status:0;throw error;}
  let key;try{key=(await response.json()).data;}catch{throw Error('OPENROUTER_AUTH_RESPONSE_INVALID');}
  if(!key||typeof key.is_free_tier!=='boolean')throw Error('OPENROUTER_AUTH_RESPONSE_INVALID');
  return {...base,state:'AUTHENTICATION_VERIFIED',authenticationVerified:true,economicAdmission:key.is_free_tier===true&&key.limit===0&&key.byok_usage===0?'PASS':'NOT_VERIFIED',missionExecutionVerified:false};
@@ -37,5 +37,5 @@ export async function verifyOpenRouterAuthentication({env=process.env,fetchImpl=
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  try{const authOnly=process.argv.includes('--openrouter-auth-only');const result=await (authOnly?verifyOpenRouterAuthentication():verifyPrivateControllerAccess());console.log(JSON.stringify(result));if(!['PREFLIGHT_VERIFIED','AUTHENTICATION_VERIFIED'].includes(result.state))process.exitCode=78;}
- catch{console.error('PREFLIGHT_FAILED: no credential or remote response content logged');process.exitCode=1;}
+ catch(error){const allowed=['OPENROUTER_AUTH_NETWORK_FAILED','OPENROUTER_AUTH_NETWORK_ETIMEDOUT','OPENROUTER_AUTH_NETWORK_ENOTFOUND','OPENROUTER_AUTH_NETWORK_ECONNRESET','OPENROUTER_AUTH_NETWORK_UND_ERR_CONNECT_TIMEOUT','OPENROUTER_AUTH_NETWORK_CERT_HAS_EXPIRED','OPENROUTER_AUTH_NETWORK_UNABLE_TO_VERIFY_LEAF_SIGNATURE','OPENROUTER_AUTH_HTTP_DENIED','OPENROUTER_AUTH_RESPONSE_INVALID'];console.error(JSON.stringify({state:'FAILED',reason:allowed.includes(error?.message)?error.message:'PREFLIGHT_FAILED',httpStatus:Number.isInteger(error?.httpStatus)?error.httpStatus:0,inferencePerformed:false}));process.exitCode=1;}
 }
