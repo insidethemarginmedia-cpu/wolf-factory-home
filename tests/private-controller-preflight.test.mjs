@@ -64,3 +64,10 @@ test('provider diagnostic sanitizes transport errors and rejects denied authenti
 test('provider diagnostic rejects malformed metadata',async()=>{
  await assert.rejects(verifyOpenRouterAuthentication({env,fetchImpl:async()=>({ok:true,json:async()=>({data:{}})})}),{message:'OPENROUTER_AUTH_RESPONSE_INVALID'});
 });
+
+test('economic diagnostic identifies unmet gates without disclosing metadata',async()=>{
+ for(const [data,reason] of [[{...key.data,limit:null},'SPENDING_LIMIT_UNKNOWN'],[{...key.data,limit:5},'SPENDING_LIMIT_NOT_ZERO'],[{...key.data,byok_usage:undefined},'BYOK_USAGE_UNKNOWN'],[{...key.data,is_free_tier:false},'FREE_TIER_NOT_CONFIRMED']]){
+ const result=await verifyOpenRouterAuthentication({env,fetchImpl:async()=>({ok:true,json:async()=>({data:{...data,label:'private-label',hash:'private-hash'}})})});
+ assert.equal(result.economicAdmission,'NOT_VERIFIED');assert.ok(result.economicReasons.includes(reason));assert.equal(JSON.stringify(result).includes('private-'),false);
+ }
+});

@@ -32,7 +32,7 @@ export async function verifyOpenRouterAuthentication({env=process.env,fetchImpl=
  if(!response.ok){const error=Error('OPENROUTER_AUTH_HTTP_DENIED');error.httpStatus=Number.isInteger(response.status)?response.status:0;throw error;}
  let key;try{key=(await response.json()).data;}catch{throw Error('OPENROUTER_AUTH_RESPONSE_INVALID');}
  if(!key||typeof key.is_free_tier!=='boolean')throw Error('OPENROUTER_AUTH_RESPONSE_INVALID');
- return {...base,state:'AUTHENTICATION_VERIFIED',authenticationVerified:true,economicAdmission:key.is_free_tier===true&&key.limit===0&&key.byok_usage===0?'PASS':'NOT_VERIFIED',missionExecutionVerified:false};
+ return {...base,state:'AUTHENTICATION_VERIFIED',authenticationVerified:true,economicAdmission:key.is_free_tier===true&&key.limit===0&&key.byok_usage===0?'PASS':'NOT_VERIFIED',economicReasons:[...(key.is_free_tier===true?[]:['FREE_TIER_NOT_CONFIRMED']),...(key.limit===0?[]:[key.limit==null?'SPENDING_LIMIT_UNKNOWN':'SPENDING_LIMIT_NOT_ZERO']),...(key.byok_usage===0?[]:[key.byok_usage==null?'BYOK_USAGE_UNKNOWN':'BYOK_USAGE_NOT_ZERO'])],missionExecutionVerified:false};
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
