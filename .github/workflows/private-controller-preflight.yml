@@ -111,6 +111,18 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm run build
           test -f dist/src/index.js
+      - name: Validate private controller and publication safety contracts
+        run: |
+          set -euo pipefail
+          node --check scripts/wolf-factory-boxxkite-acceptance.mjs
+          node --check infra/worker-router/factory-service-transports.mjs
+          node --test \
+            infra/autonomy/engineering-commit-journal.test.mjs \
+            infra/autonomy/verified-cycle-continuation.test.mjs \
+            tests/wolf-authorized-git-publication.test.mjs \
+            tests/wolf-boxxkite-service-transport.test.mjs \
+            tests/wolf-dbos-mode-validation.test.mjs
+          echo PRIVATE_CONTROLLER_SAFETY_CONTRACTS=PASS
       - name: DBOS prepare fixture
         run: node scripts/wolf-dbos-outer-e2e.mjs prepare
       - name: DBOS verified crash before verifier
