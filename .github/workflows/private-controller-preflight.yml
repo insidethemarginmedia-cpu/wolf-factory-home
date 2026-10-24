@@ -7,6 +7,8 @@ on:
       - '.github/workflows/private-controller-preflight.yml'
       - 'scripts/private-controller-preflight.mjs'
       - 'tests/private-controller-preflight.test.mjs'
+      - 'scripts/existing-worker-qualification.mjs'
+      - 'tests/existing-worker-qualification.test.mjs'
 permissions:
   contents: read
 concurrency:
@@ -22,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - run: node --test tests/private-controller-preflight.test.mjs
+      - run: node --test tests/*.test.mjs
   service-access:
     needs: security-tests
     if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
@@ -46,3 +48,8 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: node scripts/private-controller-preflight.mjs
+      - name: Qualify existing private worker adapter with free inference
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        run: node scripts/existing-worker-qualification.mjs
