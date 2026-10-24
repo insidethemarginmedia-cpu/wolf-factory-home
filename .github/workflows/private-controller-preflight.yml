@@ -14,6 +14,10 @@ on:
         description: Run existing private DBOS crash-recovery fixture in an isolated read-only runner
         type: boolean
         default: false
+      qualify_opencode:
+        description: Qualify real OpenCode and existing Cezar process lifecycle without inference
+        type: boolean
+        default: false
       qualify_worker:
         description: Run a bounded free inference qualification
         type: boolean
@@ -215,3 +219,55 @@ jobs:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
         run: node scripts/boxxkite-service-diagnostic.mjs
+
+  opencode-runtime:
+    needs: security-tests
+    if: github.event_name == 'workflow_dispatch' && inputs.qualify_opencode == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CEZAR_SHA: 1b13522dd3642a4ea8331629b3680838164d2a2e
+      OPENCODE_VERSION_PIN: 1.18.34
+    steps:
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Reuse or install pinned existing OpenCode runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v opencode >/dev/null; then
+            npm install -g "opencode-ai@$OPENCODE_VERSION_PIN" --no-audit --no-fund
+          fi
+          test "$(opencode --version)" = "$OPENCODE_VERSION_PIN"
+          echo "CEZ_OPENCODE_BIN=$(command -v opencode)" >> "$GITHUB_ENV"
+          echo OPENCODE_VERSION_EXIT_CODE=0
+          opencode --help >/dev/null
+          echo OPENCODE_HELP_EXIT_CODE=0
+      - name: Build the existing pinned Cezar controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/open-mercato/cezar.git "$RUNNER_TEMP/cezar"
+          git -C "$RUNNER_TEMP/cezar" checkout -q "$CEZAR_SHA"
+          test "$(git -C "$RUNNER_TEMP/cezar" rev-parse HEAD)" = "$CEZAR_SHA"
+          npm ci --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/cezar"
+          npm run build --prefix "$RUNNER_TEMP/cezar"
+          echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
+      - name: Invoke existing Cezar OpenCode runner without inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {pathToFileURL} from 'node:url';
+          const {OpencodeServerRunner}=await import(pathToFileURL(process.env.WOLF_CEZAR_RUNNER).href);
+          const events=[];
+          let session;
+          const runner=new OpencodeServerRunner({bin:process.env.CEZ_OPENCODE_BIN,timeoutMs:20000});
+          session=runner.startSession({cwd:process.env.RUNNER_TEMP,userPrompt:'',timeoutMs:20000,env:{OPENCODE_CONFIG_CONTENT:JSON.stringify({enabled_providers:[],permission:'deny'}),OPENCODE_DISABLE_MODELS_FETCH:'true',OPENCODE_DISABLE_AUTOUPDATE:'true'}},event=>{events.push(event);if(event.type==='session')session.end();});
+          const result=await session.result;
+          if(!events.some(e=>e.type==='session'&&typeof e.sessionId==='string')||result.tokensUsed!==0||result.toolCalls.length!==0||result.text!=='')throw Error('CEZAR_NON_AI_LIFECYCLE_NOT_VERIFIED');
+          console.log('CEZAR_OPENCODE_NON_AI='+JSON.stringify({sessionId:result.sessionId,tokensUsed:result.tokensUsed,toolCalls:result.toolCalls.length,inferencePerformed:false,serverTerminated:!session.open,events:events.map(e=>e.type)}));
+          NODE
+          echo CEZAR_OPENCODE_LIFECYCLE_EXIT_CODE=0
