@@ -71,3 +71,13 @@ test('economic diagnostic identifies unmet gates without disclosing metadata',as
  assert.equal(result.economicAdmission,'NOT_VERIFIED');assert.ok(result.economicReasons.includes(reason));assert.equal(JSON.stringify(result).includes('private-'),false);
  }
 });
+
+test('preflight denied requests retain safe stage and HTTP status without response body',async()=>{
+ for(const [index,stage] of [[0,'PRIVATE_REPOSITORY'],[1,'CANONICAL_REF'],[2,'PROVIDER_KEY'],[3,'MODEL_CATALOG']]){
+ let calls=0;const values=[repo,ref,key,catalog];
+ await assert.rejects(verifyPrivateControllerAccess({env,fetchImpl:async()=>{
+ const current=calls++;return current===index?{ok:false,status:403,json:async()=>{throw Error('secret-body');}}:{ok:true,json:async()=>values[current]};
+ }}),error=>error.message==='PREFLIGHT_HTTP_DENIED'&&error.stage===stage&&error.httpStatus===403&&!JSON.stringify(error).includes('secret-body'));
+ assert.equal(calls,index+1);
+ }
+});
