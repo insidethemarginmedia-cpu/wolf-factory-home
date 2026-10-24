@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {verifyPrivateSourceCheckout} from './wolf-private-source-checkout.mjs';
+import {verifyPrivateSourceCheckout} from '../scripts/private-source-authorization.mjs';
 const sha='a'.repeat(40);
 const env={WOLF_FACTORY_REPO_TOKEN:'fixture-token',WOLF_FACTORY_EXPECTED_SHA:sha};
 const ref={ref:'refs/heads/feat/factory-real-worker-m1-20261006',object:{sha}};
