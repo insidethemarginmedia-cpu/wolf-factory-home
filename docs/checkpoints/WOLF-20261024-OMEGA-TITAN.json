@@ -1,0 +1,129 @@
+{
+  "schema": "WolfOmegaTitanClosure/v1",
+  "date": "2026-10-24",
+  "acceptance": "BLOCKED",
+  "privateHeadObserved": "c363fa1d59dfda323b25502885ab305a0f961cfa",
+  "runtimeCodeCommit": "cc120ae32bdf3c748cd0c14ea1bdedbf50c519e7",
+  "runtimeBranch": "feat/public-runtime-probe-20261022",
+  "productionDeployment": false,
+  "components": {
+    "dbos": {
+      "state": "VERIFIED",
+      "scope": "Existing deterministic crash/recovery fixture only",
+      "runId": 40118301588,
+      "effectCount": 3,
+      "verifierCount": 3,
+      "uniqueCompleted": 3,
+      "realAiMissionVerified": false
+    },
+    "flint": {
+      "state": "VERIFIED",
+      "scope": "Minimal real provider inference through existing private adapter in public runner; not full controller mission",
+      "runId": 40123072749,
+      "model": "recursive/flint-v1.0:free",
+      "generationId": "gen-1792868259-OilZMcr0yrB5Gd98CEcR",
+      "costUsd": 0,
+      "output": "WOLF_RUNTIME_OK",
+      "economicAdmission": "PASS",
+      "fallbackDisabled": true
+    },
+    "groq": {
+      "state": "BLOCKED",
+      "accountAlias": "wolf-groq-free",
+      "authentication": "VERIFIED",
+      "model": "openai/gpt-oss-120b",
+      "modelActive": true,
+      "modelReadAuditId": "log_ts30fPnjp0FJ",
+      "accountFreeTier": "NOT VERIFIED",
+      "accountBillingExposure": "NOT VERIFIED",
+      "inferencePerformed": false,
+      "reason": "Current account tier and billing exposure are not provided by available Groq connection tools; account alias and generic free-plan terms do not prove economic admission."
+    },
+    "boxxkite": {
+      "state": "VERIFIED",
+      "scope": "Live sandbox command execution and independent Node file readback only",
+      "sandboxId": "dc53ac12-88e4-42d9-b6ff-492eeebeaf03",
+      "receipt": "wolf-omega-boxxkite-20261024",
+      "exitCode": 0,
+      "stdout": "42\n",
+      "stderr": "",
+      "fileSha256": "eeadef425509d04010c82d630c3a9db92ecf1696a241cad53512c7f5ce9c0fcf",
+      "independentReadback": true,
+      "cleanup": "DESTROYED",
+      "npmPresent": false,
+      "gitPresent": false,
+      "opencodePresent": false,
+      "invoiceCost": "NOT VERIFIED"
+    },
+    "opencode": {
+      "state": "VERIFIED",
+      "scope": "Non-AI executable and existing Cezar runner bootstrap/cancellation with OS process-exit check; AI router mission NOT VERIFIED",
+      "version": "1.18.34",
+      "cezarCommit": "1b13522dd3642a4ea8331629b3680838164d2a2e",
+      "firstRunId": 40123207894,
+      "retestRunId": 40123335344,
+      "aiInferencePerformed": false,
+      "receipt": {
+        "sessionId": "ses_e90b5aa8bffeFmJh66J1wJGcl4",
+        "tokensUsed": 0,
+        "toolCalls": 0,
+        "inferencePerformed": false,
+        "serverTerminated": true,
+        "errorMessages": [
+          "opencode: read ECONNRESET"
+        ],
+        "events": [
+          "session",
+          "turn-end",
+          "error",
+          "done"
+        ]
+      },
+      "cliVersionExitCode": 0,
+      "cliHelpExitCode": 0,
+      "cezarLifecycleCommandExitCode": 0
+    },
+    "missionA": {
+      "state": "BLOCKED",
+      "reason": "Groq economic admission required before full acceptance chain"
+    },
+    "missionB": {
+      "state": "BLOCKED",
+      "reason": "Mission A has not passed"
+    },
+    "nextReady": {
+      "state": "NOT VERIFIED",
+      "scope": "No new acceptance Mission A/B transition claimed"
+    },
+    "dbosAcceptanceWorkflowId": null,
+    "dbosAcceptanceCheckpointIds": []
+  },
+  "governance": {
+    "agentsRead": true,
+    "autoloadRead": true,
+    "relevantEngineeringSkillsRead": true,
+    "toolchainManifestRead": true,
+    "articleZero": "NOT LOCATED by path in pinned repository tree; not claimed read"
+  },
+  "economicPolicy": {
+    "EUR_SPEND_REQUIRED": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "newBillingActivated": false,
+    "promotionalCreditsUsed": false,
+    "overallEconomicCompliance": "NOT VERIFIED; Flint receipt is zero, Groq inference blocked, Boxxkite invoicing not exposed"
+  },
+  "limitations": [
+    "OpenCode/Cezar server lifecycle does not prove AI worker execution through the Factory router.",
+    "Existing deterministic DBOS success does not prove a Flint/Groq Mission A or autonomous Mission B.",
+    "GitHub checkpoint is distinct from a DBOS mission checkpoint."
+  ],
+  "privateHeadFinalObserved": "ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6",
+  "workflowUrls": [
+    "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40118301588",
+    "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40123072749",
+    "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40123207894",
+    "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40123335344"
+  ]
+}
