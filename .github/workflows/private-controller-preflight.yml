@@ -6,6 +6,10 @@ on:
         description: Verify private source authorization only, without fetching source
         type: boolean
         default: false
+      verify_private_checkout:
+        description: Read-only private checkout at pinned source SHA, no inference or publication
+        type: boolean
+        default: false
       qualify_worker:
         description: Run a bounded free inference qualification
         type: boolean
@@ -67,6 +71,28 @@ jobs:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           WOLF_FACTORY_EXPECTED_SHA: 3a5a4b71ad225e3c7946484776bca36d100a8a60
         run: node scripts/private-source-authorization.mjs
+      - name: Checkout private Factory at approved immutable SHA (read only)
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_private_checkout == true
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: donraposo1-source/project-wolf
+          ref: 3a5a4b71ad225e3c7946484776bca36d100a8a60
+          token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          path: private-factory
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify private checkout and controller entrypoint (no execution)
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_private_checkout == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-factory rev-parse HEAD)" = '3a5a4b71ad225e3c7946484776bca36d100a8a60'
+          test -f private-factory/scripts/wolf-factory-boxxkite-acceptance.mjs
+          test -f private-factory/infra/autonomy/authorized-git-publication.mjs
+          test -f private-factory/infra/autonomy/engineering-commit-journal.mjs
+          test -f private-factory/.github/workflows/factory-dbos-outer-e2e.yml
+          test -z "$(git -C private-factory status --porcelain)"
+          echo PRIVATE_FACTORY_CHECKOUT_VERIFIED=YES
       - name: Qualify existing private worker adapter with free inference
         if: github.event_name == 'workflow_dispatch' && inputs.qualify_worker == true
         env:
