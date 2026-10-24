@@ -301,8 +301,8 @@ jobs:
       CEZAR_SHA: 1b13522dd3642a4ea8331629b3680838164d2a2e
       OPENCODE_VERSION_PIN: 1.18.34
       WOLF_FACTORY_CWD: ${{ github.workspace }}
-      WOLF_FACTORY_RUNTIME_ROOT: ${{ runner.temp }}/wolf-integrated-${{ github.run_id }}
-      WOLF_FACTORY_ACCEPTANCE_MANIFEST: ${{ runner.temp }}/wolf-manifest.json
+      WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
+      WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
       WOLF_FACTORY_EXPECTED_SHA: 4ef46d1b8e66ed62f60d0eb5369743390e9ed2f1
       GROQ_FREE_PLAN_CONFIRMED: 'true'
