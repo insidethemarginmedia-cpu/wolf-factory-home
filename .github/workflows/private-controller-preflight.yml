@@ -37,6 +37,10 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: node scripts/private-controller-preflight.mjs --openrouter-auth-only
+      - name: Verify GitHub token identity without private source access
+        env:
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        run: node scripts/private-controller-preflight.mjs --github-auth-only
       - name: Verify service access without inference or private checkout
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

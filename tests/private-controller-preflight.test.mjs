@@ -89,3 +89,24 @@ test('malformed repository credentials are rejected without network or disclosur
  assert.equal(calls,0);
  }
 });
+
+test('GitHub identity diagnostic exposes only authentication and owner-match booleans',async()=>{
+ const {verifyGitHubAuthentication}=await import('../scripts/private-controller-preflight.mjs');
+ for(const login of ['donraposo1-source','other-fixture-owner']){
+ let calls=0;const result=await verifyGitHubAuthentication({env,fetchImpl:async(url,options)=>{
+ calls++;assert.equal(url,'https://api.github.com/user');assert.equal(options.redirect,'error');assert.equal(options.method,'GET');
+ return {ok:true,json:async()=>({login,email:'private-email',name:'private-name'})};
+ }});
+ assert.equal(calls,1);assert.equal(result.githubAuthenticationVerified,true);assert.equal(result.repositoryOwnerIdentityMatches,login==='donraposo1-source');
+ assert.equal(result.inferencePerformed,false);assert.equal(result.privateSourceFetched,false);
+ for(const marker of [login,'private-email','private-name',env.WOLF_FACTORY_REPO_TOKEN])assert.equal(JSON.stringify(result).includes(marker),false);
+ }
+});
+test('GitHub identity diagnostic rejects missing, malformed, denied and invalid responses',async()=>{
+ const {verifyGitHubAuthentication}=await import('../scripts/private-controller-preflight.mjs');
+ let calls=0;assert.equal((await verifyGitHubAuthentication({env:{},fetchImpl:async()=>{calls++;}})).state,'BLOCKED');assert.equal(calls,0);
+ await assert.rejects(verifyGitHubAuthentication({env:{WOLF_FACTORY_REPO_TOKEN:'bad value'},fetchImpl:async()=>{calls++;}}),{message:'SERVICE_CREDENTIAL_FORMAT_INVALID'});assert.equal(calls,0);
+ await assert.rejects(verifyGitHubAuthentication({env,fetchImpl:async()=>({ok:false,status:401})}),e=>e.message==='GITHUB_AUTH_HTTP_DENIED'&&e.httpStatus===401);
+ await assert.rejects(verifyGitHubAuthentication({env,fetchImpl:async()=>{throw Error('private-marker');}}),{message:'GITHUB_AUTH_NETWORK_FAILED'});
+ await assert.rejects(verifyGitHubAuthentication({env,fetchImpl:async()=>({ok:true,json:async()=>({})})}),{message:'GITHUB_AUTH_RESPONSE_INVALID'});
+});
