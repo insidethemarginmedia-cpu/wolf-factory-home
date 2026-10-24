@@ -267,7 +267,9 @@ jobs:
           const runner=new OpencodeServerRunner({bin:process.env.CEZ_OPENCODE_BIN,timeoutMs:20000});
           session=runner.startSession({cwd:process.env.RUNNER_TEMP,userPrompt:'',timeoutMs:20000,env:{OPENCODE_CONFIG_CONTENT:JSON.stringify({enabled_providers:[],permission:'deny'}),OPENCODE_DISABLE_MODELS_FETCH:'true',OPENCODE_DISABLE_AUTOUPDATE:'true'}},event=>{events.push(event);if(event.type==='session')session.end();});
           const result=await session.result;
+          let processExited=false;try{process.kill(session.pid,0);}catch(error){if(error.code==='ESRCH')processExited=true;else throw error;}
+          if(!processExited)throw Error('OPENCODE_CHILD_STILL_ALIVE');
           if(!events.some(e=>e.type==='session'&&typeof e.sessionId==='string')||result.tokensUsed!==0||result.toolCalls.length!==0||result.text!=='')throw Error('CEZAR_NON_AI_LIFECYCLE_NOT_VERIFIED');
-          console.log('CEZAR_OPENCODE_NON_AI='+JSON.stringify({sessionId:result.sessionId,tokensUsed:result.tokensUsed,toolCalls:result.toolCalls.length,inferencePerformed:false,serverTerminated:!session.open,events:events.map(e=>e.type)}));
+          console.log('CEZAR_OPENCODE_NON_AI='+JSON.stringify({sessionId:result.sessionId,tokensUsed:result.tokensUsed,toolCalls:result.toolCalls.length,inferencePerformed:false,serverTerminated:processExited,errorMessages:events.filter(e=>e.type==='error').map(e=>e.message),events:events.map(e=>e.type)}));
           NODE
           echo CEZAR_OPENCODE_LIFECYCLE_EXIT_CODE=0
