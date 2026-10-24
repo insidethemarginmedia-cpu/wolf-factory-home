@@ -81,3 +81,11 @@ test('preflight denied requests retain safe stage and HTTP status without respon
  assert.equal(calls,index+1);
  }
 });
+
+test('malformed repository credentials are rejected without network or disclosure',async()=>{
+ for(const token of ['fixture\nvalue','fixture value','fixture☃']){
+ let calls=0;
+ await assert.rejects(verifyPrivateControllerAccess({env:{...env,WOLF_FACTORY_REPO_TOKEN:token},fetchImpl:async()=>{calls++;}}),error=>error.message==='SERVICE_CREDENTIAL_FORMAT_INVALID'&&error.stage==='PRIVATE_REPOSITORY'&&!JSON.stringify(error).includes(token));
+ assert.equal(calls,0);
+ }
+});
