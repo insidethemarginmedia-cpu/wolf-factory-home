@@ -14,6 +14,10 @@ on:
         description: Run existing private DBOS crash-recovery fixture in an isolated read-only runner
         type: boolean
         default: false
+      execute_integrated:
+        description: Execute existing Factory synthetic missions A and B with correlated review and controller restart
+        type: boolean
+        default: false
       qualify_opencode:
         description: Qualify real OpenCode and existing Cezar process lifecycle without inference
         type: boolean
@@ -273,3 +277,173 @@ jobs:
           console.log('CEZAR_OPENCODE_NON_AI='+JSON.stringify({sessionId:result.sessionId,tokensUsed:result.tokensUsed,toolCalls:result.toolCalls.length,inferencePerformed:false,serverTerminated:processExited,errorMessages:events.filter(e=>e.type==='error').map(e=>e.message),events:events.map(e=>e.type)}));
           NODE
           echo CEZAR_OPENCODE_LIFECYCLE_EXIT_CODE=0
+
+  integrated-factory:
+    needs: security-tests
+    if: github.event_name == 'workflow_dispatch' && inputs.execute_integrated == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dbos
+          POSTGRES_DB: wolf_factory_dbos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wolf_factory_dbos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CEZAR_SHA: 1b13522dd3642a4ea8331629b3680838164d2a2e
+      OPENCODE_VERSION_PIN: 1.18.34
+      WOLF_FACTORY_CWD: ${{ github.workspace }}
+      WOLF_FACTORY_RUNTIME_ROOT: ${{ runner.temp }}/wolf-integrated-${{ github.run_id }}
+      WOLF_FACTORY_ACCEPTANCE_MANIFEST: ${{ runner.temp }}/wolf-manifest.json
+      WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
+      WOLF_FACTORY_EXPECTED_SHA: 4ef46d1b8e66ed62f60d0eb5369743390e9ed2f1
+      GROQ_FREE_PLAN_CONFIRMED: 'true'
+      WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
+      DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
+      WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
+      WOLF_DBOS_FIXTURE_ROOT: /tmp/wolf-factory-dbos-e2e
+      WOLF_DBOS_SDK_ENTRYPOINT: /tmp/dbos/dist/src/index.js
+      EUR_SPEND: '0'
+      COST_UNKNOWN: DENY
+      PAID_FALLBACK: DENY
+      TRIAL_CREDIT: DENY
+    steps:
+      - name: Checkout private Factory at verified immutable source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: donraposo1-source/project-wolf
+          ref: 4ef46d1b8e66ed62f60d0eb5369743390e9ed2f1
+          token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Assert immutable source and recovery fixture
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '4ef46d1b8e66ed62f60d0eb5369743390e9ed2f1'
+          test -f scripts/wolf-dbos-outer-e2e.mjs
+          test -f scripts/wolf-factory-boxxkite-acceptance.mjs
+          test -z "$(git status --porcelain)"
+          echo PRIVATE_FACTORY_DBOS_SOURCE_VERIFIED=YES
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install private Factory lockfile dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Checkout pinned DBOS SDK donor
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/dbos-inc/dbos-transact-ts.git /tmp/dbos
+          git -C /tmp/dbos checkout --detach "$DBOS_SHA"
+          test "$(git -C /tmp/dbos rev-parse HEAD)" = "$DBOS_SHA"
+          grep -qi '^MIT License' /tmp/dbos/LICENSE
+      - name: Build pinned DBOS SDK donor
+        working-directory: /tmp/dbos
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          test -f dist/src/index.js
+      - name: Validate private controller and publication safety contracts
+        run: |
+          set -euo pipefail
+          node --check scripts/wolf-factory-boxxkite-acceptance.mjs
+          node --check infra/worker-router/factory-service-transports.mjs
+          node --test \
+            infra/autonomy/engineering-commit-journal.test.mjs \
+            infra/autonomy/verified-cycle-continuation.test.mjs \
+            tests/wolf-authorized-git-publication.test.mjs \
+            tests/wolf-boxxkite-service-transport.test.mjs \
+            tests/wolf-dbos-mode-validation.test.mjs
+          echo PRIVATE_CONTROLLER_SAFETY_CONTRACTS=PASS
+      - name: Full private regression and build
+        run: |
+          npm test
+          node --test infra/worker-router/groq-opencode-admission.test.mjs
+          npm run build
+      - name: Require existing service credentials without reading values
+        run: |
+          set -euo pipefail
+          for name in WOLF_FACTORY_REPO_TOKEN OPENROUTER_API_KEY GROQ_API_KEY BOXXKITE_API_KEY; do
+            if test -z "${!name:-}"; then echo "INTEGRATED_CONFIGURATION_REQUIRED=$name"; exit 78; fi
+          done
+      - name: Admit existing free OpenRouter key
+        run: |
+          node --input-type=module <<'NODE'
+          const r=await fetch('https://openrouter.ai/api/v1/key',{headers:{authorization:'Bearer '+process.env.OPENROUTER_API_KEY},signal:AbortSignal.timeout(20000)});
+          if(!r.ok)throw Error('OPENROUTER_AUTH_DENIED');
+          const k=(await r.json()).data;
+          if(k.is_free_tier!==true||k.limit!==0||k.byok_usage!==0)throw Error('FREE_KEY_ADMISSION_REQUIRED');
+          console.log('INTEGRATED_OPENROUTER_ECONOMIC_ADMISSION=PASS');
+          NODE
+      - name: Reuse or install pinned existing OpenCode runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v opencode >/dev/null; then
+            npm install -g "opencode-ai@$OPENCODE_VERSION_PIN" --no-audit --no-fund
+          fi
+          test "$(opencode --version)" = "$OPENCODE_VERSION_PIN"
+          echo "CEZ_OPENCODE_BIN=$(command -v opencode)" >> "$GITHUB_ENV"
+          echo OPENCODE_VERSION_EXIT_CODE=0
+          opencode --help >/dev/null
+          echo OPENCODE_HELP_EXIT_CODE=0
+      - name: Build the existing pinned Cezar controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/open-mercato/cezar.git "$RUNNER_TEMP/cezar"
+          git -C "$RUNNER_TEMP/cezar" checkout -q "$CEZAR_SHA"
+          test "$(git -C "$RUNNER_TEMP/cezar" rev-parse HEAD)" = "$CEZAR_SHA"
+          npm ci --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/cezar"
+          npm run build --prefix "$RUNNER_TEMP/cezar"
+          echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
+      - name: Prepare bounded synthetic missions and authorized Git transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          git switch -c feat/factory-real-worker-m1-20261006
+          git remote set-url origin https://github.com/donraposo1-source/project-wolf.git
+          git config credential.helper '!f() { echo username=x-access-token; echo password="$WOLF_FACTORY_REPO_TOKEN"; }; f'
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
+          for(const dir of ['.continuity/memory','.continuity/tasks','.continuity/missions'])fs.mkdirSync(path.join(root,dir),{recursive:true});
+          fs.writeFileSync(path.join(root,'.continuity/memory/founder_directives.md'),'EUR_SPEND=0\nCOST_UNKNOWN=DENY\nFOUNDER_INTERVENTIONS=0\nFOUNDER_REPETITIONS=0\nUNKNOWN=>CLOSED\n');
+          fs.writeFileSync(path.join(root,'.continuity/memory/current_state.md'),'# Synthetic integrated acceptance\n');
+          for(const file of ['task_queue.json','completed_tasks.json'])fs.writeFileSync(path.join(root,'.continuity/tasks',file),'[]\n');
+          const run=process.env.GITHUB_RUN_ID;
+          const test=(expression)=>"import importlib.util\nfrom pathlib import Path\ns=importlib.util.spec_from_file_location('candidate',Path(__file__).with_name('candidate.py'))\nm=importlib.util.module_from_spec(s);s.loader.exec_module(m)\n"+expression+'\n';
+          const missions=[{taskId:'OMEGA_A_'+run,target:'docs/factory-acceptance/omega-'+run+'-a.py',fixtureSource:'def add(a,b):\n    return a-b\n',requirement:'add(a,b) must return the arithmetic sum of the two integers.',testSource:test('assert m.add(2,3)==5\nassert m.add(-3,2)==-1'),independentSource:test('for a in range(-5,6):\n for b in range(-5,6): assert m.add(a,b)==a+b')},{taskId:'OMEGA_B_'+run,target:'docs/factory-acceptance/omega-'+run+'-b.py',fixtureSource:'def normalize(value):\n    return value.strip()\n',requirement:'normalize(value) strips whitespace, collapses every run of internal whitespace into a single space, and lowercases text.',testSource:test("assert m.normalize(' A  B ')=='a b'\nassert m.normalize(' HeLLo ')=='hello'"),independentSource:test("assert m.normalize('')==''\nassert m.normalize(' A\\tB\\n C ')=='a b c'\nassert m.normalize(' X ')==m.normalize(m.normalize(' X '))")}];
+          fs.writeFileSync(process.env.WOLF_FACTORY_ACCEPTANCE_MANIFEST,JSON.stringify({baseSha:process.env.WOLF_FACTORY_EXPECTED_SHA,workflowID:'wolf-omega-integrated-'+run,requireIntegratedReview:true,restartAfterMissionA:true,missions}));
+          NODE
+      - name: Execute Mission A then restart existing controller for automatic Mission B
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node scripts/wolf-dbos-existing-factory-engineering.mjs > "$RUNNER_TEMP/wolf-first.log" 2>&1
+          rc=$?
+          set -e
+          if test "$rc" -ne 79; then tail -c 8000 "$RUNNER_TEMP/wolf-first.log"; exit 1; fi
+          grep WOLF_MISSION_A_DURABLE_BEFORE_RESTART "$RUNNER_TEMP/wolf-first.log"
+          node scripts/wolf-dbos-existing-factory-engineering.mjs > "$RUNNER_TEMP/wolf-recovery.log" 2>&1 || { tail -c 8000 "$RUNNER_TEMP/wolf-recovery.log"; exit 1; }
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
+          const final=JSON.parse(fs.readFileSync(path.join(root,'acceptance-final.json'),'utf8'));
+          if(final.dbosStatus!=='SUCCESS'||final.evidence.length!==2||final.result.state!=='NEXT_READY_DRAINED'||!final.restartReceipt||final.restartReceipt.pid===final.controllerPid)throw Error('INTEGRATED_RESTART_ACCEPTANCE_FAILED');
+          for(const p of final.evidence){if(!p.integratedReview||p.cycle.state!=='CYCLE_COMPLETED'||!p.durable?.checkpointId)throw Error('INTEGRATED_MISSION_EVIDENCE_REQUIRED');}
+          console.log('WOLF_INTEGRATED_ACCEPTANCE='+JSON.stringify({workflowID:final.workflowID,restartReceipt:final.restartReceipt,controllerPid:final.controllerPid,result:final.result,missions:final.evidence.map(p=>({missionId:p.spec.taskId,flint:p.providerReceipts.map(r=>r.generationId),opencode:p.integratedReview.opencode,groq:p.integratedReview.groq,executor:p.remoteReceipts,checkpoint:p.durable,verification:p.verifierReceipts.map(v=>({receiptId:v.receiptId,local:v.local,remote:v.remote})),trace:p.trace}))}));
+          NODE
