@@ -365,6 +365,7 @@ jobs:
           echo PRIVATE_CONTROLLER_SAFETY_CONTRACTS=PASS
       - name: Full private regression and build
         run: |
+          npm ci --ignore-scripts --no-audit --no-fund --prefix infra/worker-router/mastra-runtime
           npm test
           node --test infra/worker-router/groq-opencode-admission.test.mjs
           npm run build
