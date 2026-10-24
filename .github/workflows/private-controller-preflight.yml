@@ -83,14 +83,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 3a5a4b71ad225e3c7946484776bca36d100a8a60
+          ref: ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '3a5a4b71ad225e3c7946484776bca36d100a8a60'
+          test "$(git rev-parse HEAD)" = 'ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6'
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -184,14 +184,14 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.verify_private_source == true
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          WOLF_FACTORY_EXPECTED_SHA: 3a5a4b71ad225e3c7946484776bca36d100a8a60
+          WOLF_FACTORY_EXPECTED_SHA: ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6
         run: node scripts/private-source-authorization.mjs
       - name: Checkout private Factory at approved immutable SHA (read only)
         if: github.event_name == 'workflow_dispatch' && inputs.verify_private_checkout == true
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 3a5a4b71ad225e3c7946484776bca36d100a8a60
+          ref: ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           path: private-factory
           persist-credentials: false
@@ -201,7 +201,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C private-factory rev-parse HEAD)" = '3a5a4b71ad225e3c7946484776bca36d100a8a60'
+          test "$(git -C private-factory rev-parse HEAD)" = 'ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6'
           test -f private-factory/scripts/wolf-factory-boxxkite-acceptance.mjs
           test -f private-factory/infra/autonomy/authorized-git-publication.mjs
           test -f private-factory/infra/autonomy/engineering-commit-journal.mjs
