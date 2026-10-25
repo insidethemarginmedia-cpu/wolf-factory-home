@@ -2,6 +2,10 @@ name: Private Controller Access Preflight
 on:
   workflow_dispatch:
     inputs:
+      diagnose_publication:
+        description: Inspect existing runner credential scope and Git receive-pack admission without writing
+        type: boolean
+        default: false
       verify_private_source:
         description: Verify private source authorization only, without fetching source
         type: boolean
@@ -179,6 +183,30 @@ jobs:
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: node scripts/private-controller-preflight.mjs --github-auth-only
+      - name: Diagnose existing runner publication credential without writes
+        if: github.event_name == 'workflow_dispatch' && inputs.diagnose_publication == true
+        env:
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token=process.env.WOLF_FACTORY_REPO_TOKEN;
+          if(!token||!/^[\x21-\x7e]+$/.test(token))throw Error('CREDENTIAL_FORMAT_REQUIRED');
+          const headers={authorization:'Bearer '+token,'user-agent':'WolfFactoryPreflight'};
+          const get=url=>fetch(url,{headers,redirect:'error',signal:AbortSignal.timeout(20000)});
+          const userResponse=await get('https://api.github.com/user');
+          if(!userResponse.ok)throw Error('GITHUB_IDENTITY_DENIED');
+          const user=await userResponse.json();
+          const scopes=(userResponse.headers.get('x-oauth-scopes')||'').split(',').map(s=>s.trim());
+          const repoResponse=await get('https://api.github.com/repos/donraposo1-source/project-wolf');
+          if(!repoResponse.ok)throw Error('PRIVATE_REPOSITORY_DENIED');
+          const repo=await repoResponse.json();
+          if(repo.full_name!=='donraposo1-source/project-wolf'||repo.private!==true)throw Error('REPOSITORY_IDENTITY_DENIED');
+          const receive=await fetch('https://github.com/donraposo1-source/project-wolf.git/info/refs?service=git-receive-pack',{headers:{authorization:'Basic '+Buffer.from('x-access-token:'+token).toString('base64'),'user-agent':'git/wolf-publication-preflight'},redirect:'error',signal:AbortSignal.timeout(20000)});
+          const result={state:receive.ok?'RECEIVE_PACK_ADMITTED':'BLOCKED',credentialType:token.startsWith('github_pat_')?'FINE_GRAINED_PAT':token.startsWith('ghp_')?'CLASSIC_PAT':token.startsWith('gho_')?'OAUTH':'OTHER',ownerIdentityMatches:user.login==='donraposo1-source',accountPushRole:repo.permissions?.push===true,classicRepoScope:scopes.includes('repo'),scopeHeaderPresent:scopes.some(Boolean),receivePackHttpStatus:receive.status,refUpdated:false,inferencePerformed:false,privateSourceFetched:false};
+          await receive.body?.cancel();
+          console.log('WOLF_PUBLICATION_CREDENTIAL_DIAGNOSTIC='+JSON.stringify(result));
+          if(!receive.ok)process.exitCode=78;
+          NODE
       - name: Verify service access without inference or private checkout
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
