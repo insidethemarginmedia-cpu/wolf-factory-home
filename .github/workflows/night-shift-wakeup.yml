@@ -1,8 +1,5 @@
 name: Wolf Factory Night Shift Wakeup
 on:
-  push:
-    branches: [feat/public-runtime-probe-20261022]
-    paths: ['.github/workflows/night-shift-wakeup.yml']
   workflow_dispatch:
   schedule:
     - cron: '23 0-6 * * *'
@@ -13,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   existing-factory:
-    if: github.event_name != 'push' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu'
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu'
     permissions:
       contents: write
     uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@226079cc194aeccfe2717b299949f9c0d56b702d
