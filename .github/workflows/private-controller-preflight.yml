@@ -369,6 +369,18 @@ jobs:
           npm test
           node --test infra/worker-router/groq-opencode-admission.test.mjs
           npm run build
+      - name: Preserve regression runtime residue outside the clean controller checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --porcelain
+          if test -d .continuity; then
+            test -z "$(git ls-files -- .continuity)"
+            test ! -e "$RUNNER_TEMP/wolf-regression-continuity"
+            mv .continuity "$RUNNER_TEMP/wolf-regression-continuity"
+            echo REGRESSION_RUNTIME_RESIDUE_PRESERVED=YES
+          fi
+          test -z "$(git status --porcelain)"
       - name: Require existing service credentials without reading values
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
