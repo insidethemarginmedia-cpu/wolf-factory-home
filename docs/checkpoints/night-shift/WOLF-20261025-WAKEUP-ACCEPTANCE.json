@@ -1,0 +1,193 @@
+{
+  "schema": "WolfNightShiftWakeupAcceptance/v1",
+  "verdict": "PARTIAL",
+  "sourceCommit": "2c1c05ba23867755093dc2605702f60d50a12aa3",
+  "runtimeCommit": "c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1",
+  "bootstrapCommit": "33747f312ffbeefe0be51a7731a71e9d9598e20f",
+  "publicHeadBeforeCheckpoint": "6ed3005ef3d907eb43ae2e8c3d8d8e71b75a79b6",
+  "criteria": {
+    "COMPOSIO_ACCESS": "VERIFIED",
+    "GITHUB_ACTIONS_ENABLED": "VERIFIED",
+    "MAIN_WAKEUP_BOOTSTRAP": "ACTIVATION_PENDING_AUTHORIZATION",
+    "AUTONOMOUS_WAKEUP_IMPLEMENTED": "IMPLEMENTED_NOT_VERIFIED_END_TO_END",
+    "AUTONOMOUS_WAKEUP_MANUALLY_TESTED": "PARTIAL_SAFE_SUSPENSION_VERIFIED",
+    "AUTONOMOUS_WAKEUP_OBSERVED": "NOT_VERIFIED",
+    "KCT_AUTHORITY": "VERIFIED_BASELINE_PRESERVED",
+    "DBOS_DURABILITY": "VERIFIED_BASELINE_PRESERVED",
+    "RUNNER_LOSS_RECOVERY": "VERIFIED_BASELINE_PRESERVED",
+    "MISSION_C_PRESERVED": "VERIFIED",
+    "SELF_REPAIR_MISSION": "BLOCKED",
+    "NO_DUPLICATE_EFFECTS": "VERIFIED_WITHIN_TESTED_SCOPE",
+    "NEXT_READY": "VERIFIED_BASELINE_C_CURRENT_WAKEUP_SUSPENDED",
+    "EUR_SPEND": "0"
+  },
+  "audit": {
+    "defaultBranch": "main",
+    "mainHead": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+    "mainTreePaths": [
+      "README.md"
+    ],
+    "actionsEnabled": true,
+    "allowedActions": "all",
+    "defaultTokenPermissions": "read",
+    "mainProtectionRead": "HTTP_404_NO_PROTECTION_DATA",
+    "scheduledRuns": 0,
+    "priorRuntimePush": {
+      "id": 40239535124,
+      "event": "push",
+      "conclusion": "success"
+    },
+    "priorRecovery": {
+      "id": 40238444987,
+      "conclusion": "success"
+    }
+  },
+  "files": {
+    "private": [
+      "scripts/wolf-night-shift-wakeup.mjs",
+      "tests/wolf-night-shift-wakeup.test.mjs",
+      "scripts/wolf-factory-boxxkite-acceptance.mjs"
+    ],
+    "public": [
+      ".github/workflows/private-controller-preflight.yml",
+      ".github/workflows/night-shift-wakeup.yml"
+    ]
+  },
+  "implementation": {
+    "controller": "Existing resident-entrypoint dbos-engineering mode and existing DBOS owner; no separate engine",
+    "workflowReuse": "workflow_call added to existing preflight workflow",
+    "syntheticMission": "Factory lease-expiry regression; only docs/factory-acceptance/*.py publication permitted",
+    "queue": "One stable scheduled acceptance identity; no fabricated new task per interval. Completed => idle; claimed/suspended => reconciliation, never blind replay.",
+    "journal": "Git Contents API compare-and-swap with independent readback; one attempt; no retries of ambiguous writes",
+    "fencing": "Existing KCT admission and claim before external mission effects through preAdmitMission; existing cycle renews lease before execution",
+    "budgets": {
+      "repairAttempts": 1,
+      "jobMinutes": 20,
+      "flintRequestQuotaReservation": 4,
+      "groqRequestQuotaReservation": 2,
+      "groqTokenQuotaRequired": 8000,
+      "sandboxes": 1,
+      "sandboxMinutes": 15
+    },
+    "cronUTC": "23 0-6 * * *",
+    "concurrency": "Shared existing controller concurrency plus bootstrap concurrency; no cancel-in-progress",
+    "idle": "No DBOS service or engineering job starts when journal is completed/suspended",
+    "unknownEffects": "CLAIMED survives runner loss; stop until reconciliation instead of automatically repeating external request"
+  },
+  "verification": {
+    "localRootTests": {
+      "passed": 1135,
+      "failed": 0
+    },
+    "newAdapterTests": 13,
+    "focusedResilienceTests": {
+      "passed": 42,
+      "failed": 0
+    },
+    "additionalDurabilityTests": {
+      "passed": 24,
+      "failed": 0
+    },
+    "build": "PASS",
+    "actionlintVersion": "1.7.12",
+    "actionlint": "PASS",
+    "finalRegressionRun": {
+      "id": 40243754576,
+      "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40243754576",
+      "event": "workflow_dispatch",
+      "conclusion": "success",
+      "source": "2c1c05ba23867755093dc2605702f60d50a12aa3",
+      "rootTests": 1135,
+      "safetyTests": 42,
+      "groqTests": 19,
+      "build": "PASS",
+      "securityTests": "PASS",
+      "serviceAccess": "PASS"
+    },
+    "runtimePush": {
+      "id": 40243623421,
+      "conclusion": "success",
+      "securityTests": "PASS",
+      "serviceAccess": "PASS"
+    },
+    "scope": "Unit/process/transport fault tests do not establish live remote loss during an in-flight external mutation."
+  },
+  "manualRehearsals": [
+    {
+      "id": 40243262782,
+      "event": "workflow_dispatch",
+      "conclusion": "failure",
+      "reason": "OPENROUTER_FREE_QUOTA_UNKNOWN_OR_EXHAUSTED",
+      "repair": "Replaced undocumented request-header expectation with documented free_model_daily_requests response field",
+      "journalState": "SUSPENDED",
+      "automaticRetry": false
+    },
+    {
+      "id": 40243638946,
+      "event": "workflow_dispatch",
+      "conclusion": "failure",
+      "reason": "GROQ_FREE_QUOTA_UNKNOWN_OR_EXHAUSTED",
+      "openRouterDailyQuota": "ADMITTED",
+      "groqRead": "Authenticated metadata returned no usable remaining request/token quota; no inference used to obtain quota",
+      "journalPath": "docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40243638946.json",
+      "journalBlob": "7ecb2dd4bccc6d3d562676023c772e422136d337",
+      "journalReadback": "VERIFIED",
+      "journalState": "SUSPENDED",
+      "automaticRetry": false,
+      "newProviderInferences": 0,
+      "newSandboxes": 0,
+      "newCodePublications": 0,
+      "newDBOSMissionCheckpoints": 0
+    }
+  ],
+  "selfRepairDuringImplementation": {
+    "defect": "Skipped admission job propagated to legacy service-access jobs",
+    "minimalFix": "Explicit always() plus prerequisite-success checks on existing dependent jobs",
+    "retest": "Final regression and service-access succeeded"
+  },
+  "preservedMissionC": {
+    "workflowID": "wolf-runner-loss-40238444987",
+    "checkpointId": "wolf-cp-cdfd5717dc9dfff0a0c992a1a42dd6db05e2141f3ceb8a1e9810da20a2bb4e9b",
+    "checkpointBlob": "0713d4ddf99fb71ecb5f7163ff21836c99bded62",
+    "sourceSha256": "e6111e030d88fc8b1c263fa31b33c747c8420a9ae6671de52d0db2a6f2e6a0d8",
+    "readbackAtSourceCommit": "2c1c05ba23867755093dc2605702f60d50a12aa3",
+    "nextReady": "NEXT_READY_DRAINED",
+    "repeated": false
+  },
+  "activation": {
+    "status": "PENDING_SEPARATE_EXPLICIT_FOUNDER_AUTHORIZATION",
+    "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+    "branch": "main",
+    "onlyPath": ".github/workflows/night-shift-wakeup.yml",
+    "exactCandidateBlob": "b9140d1d8b101d6eaa4d8f92877c2ff7b22ab7e9",
+    "exactCandidateSha256": "8c3e95aadd2c75fbf8db99ba7e24b00e9942c59edc8c446c6f2edf945b343f1e",
+    "bytes": 934,
+    "lines": 24,
+    "otherMainPathsChanged": [],
+    "privateSourceIncluded": false,
+    "secretValuesIncluded": false,
+    "productionDeployment": false,
+    "entireFeatureBranchMerge": false
+  },
+  "blockers": [
+    "Main publication requires separate explicit Founder authorization; no schedule event observed.",
+    "Remaining Groq quota is not confirmed by authorized read-only metadata; inference denied.",
+    "No live recovery proof for runner loss during an in-flight remote mutation.",
+    "Bounded synthetic self-repair has not executed through the new scheduled chain; previous Mission C is preserved, not substituted as this proof."
+  ],
+  "economicPolicy": {
+    "EUR_SPEND": "0",
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "billingActivated": false,
+    "newInferenceOperations": 0,
+    "paidFallback": false
+  },
+  "references": [
+    "https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations",
+    "https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows",
+    "https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key",
+    "https://console.groq.com/docs/rate-limits"
+  ]
+}
