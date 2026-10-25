@@ -304,7 +304,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 370dff9c8e1d7b2b2bcb8e61cf197ea7633ab349
+      WOLF_FACTORY_EXPECTED_SHA: 249b2d554fafacff6219fd30130f60c3e21c3f21
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -319,14 +319,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 370dff9c8e1d7b2b2bcb8e61cf197ea7633ab349
+          ref: 249b2d554fafacff6219fd30130f60c3e21c3f21
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '370dff9c8e1d7b2b2bcb8e61cf197ea7633ab349'
+          test "$(git rev-parse HEAD)" = '249b2d554fafacff6219fd30130f60c3e21c3f21'
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -455,4 +455,20 @@ jobs:
           if(final.dbosStatus!=='SUCCESS'||final.evidence.length!==2||final.result.state!=='NEXT_READY_DRAINED'||!final.restartReceipt||final.restartReceipt.pid===final.controllerPid)throw Error('INTEGRATED_RESTART_ACCEPTANCE_FAILED');
           for(const p of final.evidence){if(!p.integratedReview||p.cycle.state!=='CYCLE_COMPLETED'||!p.durable?.checkpointId)throw Error('INTEGRATED_MISSION_EVIDENCE_REQUIRED');}
           console.log('WOLF_INTEGRATED_ACCEPTANCE='+JSON.stringify({workflowID:final.workflowID,restartReceipt:final.restartReceipt,controllerPid:final.controllerPid,result:final.result,missions:final.evidence.map(p=>({missionId:p.spec.taskId,flint:p.providerReceipts.map(r=>r.generationId),opencode:p.integratedReview.opencode,groq:p.integratedReview.groq,executor:p.remoteReceipts,checkpoint:p.durable,verification:p.verifierReceipts.map(v=>({receiptId:v.receiptId,local:v.local,remote:v.remote})),trace:p.trace}))}));
+          NODE
+      - name: Read back bounded synthetic execution receipts
+        if: always()
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;if(!fs.existsSync(root))process.exit(0);
+          for(const f of fs.readdirSync(root).filter(n=>/^OMEGA_[AB]_[0-9]+-(provider|integrated-review|remote|verifiers|cleanup)\.json$/.test(n))){
+            const v=JSON.parse(fs.readFileSync(path.join(root,f),'utf8'));let evidence;
+            if(f.endsWith('-provider.json'))evidence=v.map(r=>({generationId:r.generationId,model:r.model,costUsd:r.costUsd}));
+            else if(f.endsWith('-remote.json'))evidence=v.map(r=>({jobId:r.jobId,sandboxId:r.sandboxId,passed:r.passed,exitCode:r.exitCode,sourceSha256:r.sourceSha256}));
+            else if(f.endsWith('-verifiers.json'))evidence=v.map(r=>({receiptId:r.receiptId,localStatus:r.local?.status,remotePassed:r.remote?.passed}));
+            else evidence=v;
+            console.log('WOLF_PARTIAL_RECEIPT='+JSON.stringify({file:f,evidence}));
+          }
           NODE
