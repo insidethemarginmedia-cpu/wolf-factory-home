@@ -320,6 +320,30 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: node scripts/existing-worker-qualification.mjs
+      - name: Diagnose direct Groq metadata using two read-only HTTP clients
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_private_regression == true
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: "node --input-type=module <<'NODE'\n// Read-only provider diagnosis. No inference endpoint, credential value or body is logged.\nimport\
+          \ {spawnSync} from 'node:child_process';\nconst key=process.env.GROQ_API_KEY;\nconst provider=typeof key==='string'&&/^gsk_[A-Za-z0-9]+$/.test(key)?'GROQCLOUD_DIRECT':typeof\
+          \ key==='string'&&key.startsWith('sk-or-')?'OPENROUTER_MISMATCH':'UNKNOWN';\nconsole.log('WOLF_GROQ_CREDENTIAL_SOURCE='+JSON.stringify({source:'GitHub\
+          \ repository secret GROQ_API_KEY',provider,credentialPresent:!!key,projectMatch:'NOT_VERIFIED'}));\nif(provider!=='GROQCLOUD_DIRECT')throw\
+          \ Error('GROQ_CREDENTIAL_PROVIDER_MISMATCH');\nconst expected=['x-ratelimit-remaining-requests','x-ratelimit-remaining-tokens','x-ratelimit-limit-requests','x-ratelimit-limit-tokens'];\n\
+          for(const route of ['/openai/v1/models','/openai/v1/models/openai%2Fgpt-oss-120b']){\n try{\n  const r=await fetch('https://api.groq.com'+route,{headers:{authorization:'Bearer\
+          \ '+key},redirect:'error',signal:AbortSignal.timeout(20000)});\n  let modelEligible=false,bodyShape='NOT_READ';\n  if(r.ok){const b=await\
+          \ r.json();modelEligible=route.endsWith('/models')?Array.isArray(b.data)&&b.data.some(x=>x.id==='openai/gpt-oss-120b'&&x.active!==false):b.id==='openai/gpt-oss-120b'&&b.active!==false;bodyShape=modelEligible?'MODEL_PRESENT':'MODEL_NOT_CONFIRMED';}else\
+          \ await r.body?.cancel();\n  const quota=Object.fromEntries(expected.map(name=>{const value=r.headers.get(name);return[name,{present:value!==null,numeric:value!==null&&/^\\\
+          d+$/.test(value),...(value!==null&&/^\\d+$/.test(value)&&Number.isSafeInteger(Number(value))?{value:Number(value)}:{})}]}));\n  console.log('WOLF_GROQ_LIVE_METADATA='+JSON.stringify({client:'node-fetch',method:'GET',route,httpStatus:r.status,redirected:r.redirected,headerNames:[...r.headers.keys()],quota,bodyShape,modelEligible,inferencePerformed:false}));\n\
+          \ }catch{console.log('WOLF_GROQ_LIVE_METADATA='+JSON.stringify({client:'node-fetch',method:'GET',route,state:'METADATA_UNAVAILABLE',inferencePerformed:false}));}\n\
+          }\nconst python=String.raw`import urllib.request,urllib.error,os,json\nurl='https://api.groq.com/openai/v1/models'\nrequest=urllib.request.Request(url,headers={'Authorization':'Bearer\
+          \ '+os.environ['GROQ_API_KEY']})\nclass NoRedirect(urllib.request.HTTPRedirectHandler):\n def redirect_request(self,*args,**kwargs): return\
+          \ None\ntry:\n r=urllib.request.build_opener(NoRedirect).open(request,timeout=20)\n print(json.dumps({'client':'python-urllib','method':'GET','route':'/openai/v1/models','httpStatus':r.status,'headerNames':sorted(k.lower()\
+          \ for k in r.headers.keys()),'expectedHeaders':{k:{'present':r.headers.get(k) is not None,'numeric':str(r.headers.get(k,'')).isascii() and\
+          \ str(r.headers.get(k,'')).isdigit()} for k in ['x-ratelimit-remaining-requests','x-ratelimit-remaining-tokens']},'inferencePerformed':False}));r.close()\n\
+          except urllib.error.HTTPError as e:\n print(json.dumps({'client':'python-urllib','httpStatus':e.code,'inferencePerformed':False}))\nexcept\
+          \ Exception:\n print(json.dumps({'client':'python-urllib','state':'METADATA_UNAVAILABLE','inferencePerformed':False}))\n`;\nconst p=spawnSync('python3',['-c',python],{encoding:'utf8',timeout:25000,maxBuffer:16384});\n\
+          if(p.status===0)console.log('WOLF_GROQ_CLIENT_COMPARISON='+p.stdout.trim());else console.log('WOLF_GROQ_CLIENT_COMPARISON='+JSON.stringify({state:'METADATA_UNAVAILABLE',exitCode:p.status}));\n\
+          \nNODE\n"
       - name: Diagnose Boxxkite service access without sandbox creation
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
