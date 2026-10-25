@@ -18,6 +18,10 @@ on:
         description: Run existing private DBOS crash-recovery fixture in an isolated read-only runner
         type: boolean
         default: false
+      use_publication_deploy_key:
+        description: Use the explicitly authorized repository-scoped SSH publication credential
+        type: boolean
+        default: false
       execute_integrated:
         description: Execute existing Factory synthetic missions A and B with correlated review and controller restart
         type: boolean
@@ -332,7 +336,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: b95652b4bcc844081f34c67dcdb3b6f93d37c874
+      WOLF_FACTORY_EXPECTED_SHA: 4a52779729c9a7c8d3e2baa8f6fe6700704709d9
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -347,14 +351,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: b95652b4bcc844081f34c67dcdb3b6f93d37c874
+          ref: 4a52779729c9a7c8d3e2baa8f6fe6700704709d9
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'b95652b4bcc844081f34c67dcdb3b6f93d37c874'
+          test "$(git rev-parse HEAD)" = '4a52779729c9a7c8d3e2baa8f6fe6700704709d9'
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -409,6 +413,24 @@ jobs:
             echo REGRESSION_RUNTIME_RESIDUE_PRESERVED=YES
           fi
           test -z "$(git status --porcelain)"
+      - name: Prepare explicitly selected SSH publication credential
+        if: inputs.use_publication_deploy_key == true
+        env:
+          WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';import path from 'node:path';
+          const key=process.env.WOLF_FACTORY_DEPLOY_KEY;
+          if(!key||!key.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+          const keyFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-key');
+          const hostsFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-known-hosts');
+          fs.writeFileSync(keyFile,key.trim()+'\n',{flag:'wx',mode:0o600});
+          fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
+          const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+          const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
+          fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
+          console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+          NODE
       - name: Require existing service credentials without reading values
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
@@ -458,7 +480,11 @@ jobs:
         run: |
           set -euo pipefail
           git switch -c feat/factory-real-worker-m1-20261006
-          git remote set-url origin https://github.com/donraposo1-source/project-wolf.git
+          if test "${WOLF_FACTORY_GIT_TRANSPORT:-https-token}" = ssh-deploy-key; then
+            git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
+          else
+            git remote set-url origin https://github.com/donraposo1-source/project-wolf.git
+          fi
           git config credential.helper '!f() { echo username=x-access-token; echo password="$WOLF_FACTORY_REPO_TOKEN"; }; f'
           node <<'NODE'
           const fs=require('fs'),path=require('path');
@@ -523,4 +549,11 @@ jobs:
             else evidence=v;
             console.log('WOLF_PARTIAL_RECEIPT='+JSON.stringify({file:f,evidence}));
           }
+          NODE
+      - name: Remove ephemeral SSH publication files
+        if: always() && inputs.use_publication_deploy_key == true
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';import path from 'node:path';
+          for(const name of ['wolf-publication-key','wolf-publication-known-hosts'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
           NODE
