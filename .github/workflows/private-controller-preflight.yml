@@ -22,6 +22,10 @@ on:
         description: Use the explicitly authorized repository-scoped SSH publication credential
         type: boolean
         default: false
+      verify_private_regression:
+        description: Run private regression and build only; no inference, sandbox or publication
+        type: boolean
+        default: false
       execute_integrated:
         description: Execute existing Factory synthetic missions A and B with correlated review and controller restart
         type: boolean
@@ -312,7 +316,7 @@ jobs:
 
   integrated-factory:
     needs: security-tests
-    if: github.event_name == 'workflow_dispatch' && inputs.execute_integrated == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
+    if: github.event_name == 'workflow_dispatch' && (inputs.execute_integrated == true || inputs.verify_private_regression == true) && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -336,7 +340,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 4b1fb420305e00b1ca957f908344390a72064644
+      WOLF_FACTORY_EXPECTED_SHA: e676f03f8b19bcc515c4ca80b763d9c8dbf12750
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -351,14 +355,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 4b1fb420305e00b1ca957f908344390a72064644
+          ref: e676f03f8b19bcc515c4ca80b763d9c8dbf12750
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '4b1fb420305e00b1ca957f908344390a72064644'
+          test "$(git rev-parse HEAD)" = 'e676f03f8b19bcc515c4ca80b763d9c8dbf12750'
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -413,8 +417,56 @@ jobs:
             echo REGRESSION_RUNTIME_RESIDUE_PRESERVED=YES
           fi
           test -z "$(git status --porcelain)"
+      - name: Require existing service credentials without reading values
+        if: inputs.execute_integrated == true
+        env:
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
+        run: |
+          set -euo pipefail
+          for name in WOLF_FACTORY_REPO_TOKEN OPENROUTER_API_KEY GROQ_API_KEY BOXXKITE_API_KEY; do
+            if test -z "${!name:-}"; then echo "INTEGRATED_CONFIGURATION_REQUIRED=$name"; exit 78; fi
+          done
+      - name: Admit existing free OpenRouter key
+        if: inputs.execute_integrated == true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          const r=await fetch('https://openrouter.ai/api/v1/key',{headers:{authorization:'Bearer '+process.env.OPENROUTER_API_KEY},signal:AbortSignal.timeout(20000)});
+          if(!r.ok)throw Error('OPENROUTER_AUTH_DENIED');
+          const k=(await r.json()).data;
+          if(k.is_free_tier!==true||k.limit!==0||k.byok_usage!==0)throw Error('FREE_KEY_ADMISSION_REQUIRED');
+          console.log('INTEGRATED_OPENROUTER_ECONOMIC_ADMISSION=PASS');
+          NODE
+      - name: Reuse or install pinned existing OpenCode runtime
+        if: inputs.execute_integrated == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v opencode >/dev/null; then
+            npm install -g "opencode-ai@$OPENCODE_VERSION_PIN" --no-audit --no-fund
+          fi
+          test "$(opencode --version)" = "$OPENCODE_VERSION_PIN"
+          echo "CEZ_OPENCODE_BIN=$(command -v opencode)" >> "$GITHUB_ENV"
+          echo OPENCODE_VERSION_EXIT_CODE=0
+          opencode --help >/dev/null
+          echo OPENCODE_HELP_EXIT_CODE=0
+      - name: Build the existing pinned Cezar controller
+        if: inputs.execute_integrated == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/open-mercato/cezar.git "$RUNNER_TEMP/cezar"
+          git -C "$RUNNER_TEMP/cezar" checkout -q "$CEZAR_SHA"
+          test "$(git -C "$RUNNER_TEMP/cezar" rev-parse HEAD)" = "$CEZAR_SHA"
+          npm ci --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/cezar"
+          npm run build --prefix "$RUNNER_TEMP/cezar"
+          echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
       - name: Prepare explicitly selected SSH publication credential
-        if: inputs.use_publication_deploy_key == true
+        if: inputs.execute_integrated == true && inputs.use_publication_deploy_key == true
         env:
           WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
         run: |
@@ -431,51 +483,8 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
           console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
           NODE
-      - name: Require existing service credentials without reading values
-        env:
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
-        run: |
-          set -euo pipefail
-          for name in WOLF_FACTORY_REPO_TOKEN OPENROUTER_API_KEY GROQ_API_KEY BOXXKITE_API_KEY; do
-            if test -z "${!name:-}"; then echo "INTEGRATED_CONFIGURATION_REQUIRED=$name"; exit 78; fi
-          done
-      - name: Admit existing free OpenRouter key
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          node --input-type=module <<'NODE'
-          const r=await fetch('https://openrouter.ai/api/v1/key',{headers:{authorization:'Bearer '+process.env.OPENROUTER_API_KEY},signal:AbortSignal.timeout(20000)});
-          if(!r.ok)throw Error('OPENROUTER_AUTH_DENIED');
-          const k=(await r.json()).data;
-          if(k.is_free_tier!==true||k.limit!==0||k.byok_usage!==0)throw Error('FREE_KEY_ADMISSION_REQUIRED');
-          console.log('INTEGRATED_OPENROUTER_ECONOMIC_ADMISSION=PASS');
-          NODE
-      - name: Reuse or install pinned existing OpenCode runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v opencode >/dev/null; then
-            npm install -g "opencode-ai@$OPENCODE_VERSION_PIN" --no-audit --no-fund
-          fi
-          test "$(opencode --version)" = "$OPENCODE_VERSION_PIN"
-          echo "CEZ_OPENCODE_BIN=$(command -v opencode)" >> "$GITHUB_ENV"
-          echo OPENCODE_VERSION_EXIT_CODE=0
-          opencode --help >/dev/null
-          echo OPENCODE_HELP_EXIT_CODE=0
-      - name: Build the existing pinned Cezar controller
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone -q https://github.com/open-mercato/cezar.git "$RUNNER_TEMP/cezar"
-          git -C "$RUNNER_TEMP/cezar" checkout -q "$CEZAR_SHA"
-          test "$(git -C "$RUNNER_TEMP/cezar" rev-parse HEAD)" = "$CEZAR_SHA"
-          npm ci --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/cezar"
-          npm run build --prefix "$RUNNER_TEMP/cezar"
-          echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
       - name: Prepare bounded synthetic missions and authorized Git transport
+        if: inputs.execute_integrated == true
         shell: bash
         run: |
           set -euo pipefail
@@ -499,6 +508,7 @@ jobs:
           fs.writeFileSync(process.env.WOLF_FACTORY_ACCEPTANCE_MANIFEST,JSON.stringify({baseSha:process.env.WOLF_FACTORY_EXPECTED_SHA,workflowID:'wolf-omega-integrated-'+run,requireIntegratedReview:true,restartAfterMissionA:true,missions}));
           NODE
       - name: Verify authorized branch publication with no ref update
+        if: inputs.execute_integrated == true
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: |
@@ -511,6 +521,7 @@ jobs:
           if(p.status!==0)throw Error(reason);
           NODE
       - name: Execute Mission A then restart existing controller for automatic Mission B
+        if: inputs.execute_integrated == true
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -520,12 +531,12 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          node scripts/wolf-dbos-existing-factory-engineering.mjs > "$RUNNER_TEMP/wolf-first.log" 2>&1
+          WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-first.log" 2>&1
           rc=$?
           set -e
           if test "$rc" -ne 79; then tail -c 8000 "$RUNNER_TEMP/wolf-first.log"; exit 1; fi
           grep WOLF_MISSION_A_DURABLE_BEFORE_RESTART "$RUNNER_TEMP/wolf-first.log"
-          node scripts/wolf-dbos-existing-factory-engineering.mjs > "$RUNNER_TEMP/wolf-recovery.log" 2>&1 || { tail -c 8000 "$RUNNER_TEMP/wolf-recovery.log"; exit 1; }
+          WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-recovery.log" 2>&1 || { tail -c 8000 "$RUNNER_TEMP/wolf-recovery.log"; exit 1; }
           node <<'NODE'
           const fs=require('fs'),path=require('path');
           const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
@@ -551,7 +562,7 @@ jobs:
           }
           NODE
       - name: Remove ephemeral SSH publication files
-        if: always() && inputs.use_publication_deploy_key == true
+        if: always() && inputs.execute_integrated == true && inputs.use_publication_deploy_key == true
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';import path from 'node:path';
