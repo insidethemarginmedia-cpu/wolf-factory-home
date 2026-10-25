@@ -1,0 +1,24 @@
+name: Wolf Factory Night Shift Wakeup
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 0-6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: wolf-night-shift-bootstrap
+  cancel-in-progress: false
+jobs:
+  existing-factory:
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu'
+    permissions:
+      contents: write
+    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@226079cc194aeccfe2717b299949f9c0d56b702d
+    with:
+      night_shift: true
+    secrets:
+      WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+      WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
