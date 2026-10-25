@@ -26,6 +26,10 @@ on:
         description: Run private regression and build only; no inference, sandbox or publication
         type: boolean
         default: false
+      verify_runner_loss:
+        description: Recover the existing Factory on a fresh runner and execute Mission C
+        type: boolean
+        default: false
       execute_integrated:
         description: Execute existing Factory synthetic missions A and B with correlated review and controller restart
         type: boolean
@@ -340,7 +344,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: e276f0d615a8c533580d24f793254d897fa77c51
+      WOLF_FACTORY_EXPECTED_SHA: 5a608e1c557125b124f6cfa036a590bfc1979add
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -355,14 +359,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: e276f0d615a8c533580d24f793254d897fa77c51
+          ref: 5a608e1c557125b124f6cfa036a590bfc1979add
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'e276f0d615a8c533580d24f793254d897fa77c51'
+          test "$(git rev-parse HEAD)" = '5a608e1c557125b124f6cfa036a590bfc1979add'
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -568,3 +572,404 @@ jobs:
           import fs from 'node:fs';import path from 'node:path';
           for(const name of ['wolf-publication-key','wolf-publication-known-hosts'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
           NODE
+
+  runner-loss-prepare:
+    needs: security-tests
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
+      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'
+      && github.actor == 'insidethemarginmedia-cpu'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    outputs:
+      snapshot_sha: ${{ steps.publish.outputs.snapshot_sha }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dbos
+          POSTGRES_DB: wolf_factory_dbos
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d wolf_factory_dbos" --health-interval 5s --health-timeout 5s --health-retries
+          10
+    env:
+      CEZAR_SHA: 1b13522dd3642a4ea8331629b3680838164d2a2e
+      OPENCODE_VERSION_PIN: 1.18.34
+      WOLF_FACTORY_CWD: ${{ github.workspace }}
+      WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-runner-loss-${{ github.run_id }}
+      WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-runner-loss-${{ github.run_id }}/manifest.json
+      WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
+      WOLF_FACTORY_EXPECTED_SHA: 5a608e1c557125b124f6cfa036a590bfc1979add
+      GROQ_FREE_PLAN_CONFIRMED: 'true'
+      DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
+      WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
+      WOLF_DBOS_FIXTURE_ROOT: /tmp/wolf-factory-dbos-e2e
+      WOLF_DBOS_SDK_ENTRYPOINT: /tmp/dbos/dist/src/index.js
+      EUR_SPEND: '0'
+      COST_UNKNOWN: DENY
+      PAID_FALLBACK: DENY
+      TRIAL_CREDIT: DENY
+      WOLF_RUNNER_LOSS_TEST: '1'
+    steps:
+    - name: Checkout private Factory at verified immutable source
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: donraposo1-source/project-wolf
+        ref: 5a608e1c557125b124f6cfa036a590bfc1979add
+        token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Assert immutable source and recovery fixture
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = '5a608e1c557125b124f6cfa036a590bfc1979add'
+        test -f scripts/wolf-dbos-outer-e2e.mjs
+        test -f scripts/wolf-factory-boxxkite-acceptance.mjs
+        test -z "$(git status --porcelain)"
+        echo PRIVATE_FACTORY_DBOS_SOURCE_VERIFIED=YES
+    - name: Set up Node.js 22
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: '22'
+    - name: Install private Factory lockfile dependencies
+      run: |-
+        npm ci --ignore-scripts --no-audit --no-fund
+    - name: Checkout pinned DBOS SDK donor
+      run: |
+        set -euo pipefail
+        git clone --filter=blob:none https://github.com/dbos-inc/dbos-transact-ts.git /tmp/dbos
+        git -C /tmp/dbos checkout --detach "$DBOS_SHA"
+        test "$(git -C /tmp/dbos rev-parse HEAD)" = "$DBOS_SHA"
+        grep -qi '^MIT License' /tmp/dbos/LICENSE
+    - name: Build pinned DBOS SDK donor
+      working-directory: /tmp/dbos
+      run: |
+        set -euo pipefail
+        npm ci --ignore-scripts --no-audit --no-fund
+        npm run build
+        test -f dist/src/index.js
+    - name: Validate private controller and publication safety contracts
+      run: |
+        set -euo pipefail
+        node --check scripts/wolf-factory-boxxkite-acceptance.mjs
+        node --check infra/worker-router/factory-service-transports.mjs
+        node --test \
+          infra/autonomy/engineering-commit-journal.test.mjs \
+          infra/autonomy/verified-cycle-continuation.test.mjs \
+          tests/wolf-authorized-git-publication.test.mjs \
+          tests/wolf-boxxkite-service-transport.test.mjs \
+          tests/wolf-dbos-mode-validation.test.mjs
+        echo PRIVATE_CONTROLLER_SAFETY_CONTRACTS=PASS
+    - name: Full private regression and build
+      run: |
+        npm ci --ignore-scripts --no-audit --no-fund --prefix infra/worker-router/mastra-runtime
+        npm test
+        node --test infra/worker-router/groq-opencode-admission.test.mjs
+        npm run build
+    - name: Preserve regression runtime residue outside the clean controller checkout
+      shell: bash
+      run: |
+        set -euo pipefail
+        git status --porcelain
+        if test -d .continuity; then
+          test -z "$(git ls-files -- .continuity)"
+          test ! -e "$RUNNER_TEMP/wolf-regression-continuity"
+          mv .continuity "$RUNNER_TEMP/wolf-regression-continuity"
+          echo REGRESSION_RUNTIME_RESIDUE_PRESERVED=YES
+        fi
+        test -z "$(git status --porcelain)"
+    - name: Prepare one authorized Mission C in the existing queue
+      shell: bash
+      run: |-
+        set -euo pipefail
+        node <<'NODE'
+        const fs=require('fs'),path=require('path');const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
+        if(fs.existsSync(root))throw Error('RUNNER_STATE_ROOT_MUST_BE_NEW');
+        for(const d of ['.continuity/memory','.continuity/tasks','.continuity/missions'])fs.mkdirSync(path.join(root,d),{recursive:true});
+        fs.writeFileSync(path.join(root,'.continuity/memory/founder_directives.md'),'EUR_SPEND=0\nCOST_UNKNOWN=DENY\nFOUNDER_INTERVENTIONS=0\nFOUNDER_REPETITIONS=0\nUNKNOWN=>CLOSED\n');
+        fs.writeFileSync(path.join(root,'.continuity/memory/current_state.md'),'# Controlled runner-loss acceptance; Mission C pending\n');
+        for(const f of ['task_queue.json','completed_tasks.json'])fs.writeFileSync(path.join(root,'.continuity/tasks',f),'[]\n');
+        const run=process.env.GITHUB_RUN_ID;
+        const test=expr=>"import importlib.util\nfrom pathlib import Path\ns=importlib.util.spec_from_file_location('candidate',Path(__file__).with_name('candidate.py'))\nm=importlib.util.module_from_spec(s);s.loader.exec_module(m)\n"+expr+'\n';
+        const missions=[{taskId:'OMEGA_C_'+run,target:'docs/factory-acceptance/omega-'+run+'-c.py',fixtureSource:'def sum_squares(values):\n    return sum(values)\n',requirement:'sum_squares(values) returns the sum of the square of each integer in values. An empty list returns zero.',testSource:test('assert m.sum_squares([3,-4])==25\nassert m.sum_squares([])==0'),independentSource:test('assert m.sum_squares([-3,-1,0,2])==14\nassert m.sum_squares([2,2])==8\nfor n in range(-8,9): assert m.sum_squares([n])==n*n')}];
+        fs.writeFileSync(process.env.WOLF_FACTORY_ACCEPTANCE_MANIFEST,JSON.stringify({baseSha:process.env.WOLF_FACTORY_EXPECTED_SHA,workflowID:'wolf-runner-loss-'+run,runnerLossRecovery:true,requireIntegratedReview:true,missions}));
+        NODE
+    - name: KCT admits C and DBOS persists its pending state
+      env: &id001
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
+        PG_CONTAINER_ID: ${{ job.services.postgres.id }}
+      shell: bash
+      run: |-
+        set -euo pipefail
+        set +e
+        WOLF_FACTORY_RUNNER_LOSS_PREPARE=1 WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-admission.log" 2>&1
+        rc=$?
+        set -e
+        if test "$rc" -ne 81; then tail -c 8000 "$RUNNER_TEMP/wolf-admission.log"; exit 1; fi
+        grep WOLF_RUNNER_LOSS_ADMITTED "$RUNNER_TEMP/wolf-admission.log"
+    - name: Export encrypted DBOS database and KCT queue
+      env: *id001
+      shell: bash
+      run: |-
+        set -euo pipefail
+        node scripts/wolf-dbos-runner-state.mjs export
+    - name: Persist and independently read back the encrypted checkpoint
+      id: publish
+      env:
+        WOLF_RUNTIME_CHECKPOINT_TOKEN: ${{ github.token }}
+        PG_CONTAINER_ID: ${{ job.services.postgres.id }}
+      shell: bash
+      run: |-
+        set -euo pipefail
+        node scripts/wolf-dbos-runner-state.mjs publish
+    - name: Destroy the disposable database and ephemeral controller state
+      shell: bash
+      run: |-
+        set -euo pipefail
+        docker stop "$PG_CONTAINER_ID" >/dev/null
+        node <<'NODE'
+        const fs=require('fs');const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;if(!/^\/tmp\/wolf-runner-loss-[0-9]+$/.test(root))throw Error('DISPOSABLE_ROOT_REQUIRED');fs.rmSync(root,{recursive:true,force:true});if(fs.existsSync(root))throw Error('EPHEMERAL_STATE_REMAINS');console.log('WOLF_RUNNER_EPHEMERAL_STATE_DESTROYED='+JSON.stringify({state:'DESTROYED',rootAbsent:true,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),runner:process.env.RUNNER_NAME}));
+        NODE
+      env:
+        PG_CONTAINER_ID: ${{ job.services.postgres.id }}
+  runner-loss-recover:
+    needs:
+    - security-tests
+    - runner-loss-prepare
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
+      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'
+      && github.actor == 'insidethemarginmedia-cpu'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dbos
+          POSTGRES_DB: wolf_factory_dbos
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d wolf_factory_dbos" --health-interval 5s --health-timeout 5s --health-retries
+          10
+    env:
+      CEZAR_SHA: 1b13522dd3642a4ea8331629b3680838164d2a2e
+      OPENCODE_VERSION_PIN: 1.18.34
+      WOLF_FACTORY_CWD: ${{ github.workspace }}
+      WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-runner-loss-${{ github.run_id }}
+      WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-runner-loss-${{ github.run_id }}/manifest.json
+      WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
+      WOLF_FACTORY_EXPECTED_SHA: 5a608e1c557125b124f6cfa036a590bfc1979add
+      GROQ_FREE_PLAN_CONFIRMED: 'true'
+      DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
+      WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
+      WOLF_DBOS_FIXTURE_ROOT: /tmp/wolf-factory-dbos-e2e
+      WOLF_DBOS_SDK_ENTRYPOINT: /tmp/dbos/dist/src/index.js
+      EUR_SPEND: '0'
+      COST_UNKNOWN: DENY
+      PAID_FALLBACK: DENY
+      TRIAL_CREDIT: DENY
+      WOLF_RUNNER_LOSS_TEST: '1'
+    steps:
+    - name: Checkout private Factory at verified immutable source
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: donraposo1-source/project-wolf
+        ref: 5a608e1c557125b124f6cfa036a590bfc1979add
+        token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Assert immutable source and recovery fixture
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = '5a608e1c557125b124f6cfa036a590bfc1979add'
+        test -f scripts/wolf-dbos-outer-e2e.mjs
+        test -f scripts/wolf-factory-boxxkite-acceptance.mjs
+        test -z "$(git status --porcelain)"
+        echo PRIVATE_FACTORY_DBOS_SOURCE_VERIFIED=YES
+    - name: Set up Node.js 22
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: '22'
+    - name: Install private Factory lockfile dependencies
+      run: |-
+        npm ci --ignore-scripts --no-audit --no-fund
+    - name: Checkout pinned DBOS SDK donor
+      run: |
+        set -euo pipefail
+        git clone --filter=blob:none https://github.com/dbos-inc/dbos-transact-ts.git /tmp/dbos
+        git -C /tmp/dbos checkout --detach "$DBOS_SHA"
+        test "$(git -C /tmp/dbos rev-parse HEAD)" = "$DBOS_SHA"
+        grep -qi '^MIT License' /tmp/dbos/LICENSE
+    - name: Build pinned DBOS SDK donor
+      working-directory: /tmp/dbos
+      run: |
+        set -euo pipefail
+        npm ci --ignore-scripts --no-audit --no-fund
+        npm run build
+        test -f dist/src/index.js
+    - name: Validate private controller and publication safety contracts
+      run: |
+        set -euo pipefail
+        node --check scripts/wolf-factory-boxxkite-acceptance.mjs
+        node --check infra/worker-router/factory-service-transports.mjs
+        node --test \
+          infra/autonomy/engineering-commit-journal.test.mjs \
+          infra/autonomy/verified-cycle-continuation.test.mjs \
+          tests/wolf-authorized-git-publication.test.mjs \
+          tests/wolf-boxxkite-service-transport.test.mjs \
+          tests/wolf-dbos-mode-validation.test.mjs
+        echo PRIVATE_CONTROLLER_SAFETY_CONTRACTS=PASS
+    - name: Full private regression and build
+      run: |
+        npm ci --ignore-scripts --no-audit --no-fund --prefix infra/worker-router/mastra-runtime
+        npm test
+        node --test infra/worker-router/groq-opencode-admission.test.mjs
+        npm run build
+    - name: Preserve regression runtime residue outside the clean controller checkout
+      shell: bash
+      run: |
+        set -euo pipefail
+        git status --porcelain
+        if test -d .continuity; then
+          test -z "$(git ls-files -- .continuity)"
+          test ! -e "$RUNNER_TEMP/wolf-regression-continuity"
+          mv .continuity "$RUNNER_TEMP/wolf-regression-continuity"
+          echo REGRESSION_RUNTIME_RESIDUE_PRESERVED=YES
+        fi
+        test -z "$(git status --porcelain)"
+    - name: Require existing service credentials without reading values
+      env:
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
+      run: |
+        set -euo pipefail
+        for name in WOLF_FACTORY_REPO_TOKEN OPENROUTER_API_KEY GROQ_API_KEY BOXXKITE_API_KEY; do
+          if test -z "${!name:-}"; then echo "INTEGRATED_CONFIGURATION_REQUIRED=$name"; exit 78; fi
+        done
+    - name: Admit existing free OpenRouter key
+      env:
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      run: |
+        node --input-type=module <<'NODE'
+        const r=await fetch('https://openrouter.ai/api/v1/key',{headers:{authorization:'Bearer '+process.env.OPENROUTER_API_KEY},signal:AbortSignal.timeout(20000)});
+        if(!r.ok)throw Error('OPENROUTER_AUTH_DENIED');
+        const k=(await r.json()).data;
+        if(k.is_free_tier!==true||k.limit!==0||k.byok_usage!==0)throw Error('FREE_KEY_ADMISSION_REQUIRED');
+        console.log('INTEGRATED_OPENROUTER_ECONOMIC_ADMISSION=PASS');
+        NODE
+    - name: Reuse or install pinned existing OpenCode runtime
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v opencode >/dev/null; then
+          npm install -g "opencode-ai@$OPENCODE_VERSION_PIN" --no-audit --no-fund
+        fi
+        test "$(opencode --version)" = "$OPENCODE_VERSION_PIN"
+        echo "CEZ_OPENCODE_BIN=$(command -v opencode)" >> "$GITHUB_ENV"
+        echo OPENCODE_VERSION_EXIT_CODE=0
+        opencode --help >/dev/null
+        echo OPENCODE_HELP_EXIT_CODE=0
+    - name: Build the existing pinned Cezar controller
+      shell: bash
+      run: |
+        set -euo pipefail
+        git clone -q https://github.com/open-mercato/cezar.git "$RUNNER_TEMP/cezar"
+        git -C "$RUNNER_TEMP/cezar" checkout -q "$CEZAR_SHA"
+        test "$(git -C "$RUNNER_TEMP/cezar" rev-parse HEAD)" = "$CEZAR_SHA"
+        npm ci --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/cezar"
+        npm run build --prefix "$RUNNER_TEMP/cezar"
+        echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
+    - name: Read immutable encrypted checkpoint and restore on a fresh runner
+      env:
+        SNAPSHOT_SHA: ${{ needs.runner-loss-prepare.outputs.snapshot_sha }}
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        PG_CONTAINER_ID: ${{ job.services.postgres.id }}
+      shell: bash
+      run: |-
+        set -euo pipefail
+        node <<'NODE'
+        const fs=require('fs'),path=require('path');
+        if(fs.existsSync(process.env.WOLF_FACTORY_RUNTIME_ROOT))throw Error('RECOVERY_ROOT_NOT_FRESH');
+        const sha=process.env.SNAPSHOT_SHA;if(!/^[a-f0-9]{40}$/.test(sha))throw Error('SNAPSHOT_SHA_REQUIRED');
+        fetch('https://raw.githubusercontent.com/insidethemarginmedia-cpu/wolf-factory-home/'+sha+'/docs/checkpoints/runner-loss/'+process.env.GITHUB_RUN_ID+'.json',{redirect:'error',signal:AbortSignal.timeout(20000)}).then(async r=>{if(!r.ok)throw Error('DURABLE_CHECKPOINT_UNAVAILABLE');const raw=await r.text();if(Buffer.byteLength(raw)>1048576)throw Error('CHECKPOINT_LIMIT');fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'wolf-runner-state.envelope.json'),raw,{flag:'wx',mode:0o600});}).catch(()=>{console.error('DURABLE_CHECKPOINT_READ_FAILED');process.exitCode=1;});
+        NODE
+        node scripts/wolf-dbos-runner-state.mjs restore
+    - name: Prepare explicitly selected SSH publication credential
+      env:
+        WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+      run: |
+        node --input-type=module <<'NODE'
+        import fs from 'node:fs';import path from 'node:path';
+        const key=process.env.WOLF_FACTORY_DEPLOY_KEY;
+        if(!key||!key.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+        const keyFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-key');
+        const hostsFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-known-hosts');
+        fs.writeFileSync(keyFile,key.trim()+'\n',{flag:'wx',mode:0o600});
+        fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
+        const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+        const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
+        fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
+        console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+        NODE
+    - name: Select existing authorized branch and Git publication transport
+      shell: bash
+      run: |-
+        set -euo pipefail
+        git switch -c feat/factory-real-worker-m1-20261006
+        git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
+    - name: Verify authorized branch publication with no ref update
+      env:
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+      run: |
+        node --input-type=module <<'NODE'
+        import {spawnSync} from 'node:child_process';
+        const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+        const text=String(p.stderr||'');
+        const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
+        console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
+        if(p.status!==0)throw Error(reason);
+        NODE
+    - name: Recover the existing DBOS workflow and execute Mission C automatically
+      env: *id001
+      shell: bash
+      run: |-
+        set -euo pipefail
+        WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-c.log" 2>&1 || { tail -c 10000 "$RUNNER_TEMP/wolf-c.log"; exit 1; }
+        node <<'NODE'
+        const fs=require('fs'),path=require('path');const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
+        const final=JSON.parse(fs.readFileSync(path.join(root,'acceptance-final.json'),'utf8')),admission=JSON.parse(fs.readFileSync(path.join(root,'runner-loss-admission.json'),'utf8')),fence=JSON.parse(fs.readFileSync(path.join(root,'kct-recovery.json'),'utf8')),recovery=JSON.parse(fs.readFileSync(path.join(root,'runner-recovery.json'),'utf8'));
+        if(final.dbosStatus!=='SUCCESS'||final.result.state!=='NEXT_READY_DRAINED'||final.evidence.length!==1||!final.evidence[0].integratedReview||admission.admissionCount!==1||fence.newFence!==fence.oldFence+1||!fence.staleFenceRejected||recovery.source.bootId===recovery.recovery.bootId)throw Error('RUNNER_LOSS_MISSION_C_NOT_VERIFIED');
+        console.log('WOLF_RUNNER_LOSS_MISSION_C='+JSON.stringify({workflowID:final.workflowID,admission,fence,recovery,result:final.result,evidence:final.evidence}));
+        fs.copyFileSync(path.join(root,'acceptance-final.json'),path.join(process.env.RUNNER_TEMP,'wolf-first-c-proof.json'));
+        NODE
+        first_head=$(git rev-parse HEAD)
+        WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-duplicate.log" 2>&1 || { tail -c 6000 "$RUNNER_TEMP/wolf-duplicate.log"; exit 1; }
+        test "$(git rev-parse HEAD)" = "$first_head"
+        node <<'NODE'
+        const fs=require('fs'),path=require('path');const a=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'wolf-first-c-proof.json'),'utf8')),b=JSON.parse(fs.readFileSync(path.join(process.env.WOLF_FACTORY_RUNTIME_ROOT,'acceptance-final.json'),'utf8'));
+        if(JSON.stringify(a.evidence)!==JSON.stringify(b.evidence)||b.evidence.length!==1||b.dbosStatus!=='SUCCESS')throw Error('DUPLICATE_WAKEUP_RECONCILIATION_FAILED');console.log('WOLF_DUPLICATE_WAKEUP=VERIFIED_NO_NEW_EFFECTS');
+        NODE
+    - name: Verify tests and production build after recovered publication
+      shell: bash
+      run: |-
+        set -euo pipefail
+        npm test
+        npm run build
+    - name: Remove ephemeral SSH publication files
+      if: always()
+      run: |
+        node --input-type=module <<'NODE'
+        import fs from 'node:fs';import path from 'node:path';
+        for(const name of ['wolf-publication-key','wolf-publication-known-hosts'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
+        NODE
