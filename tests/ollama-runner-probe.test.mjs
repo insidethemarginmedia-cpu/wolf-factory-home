@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {probeOllama} from '../scripts/ollama-runner-probe.mjs';
+import {probeOllama, requireApprovedModelDigest} from '../scripts/ollama-runner-probe.mjs';
 
 const env = {WOLF_OLLAMA_PROBE_ENABLED: '1', WOLF_OLLAMA_ZERO_COST_VERIFIED: '1',
   WOLF_OLLAMA_PROBE_MODEL: 'qwen2.5-coder:0.5b'};
@@ -82,4 +82,15 @@ test('nonempty Ollama error field fails closed despite valid-looking receipt', a
 test('wrong marker cannot produce a validated state', async () => {
   await assert.rejects(probeOllama({env, fetchImpl: async () => new Response(JSON.stringify({...receipt, response: 'WRONG'}))}),
     /OLLAMA_MARKER_MISMATCH/);
+});
+
+test('post-pull digest must equal independently approved immutable digest', () => {
+  const approved = 'a'.repeat(64);
+  assert.equal(requireApprovedModelDigest({expected: approved, observed: approved}), approved);
+  assert.throws(() => requireApprovedModelDigest({expected: '', observed: approved}),
+    /OLLAMA_APPROVED_MODEL_DIGEST_REQUIRED/);
+  assert.throws(() => requireApprovedModelDigest({expected: approved, observed: 'b'.repeat(64)}),
+    /OLLAMA_MODEL_DIGEST_MISMATCH/);
+  assert.throws(() => requireApprovedModelDigest({expected: approved, observed: 'tag-is-not-digest'}),
+    /OLLAMA_MODEL_DIGEST_NOT_OBSERVED/);
 });

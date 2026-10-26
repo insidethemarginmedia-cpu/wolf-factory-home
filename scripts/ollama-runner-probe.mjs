@@ -28,6 +28,16 @@ async function boundedJson(response) {
   catch { throw new Error('OLLAMA_RESPONSE_INVALID_JSON'); }
 }
 
+/** Compare the post-pull observed model digest to a separately approved immutable digest. */
+export function requireApprovedModelDigest({expected, observed}) {
+  if (typeof expected !== 'string' || !/^[0-9a-f]{64}$/.test(expected))
+    throw new Error('OLLAMA_APPROVED_MODEL_DIGEST_REQUIRED');
+  if (typeof observed !== 'string' || !/^[0-9a-f]{64}$/.test(observed))
+    throw new Error('OLLAMA_MODEL_DIGEST_NOT_OBSERVED');
+  if (observed !== expected) throw new Error('OLLAMA_MODEL_DIGEST_MISMATCH');
+  return observed;
+}
+
 export async function probeOllama({env = process.env, fetchImpl = globalThis.fetch} = {}) {
   if (env.WOLF_OLLAMA_PROBE_ENABLED !== '1') throw new Error('OLLAMA_PROBE_OPT_IN_REQUIRED');
   if (env.WOLF_OLLAMA_ZERO_COST_VERIFIED !== '1') throw new Error('ZERO_COST_ADMISSION_REQUIRED');
