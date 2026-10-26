@@ -1,0 +1,114 @@
+{
+  "schema": "wolf.ollama.loop4.independent-verifier.v5",
+  "observed_at_utc": "2026-10-26T06:37:48Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "source_tested_head": "c19644ffaee8b8fc7ace08560c56abe5b4058a7d",
+  "latest_reconciled_head_before_write": "741cf7d4dd5b35efeca7853870948bbbce5c836c",
+  "previous_audit_head": "ae360f1f281619a154715d2a8877884f9fa35662",
+  "builder_fix_commits": [
+    "aac5c72c6e8bd69e2bfd5383e8610babd004dd77",
+    "c0b0f63b5d0f62f2a86fd40d140a1efea5463517"
+  ],
+  "exact_git_blobs": {
+    "scripts/ollama-runner-probe.mjs": "aba8c4e6c0f3a0c4682454f4442587b4561874df",
+    "tests/ollama-runner-probe.test.mjs": "d490d9f995dcb8cd142a34ed864390cbaea7b72e",
+    ".github/workflows/ollama-public-synthetic-qualification.yml": "84651a7648b8f44435f24353d91b1709396d23a4"
+  },
+  "independent_execution": {
+    "runtime": "Composio remote bash, Node.js v24.22.1, pinned public GitHub raw files with Git blob hashes matching GitHub connector",
+    "node_check_exit": 0,
+    "builder_tests_after_source_change": {
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "exit_code": 0,
+      "scope": "regression baseline, not independent acceptance"
+    },
+    "adversarial_tests": {
+      "cases": 12,
+      "policy_violations": 3,
+      "exit_code": 1,
+      "findings": [
+        "receipt with own error property equal to empty string accepted as OLLAMA_API_RESPONSE_VALIDATED",
+        "receipt with own error property equal to null accepted as OLLAMA_API_RESPONSE_VALIDATED",
+        "direct probeOllama() invocation accepts synthetic receipt without independently approved model digest; workflow has separate post-pull digest gate"
+      ],
+      "positive_observations": [
+        "nonempty string error and object error rejected",
+        "wrong marker and wrong model rejected",
+        "digest comparator accepts exact approved 64-char digest and rejects mismatch"
+      ]
+    },
+    "cancellation_liveness_test": {
+      "scenario": "mocked body reader read() immediately completes but reader.cancel() promise never settles",
+      "outcome": "STILL_PENDING_AFTER_250MS",
+      "exit_code": 1,
+      "scope": "adversarial noncooperative reader; does not establish native Node fetch behavior"
+    },
+    "workflow_yaml": {
+      "parser": "PyYAML BaseLoader",
+      "exit_code": 0,
+      "steps": 7,
+      "bash_run_blocks": 6,
+      "bash_n_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "node_syntax_exit": 0,
+      "actionlint": "NOT_INSTALLED_NOT_EXECUTED",
+      "observed_guards": [
+        "manual workflow_dispatch only",
+        "read-only contents permission",
+        "public repository/ref restriction",
+        "12-minute job timeout",
+        "pinned checkout SHA",
+        "docker image digest pin format",
+        "loopback port binding",
+        "digest comparator called after pull before inference",
+        "no artifact upload/cache in workflow"
+      ]
+    },
+    "evidence_log_ids": [
+      "log_6Fd4WWbKSUwt",
+      "log_t8vFJlc8BDnx",
+      "log_sE_U2nD00nkh",
+      "log_f-HYPp18NtLy"
+    ]
+  },
+  "status": {
+    "independent_acceptance": "FAIL",
+    "error_property_any_value_rejected": "FAIL",
+    "marker_mismatch_prevents_validated_state": "PASS_MOCKED",
+    "digest_comparison_function": "PASS_MOCKED",
+    "independent_digest_provenance": "UNKNOWN_DENY",
+    "digest_enforced_inside_probe": "FAIL",
+    "body_read_cancel_timeout_noncooperative": "FAIL",
+    "workflow_syntax": "PASS_PYYAML_AND_BASH_N_ONLY",
+    "actionlint": "NOT_VERIFIED",
+    "account_budget_and_storage": "UNKNOWN_DENY",
+    "image_digest_source": "UNKNOWN_DENY",
+    "real_ollama_inference": "NOT_PERFORMED",
+    "KCT_DBOS": "NOT_VERIFIED",
+    "flint_groq": "PRESERVED",
+    "production": "UNCHANGED",
+    "dispatch": "NOT_PERFORMED"
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  },
+  "next_ready": [
+    "Loop 3 owner: reject any own error property regardless of value, or document an explicitly narrower policy approved by Kai; avoid modifying builder files in verifier lane.",
+    "Loop 3 owner: enforce immutable approved digest at probe boundary (or make the probe API explicitly incapable of independent inference); keep workflow comparison before inference.",
+    "Loop 3 owner: bound body read AND reader.cancel() completion; prove liveness against noncooperative readers without weakening fail-closed behavior.",
+    "Loop 2 owner: obtain independent model/image digest provenance and account-specific budget/storage evidence; flags alone are not proof.",
+    "Loop 4: retest only changed blobs, run actionlint when safely available, no dispatch until all G0 and review gates PASS."
+  ]
+}
