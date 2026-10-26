@@ -1,0 +1,87 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v9",
+  "date_utc": "2026-10-26",
+  "role": "LOOP5_GOVERNOR",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "0b31e9b9d2c13409e02323c722e79a6b569949c3",
+  "previous_checkpoint": {
+    "path": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-RUN8.json",
+    "commit": "1784a91933ed73c94f9492950319fcf432da2248",
+    "blob": "1f751d21c26fa137c62b3dc5527565f43b23ef0d"
+  },
+  "material_delta": {
+    "loop2": {
+      "checkpoint": "docs/checkpoints/ollama/LOOP2-UPSTREAM-LICENSE-STORAGE-20261026-RUN11.json",
+      "commit": "0b31e9b9d2c13409e02323c722e79a6b569949c3",
+      "blob": "fdfb3397f74c1d9197fc3a98db4bb89411b8a4ec",
+      "official_policy_observations": [
+        "Newly created GitHub stop-usage budgets may not cover metered usage accrued earlier in the first billing cycle; a screenshot of zero budget is not proof of no pre-existing charge.",
+        "Actions artifact and Packages storage accrues GB-hours; deleting artifacts does not erase previously accrued usage.",
+        "Standard public runner is documented free; specific workflow has no explicit artifact/cache upload, but account-specific billing/payment/storage remains unknown."
+      ],
+      "license_cross_check": [
+        "Ollama upstream runtime MIT license",
+        "Qwen2.5-Coder-0.5B-Instruct official immutable upstream revision ea99d3edbfc6669b8b24cbaa6a98ec0e857f0155 Apache-2.0",
+        "Ollama qwen2.5-coder:0.5b listing Apache-2.0"
+      ],
+      "provenance_limit": "License cross-check does not establish bit-identical upstream-to-quantized model chain; official Docker/model manifest and license-layer attestation PENDING.",
+      "sources": [
+        "https://docs.github.com/en/billing/concepts/budgets-and-alerts",
+        "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+        "https://github.com/ollama/ollama/blob/main/LICENSE",
+        "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct/tree/ea99d3edbfc6669b8b24cbaa6a98ec0e857f0155",
+        "https://registry.ollama.com/library/qwen2.5-coder:0.5b"
+      ]
+    }
+  },
+  "previously_verified": {
+    "loop3_fix": "efab387fca629d72919f5bfcef055c7b0c6f60db",
+    "loop4_checkpoint": "0da06d322a24f613c945179d96774e456295451f",
+    "mock_only": true,
+    "pending_gate": "1/1 negative PASS, zero mocked fetch/generate",
+    "downstream": "7/7 synthetic PASS",
+    "real_inference": false,
+    "loop1_night_shift": "SUSPENDED_EXTERNAL_EFFECTS_UNKNOWN",
+    "guard_stop_only": true
+  },
+  "governor_actions": [
+    "Reconciled public qualification branch, public main and private Factory branch HEADs and existing private runtime PR #2 read-only through connected GitHub/Composio; do not publish private source.",
+    "Read exact Loop2 RUN11 checkpoint and verified blob SHA and commit.",
+    "Reassigned existing Loop4 verifier schedule to independent official Docker/model manifest and quantized artifact license provenance review, without duplicating Loop2 account-specific economic scope.",
+    "Preserved five existing hourly schedules (36 occurrences each); no new loops or workflows.",
+    "No repeat tests on unchanged blobs, no model dispatch, no billing, no production changes."
+  ],
+  "risk_register": {
+    "G0": "UNKNOWN_DENY",
+    "DISPATCH": "DENY",
+    "BUDGET_HARD_STOP": "UNKNOWN_DENY",
+    "PAYMENT_METHOD": "UNKNOWN_DENY",
+    "CURRENT_AND_ACCRUED_STORAGE": "UNKNOWN_DENY",
+    "CANDIDATE_REVIEW": "PENDING",
+    "QUANTIZED_ARTIFACT_IDENTITY": "NOT_PROVEN",
+    "REAL_OLLAMA_INFERENCE": "NOT_PROVEN",
+    "FACTORY_AUTONOMY": "NOT_PROVEN",
+    "FLINT_GROQ": "PRESERVED"
+  },
+  "NEXT_READY": {
+    "loop1": "Only new read-only evidence on suspended mission external effects and Groq quota; no replay.",
+    "loop2": "Find authorized account-specific proof of hard-stop budget, payment method, current/accrued storage and headroom; do not change settings.",
+    "loop3": "Patch only new independently reproduced bypasses in new source blobs; no repeat.",
+    "loop4": "Independently verify official immutable image/model digests, license-layer and upstream-to-quantized artifact provenance; keep PENDING absent evidence.",
+    "loop5": "Refresh HEADs, independent evidence, PR and runs; one checkpoint only on material change; keep G0/DISPATCH DENY."
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "NO_BILLING": true,
+    "NO_PRODUCTION": true,
+    "NO_TOSHIBA": true,
+    "NO_TERMUX": true,
+    "NO_SECRETS": true,
+    "NO_PRIVATE_DATA_PUBLIC_RUNNER": true,
+    "NO_NEW_FACTORY_REPO_BRANCH_PR": true
+  }
+}
