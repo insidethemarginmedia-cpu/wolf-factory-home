@@ -1,0 +1,59 @@
+{
+  "schema": "wolf.ollama.loop1.recovery.v1",
+  "observed_at_utc": "2026-10-26T03:36:00Z",
+  "scope": "READ_ONLY_RECONCILIATION_PLUS_CHECKPOINT",
+  "repositories": {
+    "private_adapter": {
+      "repo": "donraposo1-source/wolf-factory-home",
+      "branch": "feat/jarvis-ollama-isolated-20261016",
+      "head": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+      "pr": 2,
+      "write": "NONE"
+    },
+    "public_runtime": {
+      "repo": "insidethemarginmedia-cpu/wolf-factory-home",
+      "branch": "feat/public-runtime-probe-20261022",
+      "observed_head": "2d059d63c32c5e2982ee19cf9dcd6b62b10e9e82",
+      "head_is_concurrent": "YES",
+      "latest_commit_message": "docs(ollama): checkpoint Loop 5 independent governance after 3b denial"
+    }
+  },
+  "observed_coordination": {
+    "loop2_checkpoint": "docs/checkpoints/ollama/LOOP2-POLICY-DELTA-20261026T0334Z.json",
+    "loop3_checkpoint": "docs/checkpoints/ollama/LOOP3-BUILDER-20261026-02.json",
+    "loop5_checkpoint": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-02.json",
+    "loop3_local_tests": {
+      "passed": 10,
+      "failed": 0,
+      "mocked_fetch": true
+    },
+    "real_ollama_inference": "NOT_OBSERVED",
+    "ollama_3b_license": "DENY_PENDING_LICENSE_REVIEW",
+    "private_pr2": "UNMODIFIED",
+    "existing_workers": "FLINT_AND_GROQ_UNCHANGED"
+  },
+  "night_shift": {
+    "run_id": 40251817855,
+    "conclusion": "failure",
+    "failed_job": "existing-factory / night-shift-admission",
+    "other_jobs": "SKIPPED_OR_UNVERIFIED",
+    "groq_quota": "UNKNOWN_NOT_ADMITTED"
+  },
+  "controls": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "public_runner_private_source": "DENY",
+    "production_changes": "NONE",
+    "new_infrastructure": "NONE"
+  },
+  "next_ready": [
+    "Keep Loop 2 policy and account-specific free runner gates independent.",
+    "Loop 3 may prepare only bounded synthetic public-repo development test, without secrets or private source; no inference dispatch until all gates PASS.",
+    "Loop 4 independently verify current SHA, actual inference receipt, CPU/RAM/time and failure handling before qualification.",
+    "Loop 5 reconcile commits and checkpoints; never claim autonomous Ollama worker based on mocked tests.",
+    "Loop 1 recheck branch HEAD, private PR #2 and Night Shift on next recovery cycle."
+  ],
+  "outcome": "RECOVERED_CONCURRENT_PROGRESS_NO_INFERENCE_NO_PRODUCTION"
+}
