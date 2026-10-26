@@ -1,0 +1,87 @@
+{
+  "schema": "wolf.ollama.loop2.admission.independent-mock-and-boundary.v10",
+  "observed_at_utc": "2026-10-26T11:33:45.282Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "51ea5ec0f3394ee2e7f60b9923d9f22ef044380e",
+  "main_prewrite_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "previous_loop2_checkpoint": "docs/checkpoints/ollama/LOOP2-GRAPHQL-BUDGET-DELTA-20261026T1034Z.json",
+  "source_evidence": {
+    "script": {
+      "path": "scripts/ollama-runner-probe.mjs",
+      "blob": "f785cd8f0ce855c31cdffe74d17ebc3121b3dc53"
+    },
+    "tests": {
+      "path": "tests/ollama-runner-probe.test.mjs",
+      "blob": "84b8deb48631ef90c47edb52256b0785d965beab"
+    },
+    "workflow": {
+      "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+      "blob": "84651a7648b8f44435f24353d91b1709396d23a4"
+    }
+  },
+  "independent_execution": {
+    "executor": "Composio remote workbench; Node v24.22.1; isolated temporary copies of exact public GitHub blobs",
+    "command": "node --test tests/ollama-runner-probe.test.mjs",
+    "tests_total": 18,
+    "tests_pass": 18,
+    "tests_fail": 0,
+    "exit_code": 0,
+    "tool_log": "log_qhGB0YJMrqNH",
+    "interpretation": "PASS_INDEPENDENT_EXECUTION_OF_BUILDER_AUTHORED_MOCK_TESTS; no model, network inference or billing execution"
+  },
+  "new_adversarial_negative_test": {
+    "test": "Call exported probeOllama with synthetic fetchImpl returning valid-looking mocked receipt, while env contains WOLF_OLLAMA_MODEL_SHA256 and WOLF_OLLAMA_IMAGE_SHA256 set to 64 zeroes; opt-in and zero-cost flags are self-asserted.",
+    "result": "MOCK_RECEIPT_ACCEPTED_WITH_INCORRECT_DIGEST_ENV",
+    "exit_code": 0,
+    "tool_log": "log_f6rTsPbGpI4g",
+    "scope": "Direct exported probeOllama function, NOT the full GitHub Actions workflow. The workflow currently checks model digest after download via requireApprovedModelDigest; this test does not show that full workflow permits unapproved inference.",
+    "conclusion": "FAIL_DIRECT_PROBE_IMMUTABLE_DIGEST_GATE: probeOllama does not require independently approved model/image digest before returning validated mocked receipt.",
+    "real_inference": "NOT_PERFORMED"
+  },
+  "billing_evidence": {
+    "authenticated_personal_actions_budget_hard_stop": "UNKNOWN_DENY",
+    "payment_method_status": "UNKNOWN_DENY",
+    "actions_artifact_storage_headroom": "UNKNOWN_DENY",
+    "personal_budget_rest_api": "NO_DOCUMENTED_PERSONAL_READ_ENDPOINT_FOUND",
+    "official_sources": [
+      "https://docs.github.com/en/rest/billing/budgets",
+      "https://docs.github.com/en/billing/how-tos/set-up-budgets",
+      "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
+    ],
+    "past_zero_cost": "NOT_PROOF_OF_FUTURE_ZERO_COST",
+    "G0": "DENY"
+  },
+  "provenance": {
+    "image_amd64": "sha256:459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da",
+    "model_0_5b": "4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09",
+    "source": "docs/checkpoints/ollama/LOOP2-REGISTRY-PROVENANCE-20261026T0636Z.json",
+    "revalidated_this_run": false,
+    "immutable_workflow_binding": "FAIL"
+  },
+  "policy": {
+    "public_synthetic_dev_test": "CONDITIONALLY_PERMISSIBLE_BUT_ADMISSION_DENIED",
+    "permanent_actions_backend_24x7": "DENY",
+    "workflow_dispatch": "NOT_PERFORMED",
+    "main": "UNTOUCHED",
+    "production": "UNTOUCHED",
+    "flint_groq": "PRESERVED",
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  },
+  "next_ready": {
+    "loop3": "Require an independently approved immutable digest at direct probe entry and before any real inference; negative test with wrong digest must reject before calling fetch; retain existing 18 tests and add this adversarial test. Bind workflow expected digests to reviewed trusted immutable constants or equivalent independent approval, not mutable vars alone.",
+    "loop4": "Independently execute builder-authored tests and custom negative test against exact source/test blobs; verify direct-probe wrong-digest fail-closed after Loop3 fix; validate full workflow separately without dispatch.",
+    "loop5": "Maintain G0=UNKNOWN_DENY and DISPATCH=DENY until authenticated account-specific hard-stop, storage headroom and payment status evidence plus Loop4 acceptance."
+  },
+  "actions_not_taken": [
+    "No workflow dispatch",
+    "No model download or real inference",
+    "No billing or repository settings changes",
+    "No production/main changes",
+    "No new repository or factory",
+    "No secrets/private data/Toshiba/Termux"
+  ]
+}
