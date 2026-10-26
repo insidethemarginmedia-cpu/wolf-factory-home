@@ -100,5 +100,11 @@
     "production_changed": false,
     "main_changed": false,
     "private_data_sent": false
+  },
+  "concurrent_write_reconciliation": {
+    "earlier_branch_head_observed": "5501f732b2cae0c1098ad7880af100d34dab32dc",
+    "actual_checkpoint_commit_parent": "c19644ffaee8b8fc7ace08560c56abe5b4058a7d",
+    "explanation": "Other loop(s) advanced the feature branch between the initial HEAD read and the checkpoint write. Contents API committed the checkpoint on the new current parent, without overwriting concurrent changes.",
+    "initial_checkpoint_commit": "741cf7d4dd5b35efeca7853870948bbbce5c836c"
   }
 }
