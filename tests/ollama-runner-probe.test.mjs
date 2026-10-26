@@ -122,3 +122,13 @@ test('timeout cannot exceed the fixed 30-second maximum', async () => {
     fetchImpl: async () => {calls++;}}), /OLLAMA_TIMEOUT_LIMIT_EXCEEDED/);
   assert.equal(calls, 0);
 });
+
+test('any present Ollama error property fails closed, including falsy values', async () => {
+  for (const error of [null, '', false, 0]) {
+    await assert.rejects(
+      probeOllama({env, fetchImpl: async () => new Response(JSON.stringify({...receipt, error}))}),
+      /OLLAMA_RECEIPT_ERROR/,
+      `error=${JSON.stringify(error)} must never produce a validated receipt`,
+    );
+  }
+});
