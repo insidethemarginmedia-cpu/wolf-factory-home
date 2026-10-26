@@ -1,0 +1,104 @@
+{
+  "schema": "wolf.ollama.loop4.independent_verifier.v2",
+  "observed_at_utc": "2026-10-26T05:33:00Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "head_at_source_fetch": "e1cf5db91ae08ccc37a1d053f1bd27958cf93faf",
+  "reconciled_head_before_checkpoint": "ae360f1f281619a154715d2a8877884f9fa35662",
+  "reconciliation": "Between the source fetch and checkpoint, Loop 2 added docs/checkpoints/ollama/LOOP2-BUDGET-DIGEST-20261026T0532Z.json; no script or workflow changes in that commit.",
+  "baseline_verifier_commit": "6d9b024d297e0a7f3f522097a5feef3c2caa9732",
+  "comparison_since_baseline": {
+    "commits": 4,
+    "probe_changed": false,
+    "workflow_changed": false,
+    "changed_paths": [
+      "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-03.json",
+      "docs/checkpoints/night-shift/WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1.json",
+      "docs/checkpoints/ollama/LOOP2-BUDGET-DIGEST-20261026T0532Z.json"
+    ]
+  },
+  "verified_source": {
+    "script": {
+      "path": "scripts/ollama-runner-probe.mjs",
+      "blob_sha": "fc62358d196d0bf1c148ed2ca6f16ff3ce27f635",
+      "sha256": "6be4295cef7dbb913e14700f12b5d25e24ec41a1d974099899b945f5067e5a57"
+    },
+    "workflow": {
+      "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+      "blob_sha": "5754e99af35601b04a1711effa2a0ff08b3b3490",
+      "sha256": "d3703dd4388e2541c93726020ba4ac792b872ebf898d8bcd06d97ea07e3ec770"
+    }
+  },
+  "checks": {
+    "original_tests": "NOT_REPEATED_SOURCE_UNCHANGED",
+    "error_field": "KNOWN_FAIL_OPEN_NOT_FIXED_SOURCE_UNCHANGED",
+    "marker_false": "KNOWN_FALSE_PASS_STATE_NOT_FIXED_SOURCE_UNCHANGED",
+    "model_digest": "NOT_INDEPENDENTLY_VERIFIED: workflow obtains local /api/tags digest only after unpinned ollama pull; image SHA flag is format-checked only; no trusted independent digest pin",
+    "body_timeout_adversarial": {
+      "result": "FAIL_OPEN_HANG",
+      "test": "mock fetch returns response with getReader().read() pending forever, ignores abort",
+      "elapsed_ms": 31500,
+      "signal_aborted": true,
+      "reader_cancelled": false,
+      "read_calls": 1,
+      "node_exit_code": 0,
+      "interpretation": "Test harness exit 0 confirms the expected counterexample; real fetch body abort behavior is not measured."
+    },
+    "yaml_parser": {
+      "library": "PyYAML BaseLoader",
+      "result": "PASS",
+      "exit_code": 0
+    },
+    "bash_syntax": {
+      "command": "bash -n on all six workflow run blocks",
+      "pass": 6,
+      "fail": 0,
+      "exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "node_syntax": {
+      "command": "node --check scripts/ollama-runner-probe.mjs",
+      "exit_code": 0
+    },
+    "actionlint": "NOT_RUN_NOT_INSTALLED",
+    "github_dispatch": "NOT_PERFORMED_G0_NOT_ADMITTED",
+    "real_ollama_inference": "NOT_PERFORMED",
+    "kct_dbos": "NOT_PROVEN",
+    "zero_cost": "UNKNOWN_DENY: WOLF_OLLAMA_ZERO_COST_VERIFIED=1 is self-asserted and not account budget proof"
+  },
+  "security": {
+    "endpoint": "strict HTTP 127.0.0.1:11434",
+    "response_limit_bytes": 16384,
+    "fetch_abort_signal_ms": 30000,
+    "redirects": "error",
+    "private_data": "none sent",
+    "risks": [
+      "untrusted model tag digest after pull",
+      "response.error accepted if otherwise valid",
+      "marker mismatch still reports OLLAMA_API_RESPONSE_VALIDATED",
+      "reader.read may hang when stream ignores abort",
+      "actionlint not independently executed"
+    ]
+  },
+  "policy": {
+    "eur_spend": 0,
+    "cost_unknown": "DENY",
+    "paid_fallback": "DENY",
+    "trial_credit": "DENY",
+    "production_changes": false,
+    "flint_groq": "PRESERVED"
+  },
+  "status": "BLOCKED_UNQUALIFIED",
+  "next_ready": [
+    "Loop 3 must change probe script to reject any error field, return non-PASS state on marker mismatch, and bound body read with independent deadline/cancellation; use distinct builder ownership.",
+    "Loop 2 must provide independent trusted image/model digest provenance and account-specific permanent-zero-cost evidence before G0 PASS.",
+    "Loop 4 to retest only changed script SHA, rerun independent adversarial and workflow actionlint when a qualified tool is available; do not dispatch before G0.",
+    "Only after G0 and independent verification, consider synthetic real Ollama inference; KCT/DBOS integration remains separate gate."
+  ]
+}
