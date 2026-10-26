@@ -1,0 +1,63 @@
+{
+  "schema": "wolf.ollama.loop4.independent-verifier.v6",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "observed_head": "3e285fcea6bb47318e036203bf67174d08c4e289",
+  "previous_verifier_commit": "e5a1a26ef9c42a7612dd84c5feeb87b24afd40b6",
+  "compared_commits": "e5a1a26ef9c42a7612dd84c5feeb87b24afd40b6...3e285fcea6bb47318e036203bf67174d08c4e289",
+  "diff": {
+    "ahead_by": 1,
+    "changed_files": [
+      "docs/checkpoints/night-shift/LOOP1_RECOVER_40271788791_20261026T0731Z.json"
+    ],
+    "builder_script_changed": false,
+    "workflow_changed": false
+  },
+  "exact_blobs": {
+    "scripts/ollama-runner-probe.mjs": "aba8c4e6c0f3a0c4682454f4442587b4561874df",
+    ".github/workflows/ollama-public-synthetic-qualification.yml": "84651a7648b8f44435f24353d91b1709396d23a4"
+  },
+  "no_repeat": "No builder/adversarial/YAML/Bash regression tests replayed because tested blobs are unchanged.",
+  "independent_new_policy_gate": {
+    "tool": "Composio remote bash Python3; read-only SHA-binding check",
+    "exit_code": 1,
+    "result": "FAIL_CLOSED",
+    "assertions": {
+      "documented_official_amd64_image_digest": "PASS",
+      "documented_official_0_5b_model_digest": "PASS",
+      "workflow_image_digest_immutable_review_binding": "FAIL",
+      "workflow_model_digest_immutable_review_binding": "FAIL",
+      "probe_model_digest_immutable_review_binding": "FAIL",
+      "account_specific_economic_G0": "FAIL"
+    },
+    "evidence_log": "log_jDu0NPo7PsE5"
+  },
+  "registry_provenance": "Loop 2 reports independent registry digest evidence in docs/checkpoints/ollama/LOOP2-REGISTRY-PROVENANCE-20261026T0636Z.json; this run did not re-fetch registries; separate review binding remains absent.",
+  "official_digests_from_loop2": {
+    "image_linux_amd64": "sha256:459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da",
+    "model_0_5b": "4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09"
+  },
+  "inherited_unfixed_counterexamples": [
+    "own error property null/empty accepted",
+    "direct probe invocation without approved digest",
+    "noncooperative reader.cancel may hang"
+  ],
+  "workflow_validation": {
+    "yaml_parser": "PRIOR_PASS_NOT_REPEATED",
+    "bash_n": "PRIOR_6_OF_6_PASS_NOT_REPEATED",
+    "actionlint": "NOT_AVAILABLE_NOT_RUN",
+    "workflow_dispatch": "NOT_PERFORMED"
+  },
+  "admission": {
+    "economic": "UNKNOWN_DENY",
+    "real_inference": "NOT_PERFORMED",
+    "independent_acceptance": "FAIL",
+    "production": "UNTOUCHED",
+    "flint_groq": "PRESERVED"
+  },
+  "next_ready": [
+    "Loop 3: reject all own error properties; bind reviewed immutable image and model digests to controlled constants; enforce digest at direct probe boundary; bound read/cancel lifetime.",
+    "Loop 2/5: establish account-specific economic hard-stop and storage proof; keep G0 DENY.",
+    "Loop 4: re-test changed blobs only; obtain actionlint when safely available; no dispatch until all gates independently PASS."
+  ]
+}
