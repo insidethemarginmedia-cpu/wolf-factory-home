@@ -1,0 +1,102 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v7",
+  "date_utc": "2026-10-26",
+  "role": "LOOP5_GOVERNOR",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "24362788d5cc4a7ed947a2fff6f3a7d9fb7ea87e",
+  "main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "canonical_private_factory": {
+    "repo": "donraposo1-source/project-wolf",
+    "branch": "feat/factory-real-worker-m1-20261006",
+    "observed_head": "21946c987a0ddbfbd570c68592a5adbd1d97b6ca"
+  },
+  "existing_private_runtime_pr": {
+    "repo": "donraposo1-source/wolf-factory-home",
+    "number": 2,
+    "state": "OPEN",
+    "head": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+    "no_new_pr": true
+  },
+  "delta_since_run6": [
+    {
+      "commit": "ae93676760a6cb680bfe9bb88cfd1ff332278036",
+      "owner": "LOOP1",
+      "path": "docs/checkpoints/night-shift/LOOP1_RECOVER_40271788791_20261026T1232Z.json",
+      "result": "Original mission SUSPENDED; external effects UNKNOWN; 40313736353 green GUARD_STOP only; no replay."
+    },
+    {
+      "commit": "24362788d5cc4a7ed947a2fff6f3a7d9fb7ea87e",
+      "owner": "LOOP3",
+      "path": "docs/checkpoints/ollama/LOOP3-BUILDER-20261026T123703Z.json",
+      "result": "New mock-only PENDING-review bypass; adversarial negative FAIL exit1, 1 mocked /api/generate call."
+    }
+  ],
+  "governor_independent_reproduction": {
+    "executor": "Existing Composio remote bash; Node v24.22.1; public source only; no credentials or network model calls",
+    "log_id": "log_2e45GaoHXbY8",
+    "pinned_commit": "24362788d5cc4a7ed947a2fff6f3a7d9fb7ea87e",
+    "source_git_blobs": {
+      "scripts/ollama-runner-probe.mjs": "20bd79248900be1cbd1d573a7a6579f77893466d",
+      "scripts/ollama-candidate-pins.mjs": "b8c2fee579de9df34cd394ea86d431cfdb8faded",
+      "tests/ollama-runner-probe.test.mjs": "c3abdc190d0541f211a1aa9f58b64e548ec684d1"
+    },
+    "source_sha256": {
+      "scripts/ollama-runner-probe.mjs": "34178c2e1e80295f9023142a54824dd431d3c980482f9709b9458d6012d34ec0",
+      "scripts/ollama-candidate-pins.mjs": "919c1aaa6d12efc1c59d2242fa558dce5aeb622b32535eeff1c2966fccec2c9b",
+      "tests/ollama-runner-probe.test.mjs": "8498fa8db1c7126843663126a3a0d5c27674af6affd8bb5c3712c5f1fa250c17"
+    },
+    "existing_tests_exit_code": 0,
+    "new_negative_test_exit_code": 1,
+    "negative_test_expectation": "PENDING review must reject before ANY fetch",
+    "observed": {
+      "reviewStatus": "PENDING",
+      "mock_fetch_calls": 2,
+      "mock_generate_calls": 1,
+      "returned_state": "OLLAMA_API_RESPONSE_VALIDATED",
+      "markerMatched": true
+    },
+    "interpretation": "Confirmed mock-only admission bypass: mutable caller PASS and candidate digest equality allow direct probe despite source reviewStatus PENDING. No real inference or workflow dispatch was executed.",
+    "real_inference": false
+  },
+  "governor_actions": [
+    "Used connected Composio GitHub to reconcile public qualification HEAD, public main, private Factory HEAD and existing private runtime PR #2.",
+    "Inspected new Loop1 and Loop3 checkpoints and source-controlled candidate/probe code.",
+    "Ran independent mock-only negative test against pinned public source via existing Composio remote bash; confirmed bypass with exit1 and 1 mocked generate call.",
+    "Updated existing Loop4 verifier instructions for exact-blob independent reproduction and subsequent patch review.",
+    "Updated existing Loop3 builder instructions to apply minimal fail-closed PENDING-review gate and regression test; do not set reviewStatus APPROVED.",
+    "Preserved existing schedules, branches, PRs, Flint and Groq; no dispatch, no production or billing changes."
+  ],
+  "risk_register": {
+    "economic_G0": "UNKNOWN_DENY",
+    "dispatch": "DENY",
+    "independent_model_provenance_review": "PENDING",
+    "pending_review_bypass": "CONFIRMED_MOCK_ONLY",
+    "loop4_new_blob_verification": "PENDING",
+    "night_shift": "GUARD_STOP_NOT_PRODUCTIVE",
+    "original_mission": "SUSPENDED_EXTERNAL_EFFECTS_UNKNOWN",
+    "real_ollama_inference": "NOT_PROVEN",
+    "factory_autonomy": "NOT_PROVEN",
+    "Flint_Groq": "PRESERVED"
+  },
+  "NEXT_READY": {
+    "loop1": "Continue read-only reconciliation of suspended mission and external effects; no replay or fence change.",
+    "loop2": "Seek account-specific official read-only evidence of billing hard stop and storage headroom; G0 remains DENY.",
+    "loop3": "Minimal fail-closed source reviewStatus gate before any fetch; add negative test requiring zero network calls; commit on existing branch and provide exit codes.",
+    "loop4": "Independently reproduce PENDING-review bypass and verify Loop3 corrected exact blobs with adversarial tests, including zero generate calls.",
+    "loop5": "Reconcile new commits and independent verifier; only admit if immutable independent review, G0, licensing, quota and security all PASS; otherwise keep DISPATCH DENY."
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "NO_BILLING": true,
+    "NO_PRODUCTION": true,
+    "NO_TOSHIBA": true,
+    "NO_TERMUX": true,
+    "NO_SECRETS_IN_CHAT": true,
+    "NO_PRIVATE_DATA_PUBLIC_RUNNER": true,
+    "NO_NEW_FACTORY_REPO_BRANCH_PR": true
+  }
+}
