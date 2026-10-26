@@ -1,0 +1,73 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v5",
+  "observed_date_utc": "2026-10-26",
+  "role": "KAI_GOVERNOR_COMPOSIO_EXECUTOR",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "verified_prewrite_head": "667495760ddabb5d51f4cc08b1e2105f290b37ef",
+  "verified_public_main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "verified_private_adapter": {
+    "repository": "donraposo1-source/wolf-factory-home",
+    "branch": "feat/jarvis-ollama-isolated-20261016",
+    "head": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+    "pr_number": 2,
+    "pr_state": "open",
+    "merged": false
+  },
+  "public_prs_observed": 0,
+  "source_checkpoints": [
+    "docs/checkpoints/ollama/LOOP2-GRAPHQL-BUDGET-DELTA-20261026T1034Z.json",
+    "docs/checkpoints/ollama/LOOP3-BUILDER-20261026T1030Z.json",
+    "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026-RUN6.json",
+    "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-03.json"
+  ],
+  "observed_work": {
+    "loop1": "Night Shift schedule run 40271788791 on main failed at observable free Groq quota admission, subsequent jobs skipped; no automatic retry or external effects authorized.",
+    "loop2": "Authenticated GitHub GraphQL User/Query introspection did not expose personal Actions/Packages effective budget hard-stop, payment status or storage headroom. G0 remains UNKNOWN_DENY.",
+    "loop3": "Fix commit 089e65f1af43961f242c2004667c1f866e4bf3d9 rejects any own error property; test commit 487fd0f0f01307ea7695bd4f8a79a9290f4f563e; builder reported 18/18 mocked Node tests exit 0 on blobs f785cd8f0ce855c31cdffe74d17ebc3121b3dc53 and 84b8deb48631ef90c47edb52256b0785d965beab. Independent current-blob tests PENDING.",
+    "loop4": "Last published verifier RUN6 was for old source blob aba8c4e6c0f3a0c4682454f4442587b4561874df, and identified immutable digest-binding failures. Cannot promote old PASS to new source.",
+    "loop5": "Reconciled private PR, public/main/feature HEADs, latest builder and admission checkpoints, and current Night Shift run; wrote this non-production checkpoint."
+  },
+  "blocking_gates": {
+    "account_specific_future_spend_hard_stop": "UNKNOWN_DENY",
+    "actions_storage_headroom": "UNKNOWN_DENY",
+    "payment_method_status": "UNKNOWN_DENY",
+    "immutable_reviewed_ollama_image_digest_binding": "FAIL",
+    "immutable_reviewed_model_0_5b_digest_binding": "FAIL",
+    "direct_probe_digest_verification": "MISSING",
+    "independent_verifier_current_source_and_test_blobs": "PENDING",
+    "workflow_dispatch": "NOT_PERFORMED",
+    "real_ollama_inference": "NOT_PERFORMED",
+    "private_factory_integration": "NOT_PROVEN"
+  },
+  "assignments": {
+    "loop1": "Reconcile Night Shift 40271788791 SUSPENDED/UNKNOWN external effects and free Groq quota state read-only; do not replay suspended mission or change fences.",
+    "loop2": "Continue authenticated read-only evidence for effective personal billing hard-stop/payment/storage; do not infer from historical USD0, GraphQL schema absence, or self-asserted env variables.",
+    "loop3": "Without redoing error-property fix, bind approved immutable image/model digests to controlled reviewed source and enforce direct-probe pre-inference digest gate; add fail-closed tests. No dispatch.",
+    "loop4": "Independently execute targeted Node adversarial tests against source blob f785cd8f0ce855c31cdffe74d17ebc3121b3dc53 and test blob 84b8deb48631ef90c47edb52256b0785d965beab, including own error:null/empty/false/0, marker false, digest mismatch, timeout/cancel; report exact exit codes. Reverify after new Loop3 digest changes.",
+    "loop5": "Maintain branch and evidence coordination, check for concurrent HEAD movement and NEXT_READY; refuse merge, dispatch, billing or production modifications while any gate remains UNKNOWN/FAIL."
+  },
+  "next_ready": [
+    "Loop4 independent PASS for exact current changed blobs, not inherited stale test result.",
+    "Loop3 reviewed immutable image/model digest binding at workflow and direct-probe boundaries, verified with negative tests.",
+    "Loop2 authenticated account-specific zero-spend hard-stop and storage headroom evidence; otherwise G0 DENY.",
+    "Only after ALL gates PASS, consider a single bounded synthetic development inference subject to default-branch workflow constraints and separate authorization; never 24x7 hosting."
+  ],
+  "hard_controls": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "main_or_production_changes": "NONE",
+    "private_code_on_public_runner": "DENY",
+    "new_factory_repo_scheduler": "NONE",
+    "flint_groq": "PRESERVED",
+    "toshba_or_termux": "NOT_USED"
+  },
+  "evidence_urls": {
+    "private_pr": "https://github.com/donraposo1-source/wolf-factory-home/pull/2",
+    "builder_fix": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/commit/089e65f1af43961f242c2004667c1f866e4bf3d9",
+    "builder_test": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/commit/487fd0f0f01307ea7695bd4f8a79a9290f4f563e",
+    "night_shift": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40271788791"
+  }
+}
