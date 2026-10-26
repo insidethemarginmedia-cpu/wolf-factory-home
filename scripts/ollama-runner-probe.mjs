@@ -1,5 +1,6 @@
 /** Public synthetic-only Ollama probe. No Project Wolf private code or credentials. */
 import {pathToFileURL} from 'node:url';
+import {OLLAMA_CANDIDATE_PINS, requireCandidatePinBinding} from './ollama-candidate-pins.mjs';
 const PROMPT = 'Reply with exactly WOLF_OLLAMA_PROBE_OK. Do not use tools.';
 const MAX_BYTES = 16384;
 // Only models with reviewed licensing are eligible. 3b remains denied pending review.
@@ -56,6 +57,16 @@ export async function probeOllama({env = process.env, fetchImpl = globalThis.fet
   if (env.WOLF_OLLAMA_ZERO_COST_VERIFIED !== '1') throw new Error('ZERO_COST_ADMISSION_REQUIRED');
   const model = env.WOLF_OLLAMA_PROBE_MODEL;
   if (!MODELS.has(model)) throw new Error('OLLAMA_MODEL_NOT_ALLOWED');
+  // Only 0.5b has a registry-provenance candidate; licensing alone is insufficient.
+  if (model !== OLLAMA_CANDIDATE_PINS.modelName)
+    throw new Error('OLLAMA_MODEL_DIGEST_NOT_REVIEWED');
+  // A mutable flag is not evidence of review. Loop 4 must independently attest
+  // the exact source blobs and G0 before any real invocation is authorized.
+  if (env.WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS !== 'PASS')
+    throw new Error('OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED');
+  requireCandidatePinBinding({
+    image: env.OLLAMA_IMAGE_SHA256, model: env.OLLAMA_MODEL_SHA256,
+  });
   const endpoint = env.WOLF_OLLAMA_PROBE_ENDPOINT || 'http://127.0.0.1:11434';
   let url;
   try { url = new URL(endpoint); } catch { throw new Error('OLLAMA_ENDPOINT_INVALID'); }
@@ -66,6 +77,21 @@ export async function probeOllama({env = process.env, fetchImpl = globalThis.fet
     throw new Error('OLLAMA_TIMEOUT_LIMIT_EXCEEDED');
   const start = performance.now();
   const deadline = start + timeoutMs;
+  // Pre-inference: independently observe the post-pull model digest from Ollama.
+  // Name/tag and caller-provided digest are never evidence of the observed digest.
+  const tagsResponse = await withDeadline(fetchImpl('http://127.0.0.1:11434/api/tags', {
+    method: 'GET', signal: AbortSignal.timeout(timeoutMs), redirect: 'error',
+  }), deadline);
+  if (!tagsResponse.ok) throw new Error('OLLAMA_TAGS_HTTP_' + tagsResponse.status);
+  const tags = await boundedJson(tagsResponse, deadline);
+  if (!tags || typeof tags !== 'object' || Object.hasOwn(tags, 'error') ||
+      !Array.isArray(tags.models)) throw new Error('OLLAMA_TAGS_INVALID');
+  const matches = tags.models.filter(entry => entry && entry.name === model);
+  if (matches.length !== 1) throw new Error('OLLAMA_MODEL_NOT_OBSERVED_AFTER_PULL');
+  requireApprovedModelDigest({
+    expected: OLLAMA_CANDIDATE_PINS.modelManifest,
+    observed: matches[0].digest,
+  });
   const response = await withDeadline(fetchImpl('http://127.0.0.1:11434/api/generate', {
     method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({model, prompt: PROMPT, stream: false}),

@@ -1,13 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {probeOllama, requireApprovedModelDigest} from '../scripts/ollama-runner-probe.mjs';
+import {OLLAMA_CANDIDATE_PINS, requireCandidatePinBinding} from '../scripts/ollama-candidate-pins.mjs';
 
 const env = {WOLF_OLLAMA_PROBE_ENABLED: '1', WOLF_OLLAMA_ZERO_COST_VERIFIED: '1',
-  WOLF_OLLAMA_PROBE_MODEL: 'qwen2.5-coder:0.5b'};
+  WOLF_OLLAMA_PROBE_MODEL: 'qwen2.5-coder:0.5b',
+  WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS: 'PASS',
+  OLLAMA_IMAGE_SHA256: OLLAMA_CANDIDATE_PINS.imageLinuxAmd64,
+  OLLAMA_MODEL_SHA256: OLLAMA_CANDIDATE_PINS.modelManifest};
 const receipt = {model: env.WOLF_OLLAMA_PROBE_MODEL, done: true,
   response: 'WOLF_OLLAMA_PROBE_OK', eval_count: 9};
-const fakeFetch = async (_url, _options) => new Response(JSON.stringify(receipt),
+const tagsReceipt = {models: [{name: env.WOLF_OLLAMA_PROBE_MODEL,
+  digest: OLLAMA_CANDIDATE_PINS.modelManifest}]};
+const fakeFetch = async (url, _options) => new Response(JSON.stringify(
+  url.endsWith('/api/tags') ? tagsReceipt : receipt),
   {status: 200, headers: {'content-type': 'application/json'}});
+const withGenerate = generate => async (url, options) =>
+  url.endsWith('/api/tags') ? fakeFetch(url, options) : generate(url, options);
 
 test('disabled by default: no network request', async () => {
   let calls = 0;
@@ -30,13 +39,11 @@ test('unreviewed 3b model is denied before network access', async () => {
   /OLLAMA_MODEL_NOT_ALLOWED/);
   assert.equal(calls, 0);
 });
-test('reviewed 1.5b model remains eligible for synthetic validation', async () => {
-  const model = 'qwen2.5-coder:1.5b';
-  const result = await probeOllama({env: {...env, WOLF_OLLAMA_PROBE_MODEL: model},
-    fetchImpl: async () => new Response(JSON.stringify({...receipt, model}))});
-  assert.equal(result.model, model);
-  assert.equal(result.markerMatched, true);
-  assert.equal(result.privateFactoryIntegrated, false);
+test('1.5b remains blocked without a pinned reviewed digest', async () => {
+  let calls = 0;
+  await assert.rejects(probeOllama({env: {...env, WOLF_OLLAMA_PROBE_MODEL: 'qwen2.5-coder:1.5b'},
+    fetchImpl: async () => {calls++;}}), /OLLAMA_MODEL_DIGEST_NOT_REVIEWED/);
+  assert.equal(calls, 0);
 });
 test('remote and credential-bearing endpoints are denied', async () => {
   for (const endpoint of ['https://127.0.0.1:11434', 'http://example.org:11434',
@@ -48,7 +55,7 @@ test('remote and credential-bearing endpoints are denied', async () => {
 test('synthetic receipt is parsed but does not claim Factory integration', async () => {
   let request;
   const result = await probeOllama({env, fetchImpl: async (url, options) => {
-    request = {url, options}; return fakeFetch(url, options);
+    if (url.endsWith('/api/generate')) request = {url, options}; return fakeFetch(url, options);
   }});
   assert.equal(request.url, 'http://127.0.0.1:11434/api/generate');
   assert.equal(request.options.redirect, 'error');
@@ -60,27 +67,27 @@ test('synthetic receipt is parsed but does not claim Factory integration', async
 });
 test('malformed or incomplete receipt is denied', async () => {
   for (const invalid of [{...receipt, done: false}, {...receipt, model: 'other'}, {...receipt, response: ''}]) {
-    await assert.rejects(probeOllama({env, fetchImpl: async () => new Response(JSON.stringify(invalid))}),
+    await assert.rejects(probeOllama({env, fetchImpl: withGenerate(async () => new Response(JSON.stringify(invalid)))}),
       /OLLAMA_RECEIPT_INVALID/);
   }
 });
 test('oversized response fails closed', async () => {
-  await assert.rejects(probeOllama({env, fetchImpl: async () => new Response('x'.repeat(16385))}),
+  await assert.rejects(probeOllama({env, fetchImpl: withGenerate(async () => new Response('x'.repeat(16385)))}),
     /OLLAMA_RESPONSE_TOO_LARGE/);
 });
 test('HTTP failure is not inference', async () => {
-  await assert.rejects(probeOllama({env, fetchImpl: async () => new Response('', {status: 503})}),
+  await assert.rejects(probeOllama({env, fetchImpl: withGenerate(async () => new Response('', {status: 503}))}),
     /OLLAMA_HTTP_503/);
 });
 
 test('nonempty Ollama error field fails closed despite valid-looking receipt', async () => {
   for (const error of ['model not found', '  ', {code: 500}, true]) {
-    await assert.rejects(probeOllama({env, fetchImpl: async () => new Response(JSON.stringify({...receipt, error}))}),
+    await assert.rejects(probeOllama({env, fetchImpl: withGenerate(async () => new Response(JSON.stringify({...receipt, error})))}),
       /OLLAMA_RECEIPT_ERROR/);
   }
 });
 test('wrong marker cannot produce a validated state', async () => {
-  await assert.rejects(probeOllama({env, fetchImpl: async () => new Response(JSON.stringify({...receipt, response: 'WRONG'}))}),
+  await assert.rejects(probeOllama({env, fetchImpl: withGenerate(async () => new Response(JSON.stringify({...receipt, response: 'WRONG'})))}),
     /OLLAMA_MARKER_MISMATCH/);
 });
 
@@ -103,7 +110,7 @@ test('fetch ignoring abort cannot outlive the independent deadline', async () =>
 test('reader ignoring abort cannot outlive the independent deadline', async () => {
   const reader = {read: () => new Promise(() => {}), cancel: () => new Promise(() => {})};
   await assert.rejects(probeOllama({env, timeoutMs: 25,
-    fetchImpl: async () => ({ok: true, body: {getReader: () => reader}})}), /OLLAMA_TIMEOUT/);
+    fetchImpl: withGenerate(async () => ({ok: true, body: {getReader: () => reader}}))}), /OLLAMA_TIMEOUT/);
 });
 
 test('non-cooperative reader.cancel cannot suppress a valid receipt', async () => {
@@ -112,7 +119,7 @@ test('non-cooperative reader.cancel cannot suppress a valid receipt', async () =
   const reader = {read: async () => (++calls === 1 ? {done: false, value: bytes} : {done: true}),
     cancel: () => new Promise(() => {})};
   const result = await probeOllama({env, timeoutMs: 200,
-    fetchImpl: async () => ({ok: true, body: {getReader: () => reader}})});
+    fetchImpl: withGenerate(async () => ({ok: true, body: {getReader: () => reader}}))});
   assert.equal(result.markerMatched, true);
 });
 
@@ -126,9 +133,62 @@ test('timeout cannot exceed the fixed 30-second maximum', async () => {
 test('any present Ollama error property fails closed, including falsy values', async () => {
   for (const error of [null, '', false, 0]) {
     await assert.rejects(
-      probeOllama({env, fetchImpl: async () => new Response(JSON.stringify({...receipt, error}))}),
+      probeOllama({env, fetchImpl: withGenerate(async () => new Response(JSON.stringify({...receipt, error})))}),
       /OLLAMA_RECEIPT_ERROR/,
       `error=${JSON.stringify(error)} must never produce a validated receipt`,
     );
   }
+});
+
+test('candidate pins are fixed in source; mutable repo variables cannot choose another digest', () => {
+  assert.equal(OLLAMA_CANDIDATE_PINS.reviewStatus, 'PENDING');
+  assert.equal(requireCandidatePinBinding({image: env.OLLAMA_IMAGE_SHA256,
+    model: env.OLLAMA_MODEL_SHA256}), true);
+  assert.throws(() => requireCandidatePinBinding({image: 'f'.repeat(64),
+    model: env.OLLAMA_MODEL_SHA256}), /OLLAMA_CANDIDATE_PIN_BINDING_MISMATCH/);
+  assert.throws(() => requireCandidatePinBinding({image: env.OLLAMA_IMAGE_SHA256,
+    model: 'f'.repeat(64)}), /OLLAMA_CANDIDATE_PIN_BINDING_MISMATCH/);
+});
+test('direct probe denies absent independent review flag before any fetch', async () => {
+  let calls = 0;
+  await assert.rejects(probeOllama({env: {...env, WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS: ''},
+    fetchImpl: async () => {calls++;}}), /OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED/);
+  assert.equal(calls, 0);
+});
+test('direct probe denies mutable model digest mismatch before any fetch', async () => {
+  let calls = 0;
+  await assert.rejects(probeOllama({env: {...env, OLLAMA_MODEL_SHA256: 'f'.repeat(64)},
+    fetchImpl: async () => {calls++;}}), /OLLAMA_CANDIDATE_PIN_BINDING_MISMATCH/);
+  assert.equal(calls, 0);
+});
+test('direct probe rejects observed post-pull digest mismatch before generate', async () => {
+  let generates = 0;
+  await assert.rejects(probeOllama({env, fetchImpl: async (url) => {
+    if (url.endsWith('/api/generate')) {generates++; return fakeFetch(url);}
+    return new Response(JSON.stringify({models: [{name: env.WOLF_OLLAMA_PROBE_MODEL,
+      digest: 'f'.repeat(64)}]}));
+  }}), /OLLAMA_MODEL_DIGEST_MISMATCH/);
+  assert.equal(generates, 0);
+});
+test('direct probe rejects tag-only identity and ambiguous model records before generate', async () => {
+  for (const models of [
+    [{name: env.WOLF_OLLAMA_PROBE_MODEL, digest: 'tag-is-not-digest'}],
+    [{name: env.WOLF_OLLAMA_PROBE_MODEL, digest: env.OLLAMA_MODEL_SHA256},
+     {name: env.WOLF_OLLAMA_PROBE_MODEL, digest: env.OLLAMA_MODEL_SHA256}],
+  ]) {
+    let generates = 0;
+    await assert.rejects(probeOllama({env, fetchImpl: async url => {
+      if (url.endsWith('/api/generate')) {generates++; return fakeFetch(url);}
+      return new Response(JSON.stringify({models}));
+    }}), /OLLAMA_MODEL_DIGEST_NOT_OBSERVED|OLLAMA_MODEL_NOT_OBSERVED_AFTER_PULL/);
+    assert.equal(generates, 0);
+  }
+});
+test('direct probe rejects error property on tags before generate', async () => {
+  let generates = 0;
+  await assert.rejects(probeOllama({env, fetchImpl: async url => {
+    if (url.endsWith('/api/generate')) {generates++; return fakeFetch(url);}
+    return new Response(JSON.stringify({...tagsReceipt, error: null}));
+  }}), /OLLAMA_TAGS_INVALID/);
+  assert.equal(generates, 0);
 });

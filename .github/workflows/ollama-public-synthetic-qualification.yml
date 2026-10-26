@@ -67,6 +67,19 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Match runtime pins to source-controlled registry candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {requireCandidatePinBinding} from './scripts/ollama-candidate-pins.mjs';
+          requireCandidatePinBinding({
+            image: process.env.OLLAMA_IMAGE_SHA256,
+            model: process.env.OLLAMA_MODEL_SHA256,
+          });
+          console.log('SOURCE_PIN_MATCH_ONLY_INDEPENDENT_REVIEW_STILL_REQUIRED');
+          NODE
+
       - name: Builder unit tests (mocked; NOT inference)
         shell: bash
         run: |
@@ -121,6 +134,7 @@ jobs:
           WOLF_OLLAMA_ZERO_COST_VERIFIED: '1'
           WOLF_OLLAMA_PROBE_MODEL: qwen2.5-coder:0.5b
           WOLF_OLLAMA_PROBE_ENDPOINT: http://127.0.0.1:11434
+          WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS: ${{ vars.WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS }}
         run: |
           set -euo pipefail
           (
