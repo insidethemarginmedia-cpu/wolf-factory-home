@@ -1,0 +1,47 @@
+{
+  "schema": "wolf.ollama.loop3.builder.v1",
+  "date_utc": "2026-10-26",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "workflow_commit": "25bc0b0cc4612ff29cb6818b1462f382a30bcc12",
+  "workflow_path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+  "workflow_blob_sha": "5754e99af35601b04a1711effa2a0ff08b3b3490",
+  "baseline": "5c4c3f31306c12c336e6ef64d26426f97b54f214",
+  "builder_scope": "Only new public synthetic workflow and builder checkpoint; no changes to Loop 4 verifier files, private PR #2, production, Flint or Groq",
+  "work_completed": [
+    "Manual workflow_dispatch defined; no push/schedule trigger",
+    "Hard job admission requires public repo, exact feature ref, explicit boolean opt-in, WOLF_OLLAMA_G0_PASS=PASS, WOLF_OLLAMA_LOOP4_REVIEW_PASS=PASS, and SHA256-pinned official Ollama image",
+    "Single qwen2.5-coder:0.5b model, bounded 12 minute job and 45 second inference, loopback-only HTTP, CPU/RAM/disk observation",
+    "No secrets references, artifact uploads, caches, persistent server or private source; pinned checkout action and contents:read permissions",
+    "Committed file read back from GitHub at exact SHA; 11 basic static text safety checks passed"
+  ],
+  "verification": {
+    "builder_static_checks": "PASS_11_OF_11_PATTERN_CHECKS_ONLY",
+    "workflow_yaml_parser": "NOT_RUN",
+    "github_actions_run": "NOT_DISPATCHED",
+    "independent_loop4_exit_code_receipt": "NOT_OBSERVED",
+    "real_ollama_inference": "NOT_PERFORMED",
+    "factory_integration": "NOT_PERFORMED",
+    "worker_qualified": "NO"
+  },
+  "admission": {
+    "public_runner_pricing": "PASS_DOCUMENTED",
+    "account_actions_net_billed_observed": "ZERO_HISTORICAL_ONLY",
+    "account_future_budget_and_storage_headroom": "UNKNOWN_DENY",
+    "independent_review": "PENDING",
+    "image_sha256_pin": "PENDING_VERIFIED_DIGEST",
+    "github_workflow_dispatch_default_branch_requirement": "Workflow file must be present on default branch before GitHub accepts workflow_dispatch; no default-branch changes authorized or performed"
+  },
+  "cost_controls": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  },
+  "next_ready": [
+    "Loop 4 independently review workflow syntax and security, exact commit and exit-code receipt; do not treat builder static checks as independent verification",
+    "Loop 2 and Loop 5 resolve account-specific future budget/storage gates and verify immutable official Ollama image digest before enabling repo variables",
+    "Do not dispatch until all gates PASS and workflow is governably available on default branch; no default-branch mutation in this mission",
+    "After authorization execute bounded public synthetic inference, capture model digest and resource measurements, then independently verify before Factory integration"
+  ]
+}
