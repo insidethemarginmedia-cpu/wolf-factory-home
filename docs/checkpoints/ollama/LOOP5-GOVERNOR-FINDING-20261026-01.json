@@ -1,0 +1,33 @@
+{
+  "schema": "wolf.ollama.loop5.governance_finding.v1",
+  "date_utc": "2026-10-26",
+  "builder_commit": "dfb4c338397262692bf418a2d56af6b8569cee20",
+  "public_repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "severity": "P0_ADMISSION_MISMATCH_BEFORE_DISPATCH",
+  "finding": "scripts/ollama-runner-probe.mjs MODELS allowlist includes qwen2.5-coder:3b while Loop 2 admission checkpoint explicitly says DENY_UNTIL_LICENSE_REVIEW for this model.",
+  "evidence": {
+    "script": "scripts/ollama-runner-probe.mjs",
+    "admission": "docs/checkpoints/ollama/LOOP2-ADMISSION-20261026.json",
+    "script_commit": "dfb4c338397262692bf418a2d56af6b8569cee20",
+    "admission_commit": "f5e8b156156d555b97fd43f026a202d83830bc45"
+  },
+  "assignment": {
+    "loop3": "Remove qwen2.5-coder:3b from runtime allowlist or add a separate fail-closed license-admission gate before any execution; prefer removing until reviewed. Add negative test.",
+    "loop4": "Independently verify 3b is rejected; review that environment flag WOLF_OLLAMA_ZERO_COST_VERIFIED is not mistaken for independent economic proof.",
+    "loop2": "Keep license evidence fresh; do not automatically grant 3b permission based on 0.5b/1.5b license.",
+    "loop5": "Do not admit or dispatch any 3b inference until independent review and tests pass."
+  },
+  "other_observations": [
+    "Builder commit contains isolated script and mocked tests; no real Ollama inference was evidenced by this commit.",
+    "Script uses opt-in and local endpoint restrictions, and explicitly does not claim Factory integration.",
+    "Runner admission permits only bounded repository-related synthetic development/test jobs, never 24x7 Factory hosting."
+  ],
+  "status": "BLOCK_3B_MODEL_AND_ANY_UNREVIEWED_DISPATCH; CONTINUE_0_5B_TEST_PREPARATION",
+  "cost_controls": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  }
+}
