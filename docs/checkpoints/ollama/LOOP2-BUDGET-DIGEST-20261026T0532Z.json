@@ -1,0 +1,77 @@
+{
+  "schema": "wolf.ollama.loop2.admission.v2",
+  "observed_at_utc": "2026-10-26T05:32:21.593Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_branch_head": "e1cf5db91ae08ccc37a1d053f1bd27958cf93faf",
+  "default_branch": "main",
+  "prewrite_main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "sources": {
+    "connected_account": "Composio GITHUB_GET_THE_AUTHENTICATED_USER github_afara-tummer",
+    "connected_branch": "Composio GITHUB_GET_A_BRANCH",
+    "connected_tree": "Composio GITHUB_GET_A_TREE",
+    "connected_workflows": "Composio GITHUB_LIST_REPOSITORY_WORKFLOWS",
+    "github_rest_budgets": "https://docs.github.com/en/rest/billing",
+    "github_personal_budgets": "https://docs.github.com/en/billing/how-tos/set-up-budgets",
+    "github_public_actions": "https://docs.github.com/en/actions/concepts/billing-and-usage",
+    "dockerhub_official_tags": "https://hub.docker.com/r/ollama/ollama/tags",
+    "ollama_official_model": "https://registry.ollama.com/library/qwen2.5-coder:0.5b"
+  },
+  "findings": {
+    "account_plan": "PASS_AUTHENTICATED_ACCOUNT_REPORTS_GITHUB_FREE",
+    "public_runner_price": "PASS_DOCUMENTED_STANDARD_GITHUB_HOSTED_RUNNERS_PUBLIC_REPOS_FREE",
+    "personal_budget_endpoint": "UNAVAILABLE_IN_CONNECTED_COMPOSIO_GITHUB_TOOLS; PUBLIC_GITHUB_REST_BUDGETS_LIST_ORGANIZATION_NOT_PERSONAL_ACCOUNT; NO_SETTINGS_CHANGED",
+    "personal_account_budget": "UNKNOWN_DENY",
+    "future_spending_limit": "UNKNOWN_DENY",
+    "artifact_storage_headroom": "UNKNOWN_DENY; NO_ACCOUNT_SPECIFIC_REMAINING_STORAGE_ENDPOINT_AVAILABLE_IN_CONNECTED_TOOLS",
+    "workflow": {
+      "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+      "feature_branch_present": true,
+      "blob_sha": "5754e99af35601b04a1711effa2a0ff08b3b3490",
+      "default_branch_registered": false,
+      "dispatch_performed": false,
+      "mode": "MANUAL_SYNTHETIC_DEVELOPMENT_ONLY",
+      "persistent_server": "DENY_GITHUB_ACTIONS_NOT_24X7_HOST",
+      "guardrails": "READ_ONLY_TOKEN_NO_ARTIFACT_UPLOAD_NO_CACHE_NO_SECRETS_LOOPBACK_EPHEMERAL_12MIN_LIMIT",
+      "variables": "SELF_ASSERTED_NOT_ECONOMIC_PROOF"
+    },
+    "container_image": {
+      "official_repository": "ollama/ollama",
+      "observed_tag": "0.40.11",
+      "platform": "linux/amd64",
+      "manifest_digest_candidate": "sha256:459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da",
+      "evidence": "Official Docker Hub tag listing hyperlink; registry HEAD/manifest attestation not independently retrieved",
+      "provenance": "CANDIDATE_NOT_APPROVED",
+      "image_sha256_gate": "UNKNOWN_DENY"
+    },
+    "model": {
+      "name": "qwen2.5-coder:0.5b",
+      "official_page_display_digest_prefix": "4ff64a7f502a",
+      "official_page_size": "398MB",
+      "license": "Apache-2.0 on official Ollama page",
+      "full_manifest_sha256": "UNKNOWN",
+      "immutable_approved_digest": "UNKNOWN_DENY",
+      "workflow_current_behavior": "pull mutable tag then observe digest; no preapproved digest comparison",
+      "model_gate": "UNKNOWN_DENY"
+    },
+    "test_admission": "DENY_NO_DISPATCH",
+    "inference": "NOT_PERFORMED",
+    "factory_integration": "NOT_PERFORMED",
+    "flint_groq": "PRESERVED"
+  },
+  "next_ready": {
+    "loop2": "Continue read-only search for personal account budget and storage hard-cap through supported authenticated interface; do not change settings or infer guarantees from past USD0.",
+    "loop3": "Keep workflow feature-only; add independently approved model digest verification before model use, not post-pull observation alone. Do not set G0_PASS via self-assertion.",
+    "loop4": "Independently review exact YAML syntax, security and model digest enforcement, with evidence and exit codes; do not dispatch.",
+    "loop5": "Keep default branch and production unchanged. Dispatch prohibited while G0, immutable model digest, image registry verification and default-branch workflow presence are unproven."
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "billing_settings_changed": false,
+    "production_changed": false,
+    "workflow_dispatched": false
+  }
+}
