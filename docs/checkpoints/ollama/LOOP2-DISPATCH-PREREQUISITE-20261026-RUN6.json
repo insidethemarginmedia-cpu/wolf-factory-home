@@ -1,0 +1,95 @@
+{
+  "schema": "wolf.ollama.loop2.admission.v4",
+  "observation_date_utc": "2026-10-26",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "feature_branch": "feat/public-runtime-probe-20261022",
+  "observed_prewrite_head": "d6b20bc8e66e853030b4647ddfed0ddaf8e36168",
+  "evidence": {
+    "workflow": {
+      "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+      "git_blob_sha": "84651a7648b8f44435f24353d91b1709396d23a4",
+      "present_on_feature_branch": true,
+      "present_on_default_branch": false,
+      "default_branch": "main",
+      "main_workflows_observed": [
+        "night-shift-wakeup.yml"
+      ],
+      "trigger": "workflow_dispatch",
+      "no_dispatch_executed": true
+    },
+    "github_official_requirement": {
+      "finding": "workflow_dispatch only receives events when the workflow file exists on the default branch; selecting a non-default ref does not remove the prerequisite",
+      "sources": [
+        "https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow",
+        "https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows"
+      ]
+    },
+    "personal_budgets": {
+      "status": "UNKNOWN_DENY",
+      "finding": "Documented REST budget listing endpoints target organizations/enterprises, not personal-account budget hard stops. User billing usage endpoints report historical usage, not future budget configuration. No unsupported endpoint was invented or invoked.",
+      "sources": [
+        "https://docs.github.com/en/rest/billing",
+        "https://docs.github.com/en/rest/billing/budgets",
+        "https://docs.github.com/en/rest/billing/usage",
+        "https://docs.github.com/en/billing/how-tos/set-up-budgets"
+      ]
+    },
+    "storage_headroom": {
+      "status": "UNKNOWN_DENY",
+      "finding": "Documented GitHub Free included storage does not prove current account-specific remaining capacity or hard spending stop. No account-specific storage headroom verified.",
+      "source": "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
+    },
+    "prior_registry_provenance": {
+      "status": "PREVIOUSLY_VERIFIED_NOT_REPEATED",
+      "checkpoint": "docs/checkpoints/ollama/LOOP2-REGISTRY-PROVENANCE-20261026T0636Z.json",
+      "image_amd64_manifest": "sha256:459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da",
+      "model_0_5b_manifest": "sha256:4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09",
+      "note": "Source verification is distinct from review-controlled immutable binding."
+    },
+    "independent_verifier": {
+      "checkpoint": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026-RUN6.json",
+      "status": "FAIL_CLOSED",
+      "workflow_image_digest_review_binding": "FAIL",
+      "workflow_model_digest_review_binding": "FAIL",
+      "probe_model_digest_review_binding": "FAIL",
+      "adversarial_counterexamples": [
+        "own error property null/empty accepted",
+        "direct probe without independently approved digest",
+        "noncooperative reader.cancel may hang"
+      ]
+    },
+    "terms_scope": {
+      "bounded_development_test": "POTENTIALLY_ADMISSIBLE_IF_ALL_GATES_PASS",
+      "permanent_24x7_inference_server": "NOT_ADMITTED",
+      "note": "Runner free status does not authorize using Actions as a continuous production inference service."
+    }
+  },
+  "admission": {
+    "account_specific_economic_G0": "UNKNOWN_DENY",
+    "single_synthetic_inference_test": "DENY_NO_DISPATCH",
+    "workflow_dispatch_registration": "FAIL_DEFAULT_BRANCH_PREREQUISITE",
+    "digest_provenance": "PREVIOUSLY_VERIFIED_SOURCE_ONLY",
+    "digest_immutable_review_binding": "FAIL",
+    "independent_review": "FAIL",
+    "real_inference": "NOT_PERFORMED",
+    "production_integration": "NOT_PERFORMED",
+    "flint_groq": "PRESERVED"
+  },
+  "next_ready": {
+    "loop2": "Investigate only documented authenticated personal budget/storage read surfaces; if no supported API, maintain UNKNOWN_DENY. Do not repeat historical usage checks.",
+    "loop3": "Fix immutable allowlist/digest binding and verifier adversarial counterexamples on existing feature branch; do not dispatch. A new test trigger path needs separate governance because workflow_dispatch requires default-branch registration; do not change main without authorization.",
+    "loop4": "Independently retest changed source/workflow blobs and enforce provenance binding; preserve FAIL until objective tests pass.",
+    "loop5": "Record independent dispatchability gate as FAIL and economic G0 as UNKNOWN_DENY; prevent dispatch and production promotion. Coordinate authorized architecture decision without creating another Factory."
+  },
+  "constraints": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "settings_changed": false,
+    "main_changed": false,
+    "workflow_dispatched": false,
+    "production_changed": false,
+    "private_data_sent": false
+  }
+}
