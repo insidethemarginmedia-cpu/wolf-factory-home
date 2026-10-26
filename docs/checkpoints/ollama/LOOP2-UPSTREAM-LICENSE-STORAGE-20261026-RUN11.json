@@ -1,0 +1,85 @@
+{
+  "schema": "wolf.ollama.loop2.economic_provenance.v11",
+  "observed_date_utc": "2026-10-26",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_branch_head": "1784a91933ed73c94f9492950319fcf432da2248",
+  "prewrite_main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "material_delta": {
+    "github_budget_first_cycle_caveat": {
+      "status": "POLICY_VERIFIED_NOT_ACCOUNT_PROOF",
+      "observation": "GitHub documents that a newly created hard-stop budget counts only metered usage from its creation date; previous usage is excluded, so a first billing cycle can exceed budget even with stop usage selected.",
+      "implication": "A future screenshot of a zero budget by itself would not prove absence of pre-existing accrued charges. No budget was created, changed or queried through an undocumented endpoint.",
+      "source": "https://docs.github.com/en/billing/concepts/budgets-and-alerts"
+    },
+    "github_storage_accrual_and_logs": {
+      "status": "POLICY_VERIFIED_ACCOUNT_UNKNOWN",
+      "observation": "GitHub Actions artifact/Packages storage shares an allowance, is metered in GB-hours; deletion cannot undo already accrued usage. Workflow logs and job summaries do not count toward artifact storage allowance. GitHub Free included artifact storage 500 MB; standard public runners free, larger runners charged.",
+      "exact_workflow_assessment": "Workflow uses ubuntu-24.04 standard runner, timeout 12m, no actions/upload-artifact or actions/cache, writes temporary receipt only to /tmp; thus no explicit artifact/cache upload step. This does not attest to account-wide current/accrued storage, payment method or future settings.",
+      "source": "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
+    },
+    "upstream_license_cross_check": {
+      "status": "LICENSE_CORROBORATED_NOT_BINARY_IDENTITY",
+      "ollama_runtime_source": "https://github.com/ollama/ollama/blob/main/LICENSE",
+      "ollama_runtime_license": "MIT (upstream source)",
+      "qwen_upstream_source": "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct/tree/ea99d3edbfc6669b8b24cbaa6a98ec0e857f0155",
+      "qwen_upstream_license": "Apache-2.0 (upstream official model card at immutable revision)",
+      "exact_ollama_model_source": "https://registry.ollama.com/library/qwen2.5-coder:0.5b",
+      "exact_ollama_model_license": "Apache License 2.0 displayed on Ollama 0.5b listing",
+      "caveat": "Upstream model-card license and Ollama listing independently corroborate license family, not cryptographic equivalence of Hugging Face model files to Ollama quantized model weights. Existing Ollama license-layer SHA256 proof remains in earlier checkpoint; not rehashed in this run."
+    }
+  },
+  "exact_source_blobs": {
+    "workflow": "2e4db81ebb02860f4c514966a0d0739fe4666daa",
+    "probe": "bdeb9cc2089c595d899efede779926192e9c1808",
+    "candidate_pins": "b8c2fee579de9df34cd394ea86d431cfdb8faded"
+  },
+  "candidate_registry_digests_prior_evidence_only": {
+    "container_linux_amd64": "sha256:459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da",
+    "model_0_5b_manifest": "4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09",
+    "evidence_checkpoint": "docs/checkpoints/ollama/LOOP2-REGISTRY-PROVENANCE-20261026T0636Z.json",
+    "newly_rehashed_this_run": false,
+    "reviewStatus": "PENDING"
+  },
+  "account_specific": {
+    "account": "insidethemarginmedia-cpu",
+    "connected_github_accounts_status": "ACTIVE",
+    "composio_tool_search": "Only personal usage report/summary and profile tools surfaced; no documented personal budget hard-stop, payment-method or remaining artifact storage read action.",
+    "REST_budget_endpoint_personal": "NOT_DOCUMENTED",
+    "budget_hard_stop": "UNKNOWN_DENY",
+    "payment_method": "UNKNOWN_DENY",
+    "artifact_storage_current": "UNKNOWN_DENY",
+    "artifact_storage_accrued": "UNKNOWN_DENY",
+    "storage_headroom": "UNKNOWN_DENY",
+    "single_synthetic_dispatch": "DENY",
+    "why": "Public standard-runner free status and absence of upload/cache steps are not account-specific proof of no billed storage or future settings. Historic USD0 not used as guarantee."
+  },
+  "verification": {
+    "loop3_fix_commit": "efab387fca629d72919f5bfcef055c7b0c6f60db",
+    "loop4_independent_checkpoint": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026-RUN9.json",
+    "loop4_result": "PENDING-review bypass fixed; 1/1 negative and 7/7 adversarial synthetic PASS per independent checkpoint; no rerun this cycle",
+    "latest_governor_checkpoint": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-RUN8.json",
+    "real_inference": "NOT_PERFORMED"
+  },
+  "NEXT_READY": {
+    "loop2": "Seek an authorized, documented read-only personal billing UI or API surface that returns actual hard-stop enabled, payment status and current/accrued shared storage for this account. No auth or 403 bypass. Keep UNKNOWN_DENY if unavailable.",
+    "loop3": "Keep reviewStatus=PENDING and fail-closed. Do not patch same blobs without new material issue.",
+    "loop4": "Independently attest exact Docker amd64 manifest, Ollama model manifest and license-layer hash against official registry responses, and map license upstream to exact quantized Ollama artifact before any reviewStatus change. Do not repeat already verified negative tests.",
+    "loop5": "Record first-cycle hard-budget caveat and GB-hour accrued-storage distinction; do not admit a single synthetic test on policy-level evidence alone."
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "G0": "UNKNOWN_DENY",
+    "DISPATCH": "DENY",
+    "main_changed": false,
+    "production_changed": false,
+    "settings_changed": false,
+    "billing_changed": false,
+    "workflow_dispatched": false,
+    "real_inference": false,
+    "flint_groq": "PRESERVED"
+  }
+}
