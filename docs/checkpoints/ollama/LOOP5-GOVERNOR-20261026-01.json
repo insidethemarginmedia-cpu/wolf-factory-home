@@ -1,0 +1,59 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v1",
+  "date_utc": "2026-10-26",
+  "purpose": "Evidence-based coordination of five independent Ollama/JARVIS qualification loops; development/testing only on public GitHub Actions.",
+  "observed_public": {
+    "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+    "branch": "feat/public-runtime-probe-20261022",
+    "head_at_review": "f5e8b156156d555b97fd43f026a202d83830bc45",
+    "loop2_admission_commit": "f5e8b156156d555b97fd43f026a202d83830bc45",
+    "latest_observed_night_shift_run": "40251817855",
+    "night_shift_run_conclusion": "failure",
+    "failing_step": "Require currently observable free provider quota before inference",
+    "remaining_steps": "security-tests and runner-loss jobs skipped; safe suspension step succeeded"
+  },
+  "qualification": {
+    "github_actions_public_runner": "ADMITTED_ONLY_FOR_BOUNDED_REPOSITORY_RELATED_SYNTHETIC_DEV_TESTS",
+    "github_actions_permanent_ollama_backend": "DENIED_BY_POLICY",
+    "ollama_real_inference": "NOT_VERIFIED",
+    "ollama_factory_worker": "NOT_ADMITTED",
+    "private_adapter": "SEPARATE_PRIVATE_DRAFT_PR; DO_NOT_COPY_PRIVATE_SOURCE_TO_PUBLIC",
+    "model_0_5b": "LICENSE_REVIEW_PASS; RUNTIME_TEST_PENDING",
+    "model_1_5b": "LICENSE_REVIEW_PASS; RUNTIME_TEST_PENDING",
+    "model_3b": "DENY_UNTIL_LICENSE_REVIEW",
+    "model_7b": "LICENSE_REVIEW_PASS; RUNTIME_CAPACITY_UNKNOWN",
+    "flint": "PRESERVE_EXISTING",
+    "groq": "PRESERVE_EXISTING; QUOTA_UNKNOWN_MUST_NOT_BE_MISLABELED_EXHAUSTED"
+  },
+  "ownership": {
+    "loop1": "READ_ONLY_RECOVERY_AND_HEAD_RECONCILIATION",
+    "loop2": "ECONOMIC_POLICY_LICENSE_ADMISSION_AND_EVIDENCE",
+    "loop3": "ISOLATED_BUILDER; NO_PRIVATE_CODE_OR_SECRETS_IN_PUBLIC_RUNNER",
+    "loop4": "INDEPENDENT_VERIFIER; NO_SELF_CERTIFICATION",
+    "loop5": "GOVERNOR; THIS_CHECKPOINT_AND_NEXT_READY"
+  },
+  "next_ready": [
+    "Read fresh branch HEAD, workflow diff, and latest checkpoints before any mutation; preserve concurrent changes.",
+    "Only after policy/cost gates PASS, allow one manually dispatched, bounded synthetic Ollama 0.5b repository-related development/test probe with no secrets, artifacts, caches or paid runner.",
+    "Verify actual response, elapsed time, RAM/disk, exit status and independent test receipts; mocks alone are insufficient.",
+    "Do not use public GitHub-hosted Actions as always-on inference backend or general-purpose Factory worker.",
+    "Seek separately authorized permanent-zero-cost hosting only if needed; do not create infrastructure, billing or trial dependencies.",
+    "On ordinary errors diagnose and continue safe independent work; on explicit tool/policy denial fail closed and checkpoint."
+  ],
+  "safety": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "NO_PRODUCTION": true,
+    "NO_TOSHIBA": true,
+    "NO_TERMUX": true,
+    "NO_PRIVATE_CODE_ON_PUBLIC_RUNNERS": true
+  },
+  "evidence": [
+    "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/commit/f5e8b156156d555b97fd43f026a202d83830bc45",
+    "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40251817855",
+    "https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features"
+  ],
+  "status": "G0_CONDITIONAL_DEV_TEST_ONLY; G1_G4_NOT_PROVEN"
+}
