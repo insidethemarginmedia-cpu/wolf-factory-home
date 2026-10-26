@@ -1,0 +1,49 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v2",
+  "observed_at_utc": "2026-10-26T03:36:00Z",
+  "scope": "Public synthetic-only Ollama development qualification; no private Factory source or secrets",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "evidence": {
+    "previous_governor_checkpoint": "7429a0bd57fefbd9bd308413e93ee7e06391310d",
+    "loop2_policy_delta": "docs/checkpoints/ollama/LOOP2-POLICY-DELTA-20261026T0334Z.json",
+    "loop2_policy_head_observed": "1fcf9bf7ce6760cef9f73d8789733f48b9518c05",
+    "loop3_builder_fix_head_observed": "5c4c3f31306c12c336e6ef64d26426f97b54f214",
+    "builder_commit_message": "fix(ollama): deny unreviewed 3b model before inference",
+    "verified_by_source_read": "scripts/ollama-runner-probe.mjs MODEL allowlist contains only qwen2.5-coder:0.5b and qwen2.5-coder:1.5b; tests/ollama-runner-probe.test.mjs includes a negative test for qwen2.5-coder:3b before network access",
+    "github_actions_latest_observed": "40251817855 failure (Groq quota admission); not evidence of Ollama inference",
+    "private_jarvis_adapter_head_observed": "680551b069b07b6c57357d9be77a05176ee2bbcf"
+  },
+  "governor_actions": [
+    "Updated Loop 3 automation to prioritize 3b model deny and negative test; builder produced fix concurrently, verified via source read",
+    "Updated Loop 4 automation to independently verify 3b denial, test exit code, economic admission and absence of false inference claims"
+  ],
+  "status": {
+    "model_3b_license": "DENY_UNREVIEWED",
+    "model_3b_allowlist": "REMOVED_AT_OBSERVED_HEAD",
+    "model_3b_negative_test": "SOURCE_PRESENT_EXECUTION_PENDING",
+    "real_ollama_inference": "NOT_OBSERVED",
+    "github_actions_ollama_dispatch": "NOT_OBSERVED",
+    "independent_test_receipt": "PENDING",
+    "factory_integration": "NOT_PROVEN",
+    "durable_factory_mission": "NOT_PROVEN",
+    "flint_and_groq": "PRESERVE_UNCHANGED",
+    "spend_eur": 0
+  },
+  "next_ready": [
+    "Loop 4: execute tests against exact builder SHA and record independent exit codes and negative-case results",
+    "Loop 2: verify actual zero-cost account headroom and acceptable public synthetic development-only use; never use a flag as proof",
+    "Loop 3: only after admission, prepare bounded manual workflow_dispatch 0.5b public synthetic smoke test, no artifact/cache uploads or private code",
+    "Loop 5: reconcile concurrent HEADs and check real receipts before changing admission or moving toward Cezar/KCT/DBOS"
+  ],
+  "hard_gates": [
+    "EUR_SPEND=0",
+    "COST_UNKNOWN=DENY",
+    "PAID_FALLBACK=DENY",
+    "TRIAL_CREDIT=DENY",
+    "NO_PRODUCTION",
+    "NO_TOSHIBA",
+    "NO_PRIVATE_CODE_IN_PUBLIC_RUNNER",
+    "NO_NEW_FACTORY_OR_REPOSITORY"
+  ]
+}
