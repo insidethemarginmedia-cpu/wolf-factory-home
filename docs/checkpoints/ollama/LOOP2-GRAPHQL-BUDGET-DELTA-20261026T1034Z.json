@@ -1,0 +1,85 @@
+{
+  "schema": "wolf.ollama.loop2.admission.graphql-and-builder-delta.v9",
+  "observed_at_utc": "2026-10-26T10:34:37Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "fd6395db719e7db82d5be5370db5109016604b19",
+  "prior_loop2_checkpoint": "docs/checkpoints/ollama/LOOP2-POLICY-CODE-REVIEW-20261026T093749Z.json",
+  "purpose": "New read-only authenticated GraphQL billing-schema evidence and reconciliation of changed Loop3 blobs. No billing settings changes or dispatch.",
+  "new_account_specific_api_evidence": {
+    "provider": "Composio authenticated GitHub GraphQL v4",
+    "account": "insidethemarginmedia-cpu",
+    "query": "__type(name:User).fields; __type(name:Query).fields; rateLimit",
+    "query_fields_observed": 32,
+    "user_fields_observed": 96,
+    "query_fields_matching_budget_billing_storage_payment_spending_quota": [],
+    "user_fields_matching_budget_billing_storage_payment_spending_quota": [
+      "estimatedNextSponsorsPayoutInCents (unrelated to Actions billing)"
+    ],
+    "graphql_query_cost": 1,
+    "graphql_remaining_reported": 4999,
+    "interpretation": "No documented personal Actions/Packages budget hard-stop or storage headroom exposed by these introspected GraphQL types. This does NOT prove no other private UI/API exists.",
+    "rest_documentation": "https://docs.github.com/en/rest/billing",
+    "rest_personal_budget_read": "NOT_DOCUMENTED_IN_REVIEWED_ENDPOINT_INDEX",
+    "official_personal_budget_ui": "https://docs.github.com/en/billing/how-tos/set-up-budgets",
+    "required_evidence_not_obtained": [
+      "effective personal Actions budget scope and amount",
+      "prevent_further_usage hard-stop state",
+      "effective Packages/Actions storage budget scope and amount",
+      "personal payment-method status",
+      "remaining Actions artifact/cache storage"
+    ],
+    "hard_stop_semantics": "Official GitHub docs distinguish soft alert-only budgets from budgets with Stop usage when budget limit is reached. Merely finding a budget would not prove a hard stop."
+  },
+  "new_loop3_reconciliation": {
+    "builder_checkpoint": "docs/checkpoints/ollama/LOOP3-BUILDER-20261026T1030Z.json",
+    "builder_checkpoint_commit": "fd6395db719e7db82d5be5370db5109016604b19",
+    "fix_commit": "089e65f1af43961f242c2004667c1f866e4bf3d9",
+    "negative_test_commit": "487fd0f0f01307ea7695bd4f8a79a9290f4f563e",
+    "current_source_blob": "f785cd8f0ce855c31cdffe74d17ebc3121b3dc53",
+    "current_test_blob": "84b8deb48631ef90c47edb52256b0785d965beab",
+    "workflow_blob": "84651a7648b8f44435f24353d91b1709396d23a4",
+    "independently_read_source": "PASS_STATIC: own error property rejected regardless of falsy value",
+    "builder_reported_mock_tests": "18_OF_18_PASS",
+    "independently_executed_mock_tests": "NOT_PERFORMED",
+    "loop4_independent_review_of_current_blobs": "PENDING",
+    "remaining_direct_probe_digest_gate": "NOT_BOUND",
+    "immutable_image_and_model_approval": "NOT_BOUND"
+  },
+  "policy": {
+    "synthetic_bounded_development_test": "CONDITIONALLY_ALLOWED_BY_POLICY; ECONOMIC_AND_INTEGRITY_ADMISSION_DENY",
+    "permanent_24x7_actions_inference_backend": "DENY_BY_POLICY",
+    "workflow_only_on_feature_branch": true,
+    "workflow_dispatch": "NOT_PERFORMED",
+    "main": "UNTOUCHED_BY_LOOP2",
+    "production": "UNTOUCHED",
+    "flint_groq": "PRESERVED"
+  },
+  "gates": {
+    "public_standard_runner_cost": "DOCUMENTED_FREE_NOT_ACCOUNT_SPECIFIC_HARD_STOP",
+    "future_billing_hard_stop": "UNKNOWN_DENY",
+    "actions_storage_headroom": "UNKNOWN_DENY",
+    "payment_method_status": "UNKNOWN_DENY",
+    "model_digest_registry_provenance": "PRIOR_EVIDENCE_ONLY",
+    "model_digest_immutable_binding": "FAIL",
+    "image_digest_immutable_binding": "FAIL",
+    "current_builder_mock_regression": "BUILDER_REPORTED_PASS_NOT_INDEPENDENT",
+    "loop4_current_blob_verification": "PENDING",
+    "real_inference": "NOT_PERFORMED",
+    "G0": "DENY",
+    "dispatch": "DENY"
+  },
+  "next_ready": {
+    "loop3": "Add reviewed immutable digest binding at direct-probe pre-inference boundary and workflow; retain negative tests, do not dispatch.",
+    "loop4": "Independently execute mock regression on source f785cd8f... and tests 84b8deb4..., check error:null/empty/false/0 and digest gates; no real inference.",
+    "loop5": "Keep G0/DISPATCH DENY. Require authenticated effective personal budget hard-stop, scope and amount, payment status, storage headroom, plus Loop4 approval before reconsidering a single synthetic test."
+  },
+  "no_actions_taken": [
+    "No GitHub Actions dispatch",
+    "No model download or inference",
+    "No billing/settings change",
+    "No main or production edit",
+    "No new repository, factory, secrets, private data, Toshiba, Termux or paid fallback"
+  ],
+  "cost_policy": "EUR_SPEND=0; COST_UNKNOWN=DENY; PAID_FALLBACK=DENY; TRIAL_CREDIT=DENY"
+}
