@@ -1,0 +1,50 @@
+{
+  "schema": "wolf.ollama.loop3.builder.v9",
+  "observed_at_utc": "2026-10-26T10:30:44.462Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "base_head": "9789d5b90fc22045c4c88aaf02803f59ccb095d7",
+  "verified_pre_checkpoint_head": "487fd0f0f01307ea7695bd4f8a79a9290f4f563e",
+  "commits": {
+    "fix": "089e65f1af43961f242c2004667c1f866e4bf3d9",
+    "negative_test": "487fd0f0f01307ea7695bd4f8a79a9290f4f563e"
+  },
+  "exact_source_blobs": {
+    "scripts/ollama-runner-probe.mjs": "f785cd8f0ce855c31cdffe74d17ebc3121b3dc53",
+    "tests/ollama-runner-probe.test.mjs": "84b8deb48631ef90c47edb52256b0785d965beab",
+    ".github/workflows/ollama-public-synthetic-qualification.yml": "84651a7648b8f44435f24353d91b1709396d23a4"
+  },
+  "engineering_change": "Reject any own error property in Ollama receipt, including null, empty string, false and 0, before valid state is emitted.",
+  "regression": {
+    "environment": "Node.js v22.16.0 local isolated builder runtime",
+    "pre_fix_negative_test": "FAIL_17_PASS_1_FAIL_EXIT_1",
+    "post_fix": "PASS_18_OF_18_EXIT_0",
+    "synthetic_mock_only": true,
+    "source_blob_hash_matches_published": true,
+    "test_blob_hash_matches_published": true,
+    "independent_verifier": "PENDING"
+  },
+  "consumer_review": {
+    "files_scanned": 14,
+    "marker_matched": "Probe emits true only for exact marker; only workflow consumer requires result.markerMatched === true; no other production consumer identified in this public branch.",
+    "model_digest": "Workflow compares post-pull observed /api/tags digest with configured approved digest before inference; however approved value comes from mutable repository variable, not independently bound approval.",
+    "direct_probe": "Direct probe invocation does not independently verify approved model digest; this remains a separate admission gap."
+  },
+  "safety": {
+    "G0_economic": "UNKNOWN_DENY",
+    "storage": "UNKNOWN_DENY",
+    "approved_digest_binding": "UNKNOWN_DENY",
+    "workflow_dispatch": "NOT_PERFORMED",
+    "real_ollama_inference": "NOT_PERFORMED",
+    "main_and_production": "UNTOUCHED",
+    "flint_groq": "PRESERVED",
+    "cost_eur_spent": 0,
+    "private_code_or_secrets_exposed": false
+  },
+  "next_ready": [
+    "Loop 4 independently verify exact new source/test blobs and error-field adversarial cases; do not use old verifier results as acceptance of new blobs.",
+    "Loop 3 implement direct-probe pre-inference digest gate and immutable review binding with new tests; do not treat mutable variable as independently approved digest.",
+    "Loop 2/5 obtain account-specific budget hard-stop, payment status, and storage headroom evidence; until then no Ollama dispatch.",
+    "Preserve existing Factory, branch and workflow; do not dispatch, merge or alter production."
+  ]
+}
