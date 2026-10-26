@@ -1,0 +1,104 @@
+{
+  "schema": "wolf.ollama.loop2.admission.v3",
+  "observed_at_utc": "2026-10-26T06:36:27Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_branch_head": "5501f732b2cae0c1098ad7880af100d34dab32dc",
+  "prewrite_main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "prior_checkpoint": "docs/checkpoints/ollama/LOOP2-BUDGET-DIGEST-20261026T0532Z.json",
+  "checks": {
+    "personal_budget_and_spending_hard_stop": {
+      "status": "UNKNOWN_DENY",
+      "reason": "Authenticated Composio GitHub search exposes user usage reports but not personal budgets/spending hard-stop settings. Official REST budgets reference lists organization endpoints, while personal budgets are documented in UI; no setting was changed.",
+      "sources": [
+        "https://docs.github.com/en/rest/billing/budgets",
+        "https://docs.github.com/en/billing/how-tos/set-up-budgets"
+      ]
+    },
+    "artifact_and_packages_storage_headroom": {
+      "status": "UNKNOWN_DENY",
+      "reason": "No authenticated account-specific remaining storage capacity/hard cap verified. Product-specific /settings/billing/shared-storage endpoint retired 2025-09-26. No upload/cache in proposed workflow does not prove zero billed storage for retained logs or other repositories.",
+      "sources": [
+        "https://github.blog/changelog/2025-09-26-product-specific-billing-apis-are-closing-down/",
+        "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
+      ]
+    },
+    "single_synthetic_test_economic_admission": {
+      "status": "DENY_NO_DISPATCH",
+      "reason": "Standard public GitHub-hosted runner documented free; account future budget, storage headroom and hard-stop remain UNKNOWN_DENY. Historical USD0 is not a guarantee."
+    },
+    "official_ollama_container_linux_amd64": {
+      "status": "PASS_REGISTRY_CONTENT_DIGEST_VERIFIED",
+      "image": "ollama/ollama",
+      "observed_tag": "0.40.11",
+      "platform": "linux/amd64",
+      "immutable_manifest_digest": "sha256:459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da",
+      "evidence": "Docker Hub official tag API amd64 digest equals OCI image manifest fetched by digest from registry-1.docker.io; HTTP 200, Docker-Content-Digest header matches SHA256 of 1065-byte response.",
+      "sources": [
+        "https://hub.docker.com/v2/repositories/ollama/ollama/tags/0.40.11",
+        "https://registry-1.docker.io/v2/ollama/ollama/manifests/sha256:459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da"
+      ],
+      "governance_note": "Digest source VERIFIED; explicit Kai/Loop4 approval and workflow constant/allowlist enforcement remain separate gates."
+    },
+    "official_ollama_model_0_5b": {
+      "status": "PASS_TWO_OFFICIAL_REGISTRY_MANIFESTS_MATCH",
+      "model": "qwen2.5-coder:0.5b",
+      "immutable_manifest_sha256": "4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09",
+      "manifest_bytes": 857,
+      "model_weights_layer_digest": "sha256:20693aeb02c63304e263a72453b6ab89e1c700a87c6948cac523ac1e6f7cade0",
+      "model_weights_layer_size_bytes": 397808000,
+      "license_blob_digest": "sha256:832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e",
+      "license_blob_size_bytes": 11343,
+      "license_blob_sha256_verified": true,
+      "license_marker": "Apache License Version 2.0, January 2004",
+      "evidence": "GET registry.ollama.ai and registry.ollama.com both HTTP 200 and identical 857-byte manifest SHA256; official license blob downloaded, hashed, and Apache 2.0 header inspected.",
+      "sources": [
+        "https://registry.ollama.ai/v2/library/qwen2.5-coder/manifests/0.5b",
+        "https://registry.ollama.com/v2/library/qwen2.5-coder/manifests/0.5b",
+        "https://registry.ollama.com/v2/library/qwen2.5-coder/blobs/sha256:832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e"
+      ],
+      "governance_note": "Source and SHA256 verified, but separate Kai/Loop4 approval and exact pre-inference comparison required; no real model run."
+    },
+    "workflow_reconciliation": {
+      "status": "PASS_FEATURE_ONLY_NO_DISPATCH",
+      "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+      "blob_sha": "84651a7648b8f44435f24353d91b1709396d23a4",
+      "feature_branch_head": "5501f732b2cae0c1098ad7880af100d34dab32dc",
+      "main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+      "default_branch_workflow_presence": "NO_PRIOR_CONFIRMED_MAIN_UNCHANGED",
+      "workflow_mode": "manual bounded synthetic development test; not 24x7 inference server",
+      "guardrails": "public only, contents read, SHA-pinned checkout, image digest var, model post-pull digest compare, no cache/artifact upload, loopback, 12 minute timeout",
+      "weakness": "repo vars and approval flags self-asserted; independently verified source digests must be bound by review to immutable allowlist/constant before any dispatch"
+    },
+    "builder_reconciliation": {
+      "status": "PASS_CHECKPOINT_READ",
+      "source": "docs/checkpoints/ollama/LOOP3-BUILDER-20261026T0539Z.json",
+      "builder_tests": "13/13 local PASS reported by builder; not independent inference",
+      "builder_fixes": [
+        "reject error receipt",
+        "reject wrong marker",
+        "require approved model digest match before inference"
+      ]
+    },
+    "real_inference": "NOT_PERFORMED",
+    "private_factory_integration": "NOT_PERFORMED",
+    "flint_groq": "PRESERVED"
+  },
+  "next_ready": {
+    "loop2": "Continue read-only investigation of authenticated personal budget/hard stop and account storage headroom using supported account UI/API if available; no invented endpoint or change of settings.",
+    "loop3": "Pin the independently verified official amd64 image manifest digest and 0.5B model manifest SHA256 as review-controlled immutable constants/allowlist, not self-asserted vars alone; do not dispatch while G0 UNKNOWN.",
+    "loop4": "Independently verify full registry SHA256 evidence, license, exact updated workflow and source/test blobs, and pre-inference digest comparison. Separate static PASS from real inference.",
+    "loop5": "Record provenance gates as source VERIFIED but economic G0 UNKNOWN_DENY; keep dispatch and production denied, main unchanged. Public Actions only bounded software-development testing, not 24x7 service."
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "workflow_dispatched": false,
+    "settings_changed": false,
+    "production_changed": false,
+    "main_changed": false,
+    "private_data_sent": false
+  }
+}
