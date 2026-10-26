@@ -1,0 +1,88 @@
+{
+  "schema": "wolf.loop1.night-shift.recovery.v9",
+  "observed_at_utc": "2026-10-26T11:27:21Z",
+  "role": "LOOP1_RECOVER",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_branch_head": "347db41e78913da3a008c082ffda0c2dd4ec5b59",
+  "main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "private_ollama_pr": {
+    "repo": "donraposo1-source/wolf-factory-home",
+    "number": 2,
+    "state": "open",
+    "draft": true,
+    "head": "680551b069b07b6c57357d9be77a05176ee2bbcf"
+  },
+  "suspended_mission": {
+    "missionId": "WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1",
+    "original_run": 40271788791,
+    "original_run_conclusion": "failure",
+    "original_job_id": 121405978848,
+    "original_failure": "GROQ_FREE_QUOTA_UNKNOWN_OR_EXHAUSTED",
+    "quota_classification": "UNKNOWN_NOT_PROVEN_EXHAUSTED",
+    "journal_path": "docs/checkpoints/night-shift/WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1.json",
+    "journal_blob_sha": "13791fffba6b5dc095a3aac818e467faa2e66ead",
+    "state": "SUSPENDED",
+    "ownerRun": "40271788791",
+    "attemptBudget": 1,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+    "automaticRetry": false
+  },
+  "new_scheduled_run": {
+    "run_id": 40313736353,
+    "event": "schedule",
+    "created_at_utc": "2026-10-26T11:15:39Z",
+    "head_sha": "75ed208929094b699b950386f5f9223fb69385f3",
+    "conclusion": "success",
+    "admission_job_id": 121541006453,
+    "admission_job_conclusion": "success",
+    "other_jobs": "7_SKIPPED",
+    "observed_log_receipt": {
+      "state": "STOPPED_RECONCILIATION_REQUIRED",
+      "missionId": "WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1",
+      "event": "schedule",
+      "externalEffectsRepeated": false
+    },
+    "interpretation": "SUCCESS_IS_GUARD_STOP_NOT_ADMISSION_PASS; no provider quota verification or inference was observed in this new run; no evidence that original unknown external effects have been reconciled",
+    "link": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40313736353"
+  },
+  "coordination": {
+    "loop2": {
+      "checkpoint": "docs/checkpoints/ollama/LOOP2-GRAPHQL-BUDGET-DELTA-20261026T1034Z.json",
+      "blob": "f79f7bdca01cfde273b490cb967fab7090d2f520",
+      "economic_G0": "DENY",
+      "future_budget_hard_stop": "UNKNOWN_DENY",
+      "storage_headroom": "UNKNOWN_DENY"
+    },
+    "loop5": {
+      "checkpoint": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-RUN5.json",
+      "blob": "72b80805049480a9c2fad6c9d29c6ef45b1ad46f",
+      "dispatch": "DENY",
+      "immutable_digest_binding": "FAIL",
+      "current_loop4_independent_verification": "PENDING"
+    }
+  },
+  "actions_in_this_loop": [
+    "READ_ONLY_GITHUB_AUDIT",
+    "NO_WORKFLOW_DISPATCH",
+    "NO_FENCE_CHANGE",
+    "NO_JOURNAL_UPDATE",
+    "NO_MAIN_OR_PRODUCTION_CHANGE",
+    "NO_INFERENCE",
+    "NEW_NONPRODUCTION_CHECKPOINT_ONLY"
+  ],
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "flint_groq": "PRESERVED",
+    "ollama": "UNQUALIFIED"
+  },
+  "next_ready": {
+    "loop1": "Recheck current heads and original journal, distinguish future guard-stop schedule runs from successful admission; do not replay.",
+    "loop2": "Find account-specific evidence of Groq free quota and effective billing/storage hard stop without inference; do not assume exhausted.",
+    "loop5": "Reconcile original externalEffectState UNKNOWN_UNTIL_RECONCILED against independent receipts before any new admission; maintain SUSPENDED and attemptBudget 1.",
+    "loop3_loop4": "Continue isolated synthetic verification and immutable digest gate; no Ollama dispatch while G0 DENY."
+  }
+}
