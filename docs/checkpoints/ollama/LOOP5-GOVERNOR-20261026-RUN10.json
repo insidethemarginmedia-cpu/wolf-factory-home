@@ -1,0 +1,84 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v10",
+  "date_utc": "2026-10-26",
+  "role": "LOOP5_GOVERNOR",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "050b55d84960646180f20886314c016d85b02801",
+  "previous_checkpoint": {
+    "path": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-RUN9.json",
+    "blob_sha": "69ab44a4af10993c78941e6674dbb78f030bb9cc",
+    "commit": "29dc96f7a2bf09fbdb0bc77e69bafaa046bb8076"
+  },
+  "material_delta": {
+    "founder_policy": {
+      "path": "docs/checkpoints/ollama/FOUNDER-ZERO-COST-OPERATIONAL-POLICY-20261026.md",
+      "blob_sha": "2c3e6792cf7aeabc806b653fa90e5cff0d22a407",
+      "commit": "050b55d84960646180f20886314c016d85b02801",
+      "verified_readback": true
+    },
+    "change": "Absolute mathematical impossibility of future charges, payment-method disclosure and budget hard-stop screenshot are NOT prerequisites for documented free-tier use. Require exact free-use coverage, bounded forecast, and zero paid fallback or trial credit. Unknown pricing for USED resources remains DENY.",
+    "independent_policy_source": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+    "workflow_evidence": {
+      "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+      "blob_sha": "2e4db81ebb02860f4c514966a0d0739fe4666daa",
+      "runner": "ubuntu-24.04",
+      "timeout_minutes": 12,
+      "explicit_upload_artifact": false,
+      "explicit_actions_cache": false,
+      "scope": "public synthetic qualification only",
+      "github_public_standard_runner": "FREE_PER_OFFICIAL_DOCS"
+    },
+    "candidate_pin": {
+      "path": "scripts/ollama-candidate-pins.mjs",
+      "blob_sha": "b8c2fee579de9df34cd394ea86d431cfdb8faded",
+      "reviewStatus": "PENDING"
+    },
+    "account_billing_observation": {
+      "account": "insidethemarginmedia-cpu",
+      "month": "2026-10",
+      "linux_actions_minutes": 264,
+      "gross_usd": 1.584,
+      "discount_usd": 1.584,
+      "net_usd": 0,
+      "limitation": "Historical authenticated report, not prospective approval or proof of no unreported resources."
+    },
+    "loop_instructions": "All five existing loops updated to reflect Founder 2026-10-26 free-tier decision; no new loops."
+  },
+  "economic_assessment": {
+    "github_public_standard_runner": "PASS_DOCUMENTED_FREE",
+    "overall_exact_resource_coverage": "PENDING_LOOP2",
+    "account_hard_stop_proof": "NOT_REQUIRED_AS_SOLE_GATE",
+    "artifact_cache": "NO_EXPLICIT_UPLOAD_OR_CACHE",
+    "unknown_used_resource_pricing": "DENY",
+    "paid_fallback": "DENY",
+    "trial_credit": "DENY",
+    "eur_spend": 0
+  },
+  "independent_gates": {
+    "economic": "PENDING_LOOP2",
+    "model_runtime_provenance": "PENDING_LOOP4",
+    "security_independent_review": "PENDING_LOOP4",
+    "operational_compatibility": "NOT_PROVEN",
+    "ollama_dispatch": "DENY",
+    "real_inference": "NOT_EXECUTED",
+    "flint_groq": "PRESERVED",
+    "night_shift_external_effects": "UNKNOWN_NO_REPLAY"
+  },
+  "next_ready": {
+    "loop2": "Assess all exact used resources and bounded consumption under documented free tiers; do not demand impossible future billing proof.",
+    "loop4": "Independent immutable model quantization provenance and safety; do not bypass PENDING.",
+    "loop3": "Only independently reproduced new defects.",
+    "loop1": "Read-only reconcile suspended Night Shift; no uncertain-effect replay.",
+    "loop5": "Reconcile fresh HEAD and checkpoint only material new evidence. No changes to Factory KCT/DBOS logic in this checkpoint."
+  },
+  "restrictions": [
+    "No production/main changes",
+    "No billing changes",
+    "No real inference",
+    "No new repo/branch/PR/Factory/control plane",
+    "No private data or secrets in public repo",
+    "No bypass of 403",
+    "No rerun unchanged verified tests"
+  ]
+}
