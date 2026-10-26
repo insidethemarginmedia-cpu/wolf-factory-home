@@ -1,0 +1,85 @@
+{
+  "schema": "wolf.ollama.loop2.admission.v7",
+  "observed_at_utc": "2026-10-26T08:45:00Z",
+  "repo": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "b208ce69b275fc3f3a37e15f1683d3d2e675587d",
+  "scope": "read-only account/repository discovery; checkpoint write only; no dispatch/settings changes",
+  "new_evidence": {
+    "registered_workflows": {
+      "count": 3,
+      "names": [
+        "Wolf Factory Night Shift Wakeup",
+        "Private Controller Access Preflight",
+        "Wolf Public Runtime Probe"
+      ],
+      "ollama_synthetic_registered": false,
+      "source": "Authenticated GITHUB_LIST_REPOSITORY_WORKFLOWS, 2026-10-26"
+    },
+    "ollama_branch_workflow": {
+      "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+      "blob_sha": "84651a7648b8f44435f24353d91b1709396d23a4",
+      "event": "workflow_dispatch",
+      "branch_only": true,
+      "dispatch_performed": false,
+      "source": "Authenticated GITHUB_GET_REPOSITORY_CONTENT"
+    },
+    "builder_progress": {
+      "commit": "b208ce69b275fc3f3a37e15f1683d3d2e675587d",
+      "source_commit": "1e5aca104e782ae1fb872de9adb64a346d3329a1",
+      "test_commit": "9dbfb30508b4c10feda7c83ddffca5429e9bf09d",
+      "reported_mock_tests": "17 passed / 0 failed",
+      "independent_verification": "PENDING",
+      "source": "LOOP3-BUILDER-20261026T0840Z.json"
+    },
+    "prior_independent_gate": {
+      "digest_review_binding": "FAIL",
+      "economic_G0": "FAIL",
+      "source": "LOOP4-VERIFIER-20261026-RUN6.json"
+    }
+  },
+  "account_specific_budget_endpoint": {
+    "tool_discovery": "Composio GitHub tool search returned historical billing usage APIs only, no personal budget/alert/hard-stop read action",
+    "official_rest": "GitHub REST budgets documentation describes organization budget endpoints; personal budgets are documented in GitHub UI",
+    "account_budget_read": "NOT_AVAILABLE_VIA_DISCOVERED_CONNECTED_ACTIONS",
+    "spending_hard_stop": "UNKNOWN_DENY",
+    "storage_headroom": "UNKNOWN_DENY",
+    "historical_usage": "NOT_RECHECKED",
+    "source_urls": [
+      "https://docs.github.com/en/rest/billing/budgets",
+      "https://docs.github.com/en/billing/how-tos/set-up-budgets"
+    ]
+  },
+  "registry_provenance": {
+    "image_linux_amd64_manifest_sha256": "459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da",
+    "model_0_5b_manifest_sha256": "4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09",
+    "status": "PREVIOUS_REGISTRY_EVIDENCE_PRESERVED_NOT_REFETCHED",
+    "source": "LOOP2-REGISTRY-PROVENANCE-20261026T0636Z.json",
+    "workflow_immutable_binding": "NOT_APPROVED"
+  },
+  "policy": {
+    "manual_dispatch": "REQUIRES_WORKFLOW_ON_DEFAULT_BRANCH_PER_GITHUB_DOCS; current branch-only workflow not dispatchable",
+    "synthetic_development_test": "CONDITIONALLY_PERMITTED_ONLY_AFTER_ALL_GATES_PASS",
+    "continuous_24x7_backend": "NOT_ADMITTED",
+    "source_urls": [
+      "https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow",
+      "https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow"
+    ]
+  },
+  "admission": {
+    "economic_G0": "UNKNOWN_DENY",
+    "storage": "UNKNOWN_DENY",
+    "registry_source": "PRIOR_PASS_NOT_INDEPENDENT_WORKFLOW_BINDING",
+    "independent_verifier": "PENDING",
+    "dispatch": "DENY",
+    "real_inference": "NOT_PERFORMED",
+    "flint_groq": "PRESERVED",
+    "production": "UNTOUCHED"
+  },
+  "next_ready": {
+    "loop3": "Continue static/mock-only security improvements; replace self-asserted variable digest approval with independently reviewed immutable allowlist; no dispatch.",
+    "loop4": "Independently verify changed builder commits, digest binding, and 17 mocked tests; no claim of real inference.",
+    "loop5": "Keep G0 and dispatch DENY; preserve branch-only workflow and account-specific budget/storage UNKNOWN; no promotion to main without separately authorized and economically admissible route."
+  },
+  "limits": "No authenticated personal budget/hard-stop/storage proof was available; no account settings changed; no inference run."
+}
