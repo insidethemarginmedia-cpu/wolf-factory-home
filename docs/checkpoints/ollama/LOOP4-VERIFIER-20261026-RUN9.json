@@ -1,0 +1,103 @@
+{
+  "schema": "wolf.ollama.loop4.verifier.independent.v9",
+  "observed_at_utc": "2026-10-26T13:44:00Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "efab387fca629d72919f5bfcef055c7b0c6f60db",
+  "original_builder_commit": "24362788d5cc4a7ed947a2fff6f3a7d9fb7ea87e",
+  "fix_commit": "efab387fca629d72919f5bfcef055c7b0c6f60db",
+  "exact_blobs_before": {
+    "scripts/ollama-runner-probe.mjs": "20bd79248900be1cbd1d573a7a6579f77893466d",
+    "scripts/ollama-candidate-pins.mjs": "b8c2fee579de9df34cd394ea86d431cfdb8faded",
+    "tests/ollama-runner-probe.test.mjs": "c3abdc190d0541f211a1aa9f58b64e548ec684d1",
+    ".github/workflows/ollama-public-synthetic-qualification.yml": "2e4db81ebb02860f4c514966a0d0739fe4666daa"
+  },
+  "exact_blobs_after": {
+    "scripts/ollama-runner-probe.mjs": "bdeb9cc2089c595d899efede779926192e9c1808",
+    "scripts/ollama-candidate-pins.mjs": "b8c2fee579de9df34cd394ea86d431cfdb8faded",
+    "tests/ollama-runner-probe.test.mjs": "f1a3348d412a5331151b416046504291a48d5fb4",
+    ".github/workflows/ollama-public-synthetic-qualification.yml": "2e4db81ebb02860f4c514966a0d0739fe4666daa"
+  },
+  "verifier": {
+    "runtime": "Node v22.16.0",
+    "method": "Composio GitHub read; offline exact source reconstruction verified by git hash-object; mocked fetch only",
+    "independent_test_sha256": "fe1d06ee9bca6d5beff1fa802e99b7fe27b54b8c56030aa6b01d54ec105c36e8",
+    "real_network_calls": 0
+  },
+  "before_fix": {
+    "reviewStatus": "PENDING",
+    "callerReviewFlag": "PASS",
+    "mockFetchCalls": 2,
+    "mockGenerateCalls": 1,
+    "returnedState": "OLLAMA_API_RESPONSE_VALIDATED",
+    "markerMatched": true,
+    "expected": "reject before any fetch",
+    "node_check_exit": 0,
+    "node_test_exit": 1,
+    "tests": 1,
+    "pass": 0,
+    "fail": 1,
+    "verdict": "BYPASS_CONFIRMED_MOCK_ONLY"
+  },
+  "after_fix": {
+    "reviewStatus": "PENDING",
+    "callerReviewFlag": "PASS",
+    "mockFetchCalls": 0,
+    "mockGenerateCalls": 0,
+    "returnedState": null,
+    "rejectedReason": "OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED",
+    "node_check_exit": 0,
+    "node_test_exit": 0,
+    "tests": 1,
+    "pass": 1,
+    "fail": 0,
+    "verdict": "PENDING_REVIEW_GATE_VERIFIED_FOR_DIRECT_PROBE"
+  },
+  "downstream_synthetic": {
+    "fixture": "Temporary synthetic APPROVED fixture, not G0/independent review",
+    "cases": [
+      "wrong caller model digest",
+      "wrong image digest",
+      "observed tag digest mismatch",
+      "error:null receipt",
+      "marker mismatch",
+      "remote endpoint",
+      "noncooperative fetch timeout"
+    ],
+    "tests": 7,
+    "pass": 7,
+    "fail": 0,
+    "node_check_exit": 0,
+    "node_test_exit": 0,
+    "real_inference": false
+  },
+  "workflow": {
+    "blob_unchanged": true,
+    "actionlint_rerun": false,
+    "yaml_rerun": false,
+    "reason": "No workflow change; prior tests not repeated"
+  },
+  "policy": {
+    "G0": "UNKNOWN_DENY",
+    "dispatch": "DENY",
+    "reviewStatus": "PENDING",
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "Flint_Groq": "PRESERVED",
+    "main_production": "UNTOUCHED"
+  },
+  "limitations": [
+    "Mock-only results, not real Ollama inference",
+    "Synthetic APPROVED fixture is never economic or provenance attestation",
+    "No fresh workflow YAML/actionlint run because blob unchanged",
+    "No independent account-specific G0 economic evidence"
+  ],
+  "NEXT_READY": {
+    "loop3": "Keep fail-closed reviewStatus gate and regression test; leave source PENDING",
+    "loop4": "Retest affected cases only on new blobs",
+    "loop2_loop5": "Independent digest/license and account-specific G0 evidence before dispatch",
+    "dispatch": "DENY until independently proven"
+  }
+}
