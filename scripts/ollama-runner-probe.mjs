@@ -5,21 +5,34 @@ const MAX_BYTES = 16384;
 // Only models with reviewed licensing are eligible. 3b remains denied pending review.
 const MODELS = new Set(['qwen2.5-coder:0.5b', 'qwen2.5-coder:1.5b']);
 
-async function boundedJson(response) {
+function withDeadline(promise, deadline) {
+  const remaining = Math.max(0, Math.ceil(deadline - performance.now()));
+  if (remaining === 0) return Promise.reject(new Error('OLLAMA_TIMEOUT'));
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('OLLAMA_TIMEOUT')), remaining);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+async function boundedJson(response, deadline) {
   if (!response.body?.getReader) throw new Error('OLLAMA_BODY_UNREADABLE');
   const reader = response.body.getReader();
   const chunks = [];
   let size = 0;
   try {
     while (true) {
-      const {done, value} = await reader.read();
+      const {done, value} = await withDeadline(reader.read(), deadline);
       if (done) break;
       size += value.byteLength;
       if (size > MAX_BYTES) throw new Error('OLLAMA_RESPONSE_TOO_LARGE');
       chunks.push(value);
     }
   } finally {
-    await reader.cancel().catch(() => {});
+    // Never let a non-cooperative reader.cancel() block completion or timeout.
+    void Promise.resolve().then(() => reader.cancel()).catch(() => {});
   }
   const bytes = new Uint8Array(size);
   let offset = 0;
@@ -38,7 +51,7 @@ export function requireApprovedModelDigest({expected, observed}) {
   return observed;
 }
 
-export async function probeOllama({env = process.env, fetchImpl = globalThis.fetch} = {}) {
+export async function probeOllama({env = process.env, fetchImpl = globalThis.fetch, timeoutMs = 30000} = {}) {
   if (env.WOLF_OLLAMA_PROBE_ENABLED !== '1') throw new Error('OLLAMA_PROBE_OPT_IN_REQUIRED');
   if (env.WOLF_OLLAMA_ZERO_COST_VERIFIED !== '1') throw new Error('ZERO_COST_ADMISSION_REQUIRED');
   const model = env.WOLF_OLLAMA_PROBE_MODEL;
@@ -49,14 +62,17 @@ export async function probeOllama({env = process.env, fetchImpl = globalThis.fet
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.port !== '11434' ||
       (url.pathname !== '/' && url.pathname !== '') || url.search || url.hash || url.username || url.password)
     throw new Error('OLLAMA_LOOPBACK_ONLY');
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
+    throw new Error('OLLAMA_TIMEOUT_LIMIT_EXCEEDED');
   const start = performance.now();
-  const response = await fetchImpl('http://127.0.0.1:11434/api/generate', {
+  const deadline = start + timeoutMs;
+  const response = await withDeadline(fetchImpl('http://127.0.0.1:11434/api/generate', {
     method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({model, prompt: PROMPT, stream: false}),
-    signal: AbortSignal.timeout(30000), redirect: 'error',
-  });
+    signal: AbortSignal.timeout(timeoutMs), redirect: 'error',
+  }), deadline);
   if (!response.ok) throw new Error('OLLAMA_HTTP_' + response.status);
-  const data = await boundedJson(response);
+  const data = await boundedJson(response, deadline);
   // Ollama errors must not be promoted by otherwise valid-looking fields.
   if (data && Object.hasOwn(data, 'error') && data.error !== null &&
       (typeof data.error !== 'string' || data.error !== '')) {
