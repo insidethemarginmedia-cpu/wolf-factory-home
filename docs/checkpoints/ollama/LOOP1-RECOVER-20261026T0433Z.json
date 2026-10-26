@@ -1,0 +1,65 @@
+{
+  "schema": "wolf.ollama.loop1.recovery.v1",
+  "observed_date_utc": "2026-10-26",
+  "scope": "PUBLIC_METADATA_RECOVERY_AND_DURABLE_CHECKPOINT_ONLY",
+  "private_adapter": {
+    "repository": "donraposo1-source/wolf-factory-home",
+    "branch": "feat/jarvis-ollama-isolated-20261016",
+    "pr": 2,
+    "head": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+    "status": "DRAFT_NOT_INTEGRATED",
+    "writes": "NONE"
+  },
+  "public_runtime": {
+    "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+    "branch": "feat/public-runtime-probe-20261022",
+    "observed_head": "563bf744c9bb10837a755d7c62497517fb8be88a",
+    "main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+    "new_workflow": {
+      "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+      "blob_sha": "5754e99af35601b04a1711effa2a0ff08b3b3490",
+      "feature_branch_present": true,
+      "main_present": false,
+      "trigger": "workflow_dispatch_only",
+      "dispatch": "NOT_OBSERVED",
+      "real_inference": "NOT_OBSERVED",
+      "builder_static_checks": "11_PATTERN_CHECKS_ONLY",
+      "independent_verification": "PENDING",
+      "official_image_digest": "NOT_VERIFIED",
+      "account_future_budget_headroom": "UNKNOWN_DENY"
+    }
+  },
+  "cross_loop_evidence": {
+    "loop2": "docs/checkpoints/ollama/LOOP2-ACCOUNT-ACTIONS-ADMISSION-20261026T0428Z.json",
+    "loop3": "docs/checkpoints/ollama/LOOP3-BUILDER-20261026-03.json",
+    "loop5": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-02.json",
+    "model_3b": "DENIED_PENDING_LICENSE_REVIEW",
+    "flint_groq": "PRESERVED_UNCHANGED"
+  },
+  "ci": {
+    "public_head_check_runs": 0,
+    "private_pr_head_check_runs": 0,
+    "latest_observed_night_shift_run_id": 40251817855,
+    "night_shift_conclusion": "failure",
+    "night_shift_failed_step": "Require currently observable free provider quota before inference",
+    "other_jobs": "SKIPPED",
+    "groq_free_quota": "UNKNOWN_NOT_ADMITTED"
+  },
+  "governance": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "production_changes": "NONE",
+    "private_source_public_runner": "DENY",
+    "new_infrastructure": "NONE"
+  },
+  "next_ready": [
+    "Loop 2: resolve account-specific future budget/storage gates and verify official Ollama image digest without trial/billing.",
+    "Loop 3: keep synthetic workflow on feature branch; no dispatch until explicit economic gates and independent review PASS.",
+    "Loop 4: independently parse workflow, execute tests with exit-code evidence, inspect security and reject 3B model.",
+    "Loop 5: reconcile concurrent checkpoints; no main/default-branch promotion without separate authorization.",
+    "Loop 1: on next cycle re-read private PR #2, both branch HEADs, Actions runs and cross-loop checkpoints."
+  ],
+  "outcome": "CONCURRENT_WORK_RECOVERED_NEW_MANUAL_WORKFLOW_PREPARED_NOT_DISPATCHED_NO_INFERENCE"
+}
