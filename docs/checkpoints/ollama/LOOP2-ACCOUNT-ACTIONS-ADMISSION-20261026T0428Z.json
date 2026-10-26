@@ -1,0 +1,94 @@
+{
+  "schema": "wolf.ollama.loop2.account_admission.v1",
+  "observed_date_utc": "2026-10-26",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "inspected_head": "55ec0502cc9d6c08f94e564f3f401e9fd0eab95a",
+  "scope": "Read-only account and repository admissibility audit; this checkpoint only, no model inference or deployment",
+  "gates": {
+    "repository_public": {
+      "status": "PASS",
+      "evidence": "GitHub GET_A_REPOSITORY: private=false, visibility=public"
+    },
+    "actions_enabled": {
+      "status": "PASS",
+      "evidence": "GitHub GET_GITHUB_ACTIONS_PERMISSIONS_FOR_A_REPOSITORY: enabled=true"
+    },
+    "workflow_token_readonly_default": {
+      "status": "PASS",
+      "evidence": "GitHub GET_DEFAULT_WORKFLOW_PERMISSIONS_FOR_A_REPOSITORY: read; PR review approval=false"
+    },
+    "actions_all_allowed": {
+      "status": "SECURITY_REVIEW_REQUIRED",
+      "evidence": "GitHub Actions policy: allowed_actions=all; sha_pinning_required=false",
+      "requirement": "Pin third-party actions and installers before dispatch; no secrets or private source"
+    },
+    "actions_current_account_net_cost": {
+      "status": "PASS_OBSERVED_NOT_FUTURE_GUARANTEE",
+      "evidence": "Authenticated GitHub billing usage summary and usage report, October 2026, Actions netAmount=0 USD; exact account billing data intentionally not published"
+    },
+    "future_budget_and_storage_headroom": {
+      "status": "UNKNOWN_DENY",
+      "reason": "Billing usage API shows past usage, not spending budget/cap or shared artifact/Packages storage headroom; no budget/settings endpoint verified"
+    },
+    "public_standard_runner_price": {
+      "status": "PASS_DOCUMENTED",
+      "evidence": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+      "constraint": "Only standard public runners; larger runners chargeable"
+    },
+    "runner_capacity": {
+      "status": "PASS_DOCUMENTED_ONLY",
+      "evidence": "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
+      "documented": "ubuntu-latest public: 4 CPU, 16 GB RAM, 14 GB SSD; no Ollama measurement"
+    },
+    "runner_job_time": {
+      "status": "PASS_DOCUMENTED_ONLY",
+      "evidence": "https://docs.github.com/en/actions/reference/limits",
+      "documented": "GitHub-hosted job maximum 6 hours"
+    },
+    "github_actions_dev_test_only": {
+      "status": "PASS_CONDITIONAL",
+      "evidence": "https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features",
+      "constraint": "Only repository-related development/test; not 24x7 commercial service or serverless inference backend"
+    },
+    "ollama_workflow_exists": {
+      "status": "FAIL_NOT_PRESENT",
+      "evidence": "At inspected HEAD .github/workflows contains night-shift-wakeup.yml, private-controller-preflight.yml, public-runtime-probe.yml; no Ollama workflow"
+    },
+    "qwen2_5_coder_0_5b_license": {
+      "status": "PASS_APACHE_2_0",
+      "evidence": "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct"
+    },
+    "qwen2_5_coder_1_5b_license": {
+      "status": "PASS_APACHE_2_0",
+      "evidence": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct"
+    },
+    "qwen2_5_coder_3b_license": {
+      "status": "DENY_PENDING_REVIEW",
+      "evidence": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct",
+      "reason": "qwen-research, not Apache-2.0"
+    },
+    "real_ollama_inference": {
+      "status": "UNKNOWN_NOT_OBSERVED",
+      "reason": "Existing isolated script and mocked tests are not evidence of model execution"
+    },
+    "production_worker": {
+      "status": "DENY_NOT_QUALIFIED",
+      "reason": "No permanent zero-cost hosting or full KCT/DBOS verified"
+    }
+  },
+  "next_ready": {
+    "loop3": "Prepare only a manual, bounded, public synthetic Ollama 0.5B development/test workflow, no artifacts/cache/secrets, pinned dependencies and explicit economic admission; do not dispatch before gates pass.",
+    "loop4": "Independently inspect exact SHA and actual workflow run, model identity/digest, RAM/CPU/disk/time and receipt; verify fail-closed behavior and no 3B execution.",
+    "loop5": "Maintain Flint and Groq, forbid production integration and 24x7 Actions backend; require durable independent evidence before Ollama qualification."
+  },
+  "controls": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "private_data_public_runner": "DENY",
+    "production_changes": "DENY"
+  },
+  "status": "ACCOUNT_ZERO_BILLED_OBSERVED; TEST_PREPARATION_ONLY; INFERENCE_NOT_VERIFIED; PRODUCTION_DENY"
+}
