@@ -1,0 +1,77 @@
+{
+  "schema": "WolfSuspendedMissionReconciliation/v1",
+  "missionId": "WOLF_WAKEUP_MANUAL_40243262782",
+  "state": "VERIFIED_NO_MISSION_EXECUTION_OBSERVED",
+  "decision": "KEEP_SUSPENDED_NO_AUTOMATIC_RETRY",
+  "scope": "Only this correlated GitHub workflow execution; no claim about account-wide API activity.",
+  "originalJournal": {
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40243262782.json",
+    "blob": "99fe267e2962aa9bd664ffe36792b530f9885f92",
+    "state": "SUSPENDED",
+    "automaticRetry": false,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  },
+  "evidence": {
+    "runId": 40243262782,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40243262782",
+    "event": "workflow_dispatch",
+    "headSha": "6f7bdf1ba616906ce6adf48d690c4b1eeaa2b8bb",
+    "referencedWorkflows": [
+      {
+        "path": "insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@226079cc194aeccfe2717b299949f9c0d56b702d",
+        "sha": "226079cc194aeccfe2717b299949f9c0d56b702d"
+      }
+    ],
+    "jobs": [
+      {
+        "id": 121319403809,
+        "name": "existing-factory / night-shift-admission",
+        "conclusion": "failure"
+      },
+      {
+        "id": 121319461734,
+        "name": "existing-factory / service-access",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121319461888,
+        "name": "existing-factory / runner-loss-prepare",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121319461949,
+        "name": "existing-factory / opencode-runtime",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121319462035,
+        "name": "existing-factory / security-tests",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121319462070,
+        "name": "existing-factory / runner-loss-recover",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121319462189,
+        "name": "existing-factory / integrated-factory",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121319462557,
+        "name": "existing-factory / dbos-runtime",
+        "conclusion": "skipped"
+      }
+    ],
+    "missionOwnerInvoked": false,
+    "dbosServiceStarted": false,
+    "inferencePerformed": false,
+    "executorStarted": false,
+    "gitJournalEffectsPreserved": true,
+    "reason": "ALL_MISSION_EXECUTION_JOBS_SKIPPED_BEFORE_OWNER_OR_DBOS_START"
+  },
+  "journalReset": false,
+  "journalDeleted": false,
+  "missionReplayed": false
+}

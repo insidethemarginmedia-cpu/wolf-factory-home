@@ -1,0 +1,77 @@
+{
+  "schema": "WolfSuspendedMissionReconciliation/v1",
+  "missionId": "WOLF_WAKEUP_MANUAL_40243638946",
+  "state": "VERIFIED_NO_MISSION_EXECUTION_OBSERVED",
+  "decision": "KEEP_SUSPENDED_NO_AUTOMATIC_RETRY",
+  "scope": "Only this correlated GitHub workflow execution; no claim about account-wide API activity.",
+  "originalJournal": {
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40243638946.json",
+    "blob": "7ecb2dd4bccc6d3d562676023c772e422136d337",
+    "state": "SUSPENDED",
+    "automaticRetry": false,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  },
+  "evidence": {
+    "runId": 40243638946,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40243638946",
+    "event": "workflow_dispatch",
+    "headSha": "33747f312ffbeefe0be51a7731a71e9d9598e20f",
+    "referencedWorkflows": [
+      {
+        "path": "insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1",
+        "sha": "c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1"
+      }
+    ],
+    "jobs": [
+      {
+        "id": 121320547979,
+        "name": "existing-factory / night-shift-admission",
+        "conclusion": "failure"
+      },
+      {
+        "id": 121320590882,
+        "name": "existing-factory / security-tests",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121320591211,
+        "name": "existing-factory / dbos-runtime",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121320591404,
+        "name": "existing-factory / runner-loss-prepare",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121320591411,
+        "name": "existing-factory / service-access",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121320591428,
+        "name": "existing-factory / integrated-factory",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121320591445,
+        "name": "existing-factory / runner-loss-recover",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 121320591669,
+        "name": "existing-factory / opencode-runtime",
+        "conclusion": "skipped"
+      }
+    ],
+    "missionOwnerInvoked": false,
+    "dbosServiceStarted": false,
+    "inferencePerformed": false,
+    "executorStarted": false,
+    "gitJournalEffectsPreserved": true,
+    "reason": "ALL_MISSION_EXECUTION_JOBS_SKIPPED_BEFORE_OWNER_OR_DBOS_START"
+  },
+  "journalReset": false,
+  "journalDeleted": false,
+  "missionReplayed": false
+}
