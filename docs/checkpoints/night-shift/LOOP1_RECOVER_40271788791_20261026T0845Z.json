@@ -1,0 +1,118 @@
+{
+  "schema": "WolfLoop1RecoveryEvidence/v3",
+  "kind": "READ_ONLY_RECONCILIATION",
+  "observedAtUtc": "2026-10-26T08:45Z",
+  "source": {
+    "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+    "mainHead": "75ed208929094b699b950386f5f9223fb69385f3",
+    "featureBranch": "feat/public-runtime-probe-20261022",
+    "featureHeadBeforeWrite": "b208ce69b275fc3f3a37e15f1683d3d2e675587d",
+    "privateOllamaPR": "donraposo1-source/wolf-factory-home#2",
+    "privateOllamaPRHead": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+    "privateFactoryPinnedSha": "2c1c05ba23867755093dc2605702f60d50a12aa3"
+  },
+  "run": {
+    "id": 40271788791,
+    "event": "schedule",
+    "attempt": 1,
+    "headSha": "75ed208929094b699b950386f5f9223fb69385f3",
+    "conclusion": "failure",
+    "failedJobId": 121405978848,
+    "failedStep": "Require currently observable free provider quota before inference",
+    "skippedDependentJobs": 7,
+    "lastObservedWorkflowRunId": 40271788791,
+    "logs": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40271788791"
+  },
+  "durableSuspension": {
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1.json",
+    "originalCommit": "e1cf5db91ae08ccc37a1d053f1bd27958cf93faf",
+    "blobSha": "13791fffba6b5dc095a3aac818e467faa2e66ead",
+    "state": "SUSPENDED",
+    "ownerRun": "40271788791",
+    "attemptBudget": 1,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+    "automaticRetry": false,
+    "unchanged": true
+  },
+  "quotaDiagnosis": {
+    "classification": "UNKNOWN_NOT_PROVEN_EXHAUSTED",
+    "error": "GROQ_FREE_QUOTA_UNKNOWN_OR_EXHAUSTED",
+    "endpoint": "GET https://api.groq.com/openai/v1/models",
+    "sourceSha": "2c1c05ba23867755093dc2605702f60d50a12aa3",
+    "sourcePath": "scripts/wolf-night-shift-wakeup.mjs",
+    "sourceLines": [
+      38,
+      39,
+      40,
+      41
+    ],
+    "sourcePredicate": "missing or nonnumeric remaining-requests/remaining-tokens rejected before threshold evaluation",
+    "observedHeaderValues": "NOT_LOGGED",
+    "quotaExhaustedProven": false,
+    "inferenceExecutedByFailedRun": false,
+    "externalEffectsReconciled": false
+  },
+  "concurrentWork": {
+    "loop3": {
+      "checkpoint": "docs/checkpoints/ollama/LOOP3-BUILDER-20261026T0840Z.json",
+      "builderTestResult": "17_PASS_0_FAIL",
+      "mode": "synthetic_mock_only",
+      "independentVerificationOfLatestChanges": "PENDING",
+      "realOllamaInference": false
+    },
+    "loop4": {
+      "checkpoint": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026-RUN6.json",
+      "observedHead": "3e285fcea6bb47318e036203bf67174d08c4e289",
+      "policyResult": "FAIL_CLOSED",
+      "note": "Verifier evidence predates latest Loop3 builder changes"
+    },
+    "loop2": {
+      "economicGate": "UNKNOWN_DENY"
+    },
+    "loop5": {
+      "externalEffectReconciliation": "PENDING"
+    }
+  },
+  "actions": {
+    "reRun": false,
+    "reDispatch": false,
+    "fenceChanged": false,
+    "attemptBudgetChanged": false,
+    "suspensionChanged": false,
+    "mainChanged": false,
+    "productionChanged": false,
+    "modelInference": false
+  },
+  "nextReady": [
+    {
+      "owner": "Loop2",
+      "task": "Obtain account-specific non-inference Groq quota evidence and permanent EUR0 runner/storage admission; do not label quota exhausted without numeric proof."
+    },
+    {
+      "owner": "Loop4",
+      "task": "Independently verify exact new Loop3 source/test commits and deadline behavior, policy bindings, digest checks; no dispatch while FAIL/UNKNOWN."
+    },
+    {
+      "owner": "Loop5",
+      "task": "Reconcile external effect ledger and ownerRun/fence before any future admission; preserve SUSPENDED and automaticRetry=false."
+    },
+    {
+      "owner": "Loop1",
+      "task": "Read latest branch HEADs, runs and suspension blob next cycle; avoid repeating effects."
+    }
+  ],
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "Flint": "PRESERVE",
+    "Groq": "PRESERVE",
+    "Ollama": "ADDITIONAL_UNQUALIFIED",
+    "noMainWrites": true,
+    "noProductionWrites": true,
+    "noPrivateCodePublicRunner": true,
+    "noToshiba": true,
+    "noTermux": true
+  }
+}
