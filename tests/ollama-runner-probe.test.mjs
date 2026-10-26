@@ -94,3 +94,31 @@ test('post-pull digest must equal independently approved immutable digest', () =
   assert.throws(() => requireApprovedModelDigest({expected: approved, observed: 'tag-is-not-digest'}),
     /OLLAMA_MODEL_DIGEST_NOT_OBSERVED/);
 });
+
+test('fetch ignoring abort cannot outlive the independent deadline', async () => {
+  await assert.rejects(probeOllama({env, timeoutMs: 25,
+    fetchImpl: () => new Promise(() => {})}), /OLLAMA_TIMEOUT/);
+});
+
+test('reader ignoring abort cannot outlive the independent deadline', async () => {
+  const reader = {read: () => new Promise(() => {}), cancel: () => new Promise(() => {})};
+  await assert.rejects(probeOllama({env, timeoutMs: 25,
+    fetchImpl: async () => ({ok: true, body: {getReader: () => reader}})}), /OLLAMA_TIMEOUT/);
+});
+
+test('non-cooperative reader.cancel cannot suppress a valid receipt', async () => {
+  const bytes = new TextEncoder().encode(JSON.stringify(receipt));
+  let calls = 0;
+  const reader = {read: async () => (++calls === 1 ? {done: false, value: bytes} : {done: true}),
+    cancel: () => new Promise(() => {})};
+  const result = await probeOllama({env, timeoutMs: 200,
+    fetchImpl: async () => ({ok: true, body: {getReader: () => reader}})});
+  assert.equal(result.markerMatched, true);
+});
+
+test('timeout cannot exceed the fixed 30-second maximum', async () => {
+  let calls = 0;
+  await assert.rejects(probeOllama({env, timeoutMs: 30001,
+    fetchImpl: async () => {calls++;}}), /OLLAMA_TIMEOUT_LIMIT_EXCEEDED/);
+  assert.equal(calls, 0);
+});
