@@ -1,0 +1,69 @@
+{
+  "schema": "wolf.ollama.loop3.builder.v10",
+  "observed_at_utc": "2026-10-26T11:36:41.905660Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "fix_commit": "5776ac1b993cab4157098acd40b69bb221d7a6d2",
+  "precheckpoint_head": "5776ac1b993cab4157098acd40b69bb221d7a6d2",
+  "changes": [
+    "Source-controlled candidate registry image amd64 and 0.5b model digests (not independent approval).",
+    "Direct probe checks candidate binding and review flag before network, then reads /api/tags and requires observed post-pull digest match before /api/generate.",
+    "Workflow compares image/model variables with source-controlled candidate pins before docker pull; no dispatch.",
+    "Tests cover mismatched/ambiguous/tag-only digests, missing review flag, error receipts, marker, timeout."
+  ],
+  "exact_published_blobs": {
+    "scripts/ollama-candidate-pins.mjs": "b8c2fee579de9df34cd394ea86d431cfdb8faded",
+    "scripts/ollama-runner-probe.mjs": "20bd79248900be1cbd1d573a7a6579f77893466d",
+    "tests/ollama-runner-probe.test.mjs": "c3abdc190d0541f211a1aa9f58b64e548ec684d1",
+    ".github/workflows/ollama-public-synthetic-qualification.yml": "2e4db81ebb02860f4c514966a0d0739fe4666daa"
+  },
+  "builder_verification": {
+    "node_version": "v24.22.1",
+    "node_tests": 24,
+    "node_pass": 24,
+    "node_fail": 0,
+    "node_exit_code": 0,
+    "published_blob_match": "4/4 PASS",
+    "node_check": "3/3 exit 0",
+    "yaml_parse": "PASS",
+    "bash_n": "7/7 exit 0",
+    "actionlint": "NOT_AVAILABLE",
+    "mocked_responses_only": true,
+    "independent_verifier": "PENDING"
+  },
+  "marker_consumers": {
+    "probe": "Only exact marker yields markerMatched true",
+    "workflow": "Requires result.markerMatched === true; false rejected",
+    "full_independent_consumer_scan": "PENDING"
+  },
+  "candidate_provenance": "docs/checkpoints/ollama/LOOP2-REGISTRY-PROVENANCE-20261026T0636Z.json",
+  "blocking_gates": {
+    "independent_approval_of_pinned_source": "PENDING",
+    "account_specific_budget_hard_stop": "UNKNOWN_DENY",
+    "storage_headroom": "UNKNOWN_DENY",
+    "image_runtime_identity_direct_probe": "NOT_ATTESTED_BY_OLLAMA_API",
+    "image_identity_workflow": "SOURCE_PIN_COMPARISON_ONLY_NO_RUN",
+    "review_flag": "MUTABLE_FLAG_NOT_INDEPENDENT_EVIDENCE",
+    "real_inference": "NOT_PERFORMED",
+    "workflow_dispatch": "NOT_PERFORMED",
+    "factory_integration": "NOT_PROVEN"
+  },
+  "next_ready": [
+    "Loop 4 independently test exact four new blobs with exit codes, adversarial marker/error/digest cases, YAML and Bash; review immutable pin provenance and source SHA.",
+    "Loop 2/5 independently establish economic G0 and storage budget hard stop; otherwise DENY.",
+    "Kai/Loop4 must approve exact source-controlled candidate digests and binding; mutable vars alone are not review evidence.",
+    "Do not dispatch or promote main while any gate is UNKNOWN, FAIL or PENDING."
+  ],
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "main_changed": false,
+    "production_changed": false,
+    "new_factory_repo_branch_agent": false,
+    "private_code_on_public_runner": false,
+    "flint_groq": "PRESERVED",
+    "toshba_termux": "NOT_USED"
+  }
+}
