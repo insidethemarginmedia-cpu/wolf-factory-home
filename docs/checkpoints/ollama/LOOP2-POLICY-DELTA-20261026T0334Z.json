@@ -1,0 +1,63 @@
+{
+  "schema": "wolf.ollama.loop2.policy_delta.v1",
+  "observed_at_utc": "2026-10-26T03:34:00Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "baseline_head": "7429a0bd57fefbd9bd308413e93ee7e06391310d",
+  "scope": "Public synthetic Ollama development qualification only; no private code, secrets, persistent service, production or replacement of Flint/Groq",
+  "gates": {
+    "public_standard_runner_price": {
+      "status": "PASS",
+      "evidence": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+      "detail": "GitHub says standard GitHub-hosted runners are free for public repositories; larger runners are always charged."
+    },
+    "runner_documented_hardware": {
+      "status": "PASS_DOC_ONLY",
+      "evidence": "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
+      "detail": "ubuntu-latest public standard: 4 CPU, 16 GB RAM, 14 GB SSD; no Ollama runtime measurement."
+    },
+    "runner_for_development_test": {
+      "status": "PASS_CONDITIONAL",
+      "evidence": "https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features",
+      "detail": "Actions is intended for software development/testing; test must relate to public repository and impose proportionate burden."
+    },
+    "runner_as_continuous_ai_backend": {
+      "status": "FAIL",
+      "evidence": "https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features",
+      "detail": "Actions must not be used as serverless application or stand-alone commercial service; ephemeral jobs cannot serve as an always-on inference endpoint."
+    },
+    "model_qwen2_5_coder_0_5b_instruct_license": {
+      "status": "PASS_APACHE_2_0",
+      "evidence": "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct"
+    },
+    "model_qwen2_5_coder_1_5b_instruct_license": {
+      "status": "PASS_APACHE_2_0",
+      "evidence": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct"
+    },
+    "model_qwen2_5_coder_3b_instruct_license": {
+      "status": "FAIL_FOR_COMMERCIAL_USE",
+      "evidence": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct",
+      "detail": "Official model card identifies qwen-research, not Apache-2.0; exclude from Wolf commercial worker qualification."
+    },
+    "account_storage_headroom": {
+      "status": "UNKNOWN_DENY",
+      "evidence": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+      "detail": "Artifact/cache storage can be metered; account-level usage and budgets not independently checked. Avoid uploads/caches."
+    },
+    "real_ollama_inference": {
+      "status": "UNKNOWN_NOT_OBSERVED",
+      "detail": "No Ollama inference receipt or measured resource profile in this Loop 2 run."
+    },
+    "private_data_isolation": {
+      "status": "POLICY_REQUIRED_NOT_RUNTIME_PROVEN",
+      "detail": "Never checkout private Factory or expose private prompts/secrets in public runner."
+    }
+  },
+  "next_ready": [
+    "Loop 3: prepare bounded workflow_dispatch-only public synthetic 0.5B Ollama smoke test, with no artifact/cache upload, no secrets, explicit timeout and no persistent server, only after policy gate review.",
+    "Loop 4: independently verify actual run SHA, model digest, inference receipt, CPU/RAM/disk/time, failure handling, no leakage; do not confuse mock tests with inference.",
+    "Loop 5: enforce no production integration and maintain Flint/Groq while Ollama remains NOT_QUALIFIED."
+  ],
+  "status": "DEVELOPMENT_TEST_ONLY; PRODUCTION_WORKER_NOT_ADMITTED",
+  "eur_spend_authorized": 0
+}
