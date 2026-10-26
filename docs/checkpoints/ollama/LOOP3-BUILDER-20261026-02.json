@@ -1,0 +1,32 @@
+{
+  "schema": "wolf.ollama.loop3.builder.v1",
+  "date_utc": "2026-10-26",
+  "public_repo": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "source_commit": "5c4c3f31306c12c336e6ef64d26426f97b54f214",
+  "source_paths": [
+    "scripts/ollama-runner-probe.mjs",
+    "tests/ollama-runner-probe.test.mjs"
+  ],
+  "change": "Removed qwen2.5-coder:3b from runtime allowlist because Loop 2 license admission DENY_UNTIL_LICENSE_REVIEW; added negative test ensuring no fetch for 3b and positive synthetic validation for 1.5b.",
+  "local_test": {
+    "command": "node --test tests/ollama-runner-probe.test.mjs",
+    "node_version": "v22.16.0",
+    "passed": 10,
+    "failed": 0,
+    "mocked_fetch": true,
+    "real_ollama_inference": false
+  },
+  "github_actions_inference": "NOT_DISPATCHED",
+  "private_factory_integration": "NOT_PERFORMED",
+  "private_pr_2": "UNMODIFIED",
+  "existing_workers": "FLINT_AND_GROQ_UNCHANGED",
+  "cost_controls": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  },
+  "admission": "ONLY_BOUNDED_REPOSITORY_RELATED_SYNTHETIC_DEV_TESTS_CONDITIONAL",
+  "next_ready": "Independently verify account-specific zero-cost and runner constraints; only then dispatch a bounded public synthetic Ollama 0.5b probe with no private source/secrets/artifacts or caches; verify real inference before worker integration."
+}
