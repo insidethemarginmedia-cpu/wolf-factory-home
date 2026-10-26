@@ -1,0 +1,69 @@
+{
+  "schema": "wolf.loop1.recover.v1",
+  "observedAtUtc": "2026-10-26T12:32:29Z",
+  "role": "LOOP1_RECOVER",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "publicRuntime": {
+    "mainHead": "75ed208929094b699b950386f5f9223fb69385f3",
+    "qualificationBranch": "feat/public-runtime-probe-20261022",
+    "qualificationPrewriteHead": "4b8caee20346ef00f77e4461eba852fa8bf6d6c0",
+    "qualificationHeadSource": "GITHUB_GET_A_REFERENCE"
+  },
+  "privateRuntimePR": {
+    "repository": "donraposo1-source/wolf-factory-home",
+    "number": 2,
+    "head": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+    "state": "OPEN_DRAFT"
+  },
+  "originalNightShift": {
+    "runId": 40271788791,
+    "runConclusion": "failure",
+    "originalSuspensionCommit": "e1cf5db91ae08ccc37a1d053f1bd27958cf93faf",
+    "journalPath": "docs/checkpoints/night-shift/WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1.json",
+    "journalBlobSha": "13791fffba6b5dc095a3aac818e467faa2e66ead",
+    "state": "SUSPENDED",
+    "attemptBudget": 1,
+    "automaticRetry": false,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+    "groqQuota": "UNKNOWN_NOT_PROVEN_EXHAUSTED"
+  },
+  "laterScheduledRun": {
+    "runId": 40313736353,
+    "conclusion": "success",
+    "admissionJob": "success",
+    "quotaGateStep": "skipped",
+    "otherJobs": "7_SKIPPED",
+    "interpretation": "GUARD_STOP_NOT_FACTORY_RESUMPTION",
+    "externalEffectsRepeated": "NOT_INDEPENDENTLY_PROVEN"
+  },
+  "concurrentChanges": {
+    "loop3Commit": "5776ac1b993cab4157098acd40b69bb221d7a6d2",
+    "loop3Summary": "Candidate image/model pins and digest-gated direct probe; verification pending",
+    "loop5GovernorCommit": "4b8caee20346ef00f77e4461eba852fa8bf6d6c0",
+    "loop5GovernorCheckpoint": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-RUN6.json",
+    "ciCheckRunsForQualificationHead": 0
+  },
+  "admission": {
+    "groqQuota": "UNKNOWN_DENY",
+    "ollamaEconomicG0": "UNKNOWN_DENY",
+    "ollamaRealInference": "NOT_PROVEN",
+    "flintGroq": "PRESERVE",
+    "production": "UNMODIFIED"
+  },
+  "nextReady": {
+    "loop1": "Read-only reconcile next HEADs, jobs, journal and external effects; no replay",
+    "loop2": "Account-specific read-only quota and zero-cost proof without inference",
+    "loop4": "Independent adversarial exact-blob verification of Loop3 digest gates",
+    "loop5": "Reconcile external effects and governor admission; preserve suspension"
+  },
+  "restrictions": [
+    "EUR_SPEND=0",
+    "COST_UNKNOWN=DENY",
+    "PAID_FALLBACK=DENY",
+    "TRIAL_CREDIT=DENY",
+    "NO_RETRY",
+    "NO_FENCE_CHANGE",
+    "NO_MAIN_OR_PRODUCTION_CHANGE",
+    "NO_PRIVATE_DATA_IN_PUBLIC_RUNNER"
+  ]
+}
