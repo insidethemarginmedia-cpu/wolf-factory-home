@@ -1,0 +1,89 @@
+{
+  "schema": "wolf.ollama.loop4.independent_verifier.v1",
+  "observed_at_utc": "2026-10-26T04:36:42Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "head_pre_checkpoint": "112ca322dff6a88990edb82603d7007b6b7c96fc",
+  "builder_fix_commit": "5c4c3f31306c12c336e6ef64d26426f97b54f214",
+  "verified_source": {
+    "path": "scripts/ollama-runner-probe.mjs",
+    "git_blob_sha": "fc62358d196d0bf1c148ed2ca6f16ff3ce27f635",
+    "size_bytes": 3340
+  },
+  "verified_builder_tests": {
+    "path": "tests/ollama-runner-probe.test.mjs",
+    "git_blob_sha": "b7ffceac8a85ebc8c1fcd489b50b3b5369443e99"
+  },
+  "policy_checkpoint": "docs/checkpoints/ollama/LOOP2-POLICY-DELTA-20261026T0334Z.json",
+  "model_license_source": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct",
+  "model_license_observed": "qwen-research",
+  "independent_results": {
+    "node_version": "v22.16.0",
+    "original_builder_tests": "PASS_10_OF_10_EXIT_0",
+    "independent_adversarial_tests": "PASS_28_OF_28_EXIT_0",
+    "cli_negative_3b": {
+      "model": "qwen2.5-coder:3b",
+      "state": "BLOCKED",
+      "reason": "OLLAMA_MODEL_NOT_ALLOWED",
+      "exit_code": 1,
+      "stdout_empty": true
+    },
+    "pre_network_negative_3b": {
+      "injected_fetch_calls": 0,
+      "expected_error": "OLLAMA_MODEL_NOT_ALLOWED",
+      "status": "PASS"
+    },
+    "real_ollama_inference": "NOT_PERFORMED",
+    "github_actions_workflow_dispatch": "NOT_PERFORMED"
+  },
+  "policy_assessment": {
+    "model_3b": "DENIED_BEFORE_FETCH",
+    "model_allowlist": [
+      "qwen2.5-coder:0.5b",
+      "qwen2.5-coder:1.5b"
+    ],
+    "zero_cost_flag": "SELF_ASSERTED_FLAG_NOT_INDEPENDENT_ECONOMIC_PROOF",
+    "future_account_budget_and_storage": "UNKNOWN_DENY",
+    "flint_groq": "PRESERVED",
+    "ollama_worker_qualified": false
+  },
+  "security_review": {
+    "endpoint": "STRICT_HTTP_127.0.0.1_PORT_11434",
+    "fetch_timeout_ms": 30000,
+    "response_byte_limit": 16384,
+    "response_char_limit": 2000,
+    "redirects": "ERROR",
+    "receipt_requires_done_true_and_exact_model": true,
+    "synthetic_prompt_only": true,
+    "private_data_sent": false,
+    "limitations": [
+      "Allowlisted model name is not a verified immutable model digest; local tag could resolve to different content.",
+      "WOLF_OLLAMA_ZERO_COST_VERIFIED=1 is a caller-controlled flag, not independent billing evidence.",
+      "Mock receipt with error field and otherwise valid fields is accepted; test demonstrated this.",
+      "Marker mismatch returns state OLLAMA_API_RESPONSE_VALIDATED with markerMatched=false; downstream must require markerMatched=true.",
+      "The AbortSignal timeout is supplied to fetch; no independent deadline around arbitrary response-body reader.",
+      "Workflow image digest variable format check is not provenance attestation; account-specific budget/storage remains UNKNOWN.",
+      "No KCT, DBOS, crash recovery, independent real inference or second mission evidence."
+    ]
+  },
+  "workflow": {
+    "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+    "git_blob_sha": "5754e99af35601b04a1711effa2a0ff08b3b3490",
+    "manual_dispatch_only": true,
+    "public_synthetic_only": true,
+    "not_dispatched": true,
+    "default_branch_dispatch_gate": "PENDING_REVIEW_AND_AUTHORIZATION"
+  },
+  "next_ready": [
+    "Loop 3: evaluate rejecting receipt error property and ensuring consumers reject markerMatched=false; do not overwrite existing verifier checkpoint.",
+    "Loop 2/5: independently verify account budget/storage, official image digest provenance and admissibility; a flag is not evidence.",
+    "Loop 4: rerun independent tests against exact new source blob after builder fixes.",
+    "No Ollama inference, production integration or private Factory data until all economic, licensing and security gates PASS."
+  ],
+  "cost_rules": {
+    "EUR_SPEND_AUTHORIZED": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  }
+}
