@@ -1,0 +1,152 @@
+# Public synthetic development qualification only. No private Project Wolf data.
+# Prepared on feature branch; DO NOT dispatch until G0 and independent review PASS.
+# Requires repo variables WOLF_OLLAMA_G0_PASS=PASS,
+# WOLF_OLLAMA_LOOP4_REVIEW_PASS=PASS, and a verified official
+# WOLF_OLLAMA_IMAGE_SHA256 (64 lowercase hexadecimal characters).
+name: Wolf Ollama Public Synthetic Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_public_synthetic_only:
+        description: "Explicitly confirm public synthetic development test only"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wolf-ollama-synthetic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  synthetic-ollama-0_5b:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' &&
+          inputs.confirm_public_synthetic_only == true &&
+          github.event.repository.private == false &&
+          github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+          github.ref == 'refs/heads/feat/public-runtime-probe-20261022' &&
+          vars.WOLF_OLLAMA_G0_PASS == 'PASS' &&
+          vars.WOLF_OLLAMA_LOOP4_REVIEW_PASS == 'PASS' &&
+          vars.WOLF_OLLAMA_IMAGE_SHA256 != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      OLLAMA_IMAGE_SHA256: ${{ vars.WOLF_OLLAMA_IMAGE_SHA256 }}
+      OLLAMA_MODEL: qwen2.5-coder:0.5b
+    steps:
+      - name: Verify public scope, image pin, and runner envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REPOSITORY}" = "insidethemarginmedia-cpu/wolf-factory-home"
+          test "${GITHUB_REF}" = "refs/heads/feat/public-runtime-probe-20261022"
+          [[ "${OLLAMA_IMAGE_SHA256}" =~ ^[0-9a-f]{64}$ ]] || { echo "IMAGE_DIGEST_NOT_VERIFIED"; exit 1; }
+          test "$(uname -m)" = "x86_64"
+          test "$(nproc)" -ge 2
+          test "$(free -b | awk '/^Mem:/ {print $2}')" -ge 8589934592
+          test "$(df -Pk . | awk 'NR==2 {print $4}')" -ge 5242880
+          echo "PUBLIC_SYNTHETIC_ONLY=YES"
+          echo "CPU_CORES=$(nproc)"
+          free -h
+          df -h .
+          docker version --format '{{.Server.Version}}'
+
+      - name: Checkout public repository without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Builder unit tests (mocked; NOT inference)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          node --test tests/ollama-runner-probe.test.mjs
+          echo "BUILDER_TESTS_ONLY_NOT_INDEPENDENT_VERIFICATION"
+
+      - name: Start ephemeral digest-pinned Ollama
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 180s docker pull "ollama/ollama@sha256:${OLLAMA_IMAGE_SHA256}"
+          docker run -d --rm --name wolf-ollama --cpus=3 --memory=10g \
+            --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges \
+            -e OLLAMA_NUM_PARALLEL=1 -e OLLAMA_MAX_LOADED_MODELS=1 \
+            -p 127.0.0.1:11434:11434 \
+            "ollama/ollama@sha256:${OLLAMA_IMAGE_SHA256}" serve
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1 || { echo "OLLAMA_START_TIMEOUT"; exit 1; }
+          echo "OLLAMA_EPHEMERAL_LOOPBACK_READY"
+
+      - name: Pull only reviewed 0.5B public model
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 240s docker exec wolf-ollama ollama pull "${OLLAMA_MODEL}"
+          node --input-type=module <<'NODE'
+          const r = await fetch('http://127.0.0.1:11434/api/tags', {signal: AbortSignal.timeout(5000)});
+          if (!r.ok) throw new Error('OLLAMA_TAGS_HTTP_' + r.status);
+          const data = await r.json();
+          const model = data.models?.find(m => m.name === 'qwen2.5-coder:0.5b');
+          if (!model || !/^[0-9a-f]{64}$/.test(model.digest ?? '')) {
+            throw new Error('MODEL_DIGEST_NOT_OBSERVED');
+          }
+          console.log('OLLAMA_MODEL_DIGEST=' + model.digest);
+          NODE
+          df -h .
+          docker system df
+
+      - name: Bounded real inference and CPU/RAM observation
+        shell: bash
+        env:
+          WOLF_OLLAMA_PROBE_ENABLED: '1'
+          WOLF_OLLAMA_ZERO_COST_VERIFIED: '1'
+          WOLF_OLLAMA_PROBE_MODEL: qwen2.5-coder:0.5b
+          WOLF_OLLAMA_PROBE_ENDPOINT: http://127.0.0.1:11434
+        run: |
+          set -euo pipefail
+          (
+            for sample in $(seq 1 30); do
+              docker stats --no-stream --format 'OLLAMA_CPU={{.CPUPerc}} OLLAMA_MEM={{.MemUsage}}' wolf-ollama || true
+              sleep 1
+            done
+          ) &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
+          timeout 45s /usr/bin/time -v node scripts/ollama-runner-probe.mjs | tee /tmp/wolf-ollama-synthetic-receipt.json
+          kill "$sampler_pid" 2>/dev/null || true
+          wait "$sampler_pid" 2>/dev/null || true
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const result = JSON.parse(readFileSync('/tmp/wolf-ollama-synthetic-receipt.json', 'utf8'));
+          if (result.state !== 'OLLAMA_API_RESPONSE_VALIDATED' ||
+              result.model !== 'qwen2.5-coder:0.5b' ||
+              result.markerMatched !== true ||
+              result.privateFactoryIntegrated !== false ||
+              result.durableMissionVerified !== false) {
+            throw new Error('REAL_SYNTHETIC_PROBE_RECEIPT_REJECTED');
+          }
+          console.log('REAL_SYNTHETIC_OLLAMA_0_5B_MARKER_VERIFIED');
+          console.log('FACTORY_INTEGRATION=NOT_PERFORMED');
+          NODE
+          df -h .
+          docker system df
+
+      - name: Destroy ephemeral model container
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f wolf-ollama 2>/dev/null || true
+          echo "NO_ARTIFACT_UPLOAD_NO_CACHE_NO_PERSISTENT_SERVICE"
