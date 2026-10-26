@@ -1,0 +1,30 @@
+{
+  "schema": "WolfEconomicAdmissionEvidence/v1",
+  "recordedDate": "2026-10-26",
+  "provider": "GroqCloud",
+  "plan": "Free",
+  "planCostUSD": 0,
+  "source": "Founder-provided Groq console Billing and Limits screenshots",
+  "evidence": {
+    "planFreeConfirmed": true,
+    "limitsDisplayed": true,
+    "remainingQuotaVerified": false,
+    "projectSpecificLimitsVerified": false,
+    "zeroFutureSpendProven": false
+  },
+  "authorization": {
+    "scope": "Use documented Groq Free model quotas only",
+    "billingActivation": false,
+    "paidFallback": false,
+    "trialCreditDependency": false,
+    "allowUnknownRemainingQuota": false
+  },
+  "controls": {
+    "EUR_SPEND": "0",
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  },
+  "status": "ECONOMIC_PLAN_CONFIRMED_RUNTIME_QUOTA_UNVERIFIED",
+  "notes": "Administrative evidence only. Does not change KCT/DBOS, admit a mission, bypass verifyProviderQuotas, or reactivate suspended wakeups."
+}
