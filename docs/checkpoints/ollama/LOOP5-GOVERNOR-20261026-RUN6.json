@@ -1,0 +1,95 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v6",
+  "date_utc": "2026-10-26",
+  "role": "LOOP5_GOVERNOR",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "f54a2eb39eecca64d298e7bd9223ea934f3c61f6",
+  "main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "canonical_private_factory": {
+    "repo": "donraposo1-source/project-wolf",
+    "branch": "feat/factory-real-worker-m1-20261006",
+    "last_observed_head": "21946c987a0ddbfbd570c68592a5adbd1d97b6ca"
+  },
+  "existing_private_runtime_pr": {
+    "repo": "donraposo1-source/wolf-factory-home",
+    "number": 2,
+    "state": "OPEN",
+    "head": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+    "note": "PR1 also open; no new PR created"
+  },
+  "loop_evidence": {
+    "loop1": {
+      "commit": "51ea5ec0f3394ee2e7f60b9923d9f22ef044380e",
+      "run": "40313736353",
+      "run_conclusion": "success",
+      "interpretation": "GUARD_STOP_NOT_ADMISSION_PASS",
+      "admission_job": "success",
+      "other_jobs": "7_SKIPPED",
+      "original_run": "40271788791",
+      "original_mission_state": "SUSPENDED",
+      "external_effects": "UNKNOWN_UNTIL_RECONCILED",
+      "automatic_retry": false
+    },
+    "loop2": {
+      "commit": "af362cfc447b6685af262fccfff82a6b4365e111",
+      "tests": "18/18 mocked Node v24.22.1 PASS exit0 on PRE-FIX blobs",
+      "counterexample": "Direct probe accepted mocked receipt despite 64-zero caller-declared image/model digests",
+      "billing_hard_stop": "UNKNOWN_DENY",
+      "storage_headroom": "UNKNOWN_DENY",
+      "G0": "DENY"
+    },
+    "loop3": {
+      "fix_commit": "5776ac1b993cab4157098acd40b69bb221d7a6d2",
+      "checkpoint_commit": "f54a2eb39eecca64d298e7bd9223ea934f3c61f6",
+      "builder_tests": "24/24 mocked PASS exit0 as reported in checkpoint; not independently reproduced by Loop5",
+      "change": "Source-controlled candidate image/model pins; direct probe pre-network binding + review flag; post-pull observed /api/tags digest before /api/generate",
+      "candidate_review_status": "PENDING",
+      "immutable_source_review": "PENDING"
+    },
+    "loop4": {
+      "prior_checkpoint": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026T0436Z.json",
+      "new_builder_verification": "PENDING",
+      "governor_action": "Reenabled existing Loop4 schedule and assigned independent adversarial tests on new exact source blobs; no duplicate verifier created"
+    }
+  },
+  "risk_register": {
+    "G0": "UNKNOWN_DENY",
+    "DISPATCH": "DENY",
+    "REAL_OLLAMA_INFERENCE": "NOT_PROVEN",
+    "FACTORY_INTEGRATION": "NOT_PROVEN",
+    "MODEL_LICENSE_3B": "DENY",
+    "PIN_REVIEW": "PENDING",
+    "MUTABLE_REVIEW_FLAG": "NOT_INDEPENDENT_ATTESTATION",
+    "NIGHT_SHIFT_GREEN": "GUARD_STOP_ONLY",
+    "GROQ_QUOTA": "UNKNOWN_NOT_PROVEN_EXHAUSTED",
+    "FLINT_GROQ": "PRESERVED"
+  },
+  "governor_actions": [
+    "Read current GitHub commits, branch heads, PRs and run/job steps through connected Composio",
+    "Identified green Night Shift run as safe guard stop with seven skipped jobs, not productive Factory execution",
+    "Reconciled concurrent Loop3 digest fix and its 24/24 mocked builder test checkpoint",
+    "Reenabled existing Loop4 verifier and updated instructions for independent exact-blob tests",
+    "Updated existing Loop3 instructions to avoid repeating solved work and await verifier evidence",
+    "No model dispatch, billing changes, production changes, new branch, new Factory or private code transfer"
+  ],
+  "next_ready": {
+    "loop1": "Reconcile suspended mission external effects and quota observability; do not replay or change attemptBudget/fence",
+    "loop2": "Seek account-specific read-only hard-stop/payment/storage evidence; rerun wrong-digest negative against new exact blobs; G0 remains DENY without proof",
+    "loop3": "Avoid duplicate fixes; only repair independently reproduced bypasses and retest on same existing branch",
+    "loop4": "Run independent negative tests on exact 4 new blobs, inspect reviewStatus PENDING and mutable flags, confirm no /api/generate on wrong digest; record exit codes",
+    "loop5": "Reconcile fresh heads and verifier output; admit only if independent immutable provenance review, G0, licensing, quota and security all PASS; otherwise continue safe work"
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "NO_BILLING": true,
+    "NO_PRODUCTION": true,
+    "NO_TOSHIBA": true,
+    "NO_TERMUX": true,
+    "NO_SECRETS_IN_CHAT": true,
+    "NO_PRIVATE_DATA_PUBLIC_RUNNER": true
+  }
+}
