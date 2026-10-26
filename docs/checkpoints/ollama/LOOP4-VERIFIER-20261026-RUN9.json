@@ -1,6 +1,5 @@
 {
   "schema": "wolf.ollama.loop4.verifier.independent.v9",
-  "observed_at_utc": "2026-10-26T13:44:00Z",
   "repository": "insidethemarginmedia-cpu/wolf-factory-home",
   "branch": "feat/public-runtime-probe-20261022",
   "prewrite_head": "efab387fca629d72919f5bfcef055c7b0c6f60db",
@@ -99,5 +98,6 @@
     "loop4": "Retest affected cases only on new blobs",
     "loop2_loop5": "Independent digest/license and account-specific G0 evidence before dispatch",
     "dispatch": "DENY until independently proven"
-  }
+  },
+  "checkpoint_commit_time_utc": "2026-10-26T13:43:32Z"
 }
