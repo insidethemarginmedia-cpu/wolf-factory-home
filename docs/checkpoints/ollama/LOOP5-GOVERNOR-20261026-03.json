@@ -1,0 +1,59 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v3",
+  "date_utc": "2026-10-26",
+  "scope": "PUBLIC_SYNTHETIC_ONLY_GOVERNANCE",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "observed_prewrite_head": "6d9b024d297e0a7f3f522097a5feef3c2caa9732",
+  "sources": {
+    "loop1": "docs/checkpoints/ollama/LOOP1-RECOVER-20261026T0433Z.json",
+    "loop2": "docs/checkpoints/ollama/LOOP2-ACCOUNT-ACTIONS-ADMISSION-20261026T0428Z.json",
+    "loop3": "docs/checkpoints/ollama/LOOP3-BUILDER-20261026-03.json",
+    "loop4": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026T0436Z.json",
+    "workflow": ".github/workflows/ollama-public-synthetic-qualification.yml",
+    "private_adapter_head": "680551b069b07b6c57357d9be77a05176ee2bbcf"
+  },
+  "verified_progress": {
+    "builder_model_3b_rejection_commit": "5c4c3f31306c12c336e6ef64d26426f97b54f214",
+    "builder_public_manual_workflow_commit": "25bc0b0cc4612ff29cb6818b1462f382a30bcc12",
+    "independent_node_tests": "10_OF_10_PASS_EXIT_0",
+    "independent_adversarial_tests": "28_OF_28_PASS_EXIT_0",
+    "model_3b_pre_network_denial": "PASS_FETCH_CALLS_0",
+    "new_adversarial_finding": "MOCKED_RECEIPT_WITH_ERROR_FIELD_ACCEPTED",
+    "workflow_dispatch": "NOT_OBSERVED",
+    "real_ollama_inference": "NOT_OBSERVED",
+    "private_factory_integration": "NOT_PROVEN",
+    "flint_groq": "PRESERVED"
+  },
+  "admission": {
+    "public_standard_runner": "DOCUMENTED_FREE_FOR_PUBLIC_REPO",
+    "account_actions_historical_net": "ZERO_OBSERVED_ONLY",
+    "future_budget_storage": "UNKNOWN_DENY",
+    "official_ollama_image_digest": "UNVERIFIED",
+    "approved_0_5b_model_digest": "UNVERIFIED",
+    "workflow_default_branch_presence": "NO",
+    "workflow_independent_review": "PENDING",
+    "production_worker": "DENY_NOT_QUALIFIED"
+  },
+  "governor_orders_executed": [
+    "Loop 3: repair nonempty error receipt acceptance, add negative test, require consumers to reject markerMatched=false and verify model digest before inference; do not repeat completed 3b fix/workflow.",
+    "Loop 4: independently retest after builder fix; verify actual YAML syntax/security and timeout boundaries, exact exit codes; avoid repeating completed tests without new code.",
+    "Loop 2: resolve account-specific future budget/storage and official image/model digest provenance read-only; historical zero cost is not a guarantee."
+  ],
+  "next_ready": [
+    "Loop 3 produce tested fail-closed patch on existing branch; Loop 4 independently verify exact new SHA.",
+    "Loop 2 obtain verifiable future zero-spend admission and immutable image/model provenance; otherwise maintain UNKNOWN_DENY.",
+    "Do not dispatch public Ollama test while workflow absent from default branch or G0/review UNKNOWN; do not modify default branch without separate authorization.",
+    "After all gates PASS, only a bounded synthetic development inference may be considered; not continuous hosting or Factory integration."
+  ],
+  "hard_controls": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "production_changes": "NONE",
+    "private_code_public_runner": "DENY",
+    "new_factory_repo_scheduler": "NONE",
+    "toshba_required": false
+  }
+}
