@@ -1,0 +1,75 @@
+{
+  "schema": "wolf.ollama.loop3.builder.adversarial-observation.v11",
+  "observed_at_utc": "2026-10-26T12:37:03Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "read_head": "4b8caee20346ef00f77e4461eba852fa8bf6d6c0",
+  "prewrite_head": "ae93676760a6cb680bfe9bb88cfd1ff332278036",
+  "concurrent_change": {
+    "ahead_by": 1,
+    "changed_files": [
+      "docs/checkpoints/night-shift/LOOP1_RECOVER_40271788791_20261026T1232Z.json"
+    ],
+    "builder_source_changed": false
+  },
+  "exact_public_source_blobs": {
+    "scripts/ollama-runner-probe.mjs": "20bd79248900be1cbd1d573a7a6579f77893466d",
+    "scripts/ollama-candidate-pins.mjs": "b8c2fee579de9df34cd394ea86d431cfdb8faded",
+    "tests/ollama-runner-probe.test.mjs": "c3abdc190d0541f211a1aa9f58b64e548ec684d1",
+    ".github/workflows/ollama-public-synthetic-qualification.yml": "2e4db81ebb02860f4c514966a0d0739fe4666daa"
+  },
+  "baseline_builder_tests": {
+    "runtime": "Node v24.22.1",
+    "tests": 24,
+    "pass": 24,
+    "fail": 0,
+    "exit_code": 0,
+    "log_id": "log_v738VvP2uvEV",
+    "network": "MOCK_ONLY"
+  },
+  "new_builder_adversarial": {
+    "name": "PENDING source review must block before any /api/generate despite caller-declared PASS",
+    "tests": 1,
+    "pass": 0,
+    "fail": 1,
+    "exit_code": 1,
+    "log_id": "log_6Pok_TOMbcmI",
+    "failure": "Missing expected rejection",
+    "mock_generate_calls": 1,
+    "returned_state": "OLLAMA_API_RESPONSE_VALIDATED",
+    "markerMatched": true,
+    "real_inference": false
+  },
+  "finding": {
+    "severity": "BLOCKING_ADMISSION_GAP",
+    "independent_verification": "PENDING",
+    "description": "With source-controlled reviewStatus PENDING, mutable caller PASS flags and matching candidate digests, direct probe accepts mocked /api/tags and /api/generate and returns validated state; no source reviewStatus gate exists before /api/generate.",
+    "scope": "DIRECT_PROBE_MOCK_ONLY; not proof of full GitHub Actions dispatch or real inference",
+    "static_checks": {
+      "candidate_reviewStatus": "PENDING",
+      "probe_checks_reviewStatus": false,
+      "pin_binding_checks_reviewStatus": false,
+      "workflow_checks_reviewStatus": false,
+      "workflow_uses_mutable_G0_var": true
+    }
+  },
+  "latest_independent_loop4_checkpoint": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026-RUN6.json",
+  "latest_independent_loop4_new_blobs": "NOT_FOUND_AS_OF_PREWRITE",
+  "builder_action": "NO_SOURCE_CHANGE_PENDING_INDEPENDENT_LOOP4_CONFIRMATION",
+  "admission": {
+    "G0": "UNKNOWN_DENY",
+    "independent_review": "PENDING",
+    "dispatch": "DENY",
+    "real_inference": "NOT_PERFORMED",
+    "main": "UNTOUCHED",
+    "production": "UNTOUCHED",
+    "Flint_Groq": "PRESERVED",
+    "EUR_SPEND": 0
+  },
+  "NEXT_READY": [
+    "Loop4: independently reproduce PENDING-review bypass on exact pinned source blobs with negative test and exit code, without network dispatch.",
+    "Loop3: if independently confirmed, add smallest fail-closed source-review gate before network and negative test, preserving other loops; run full Node tests and verify published blobs.",
+    "Loop2/5: obtain independent economic budget/storage/payment evidence; keep G0 UNKNOWN_DENY until PASS.",
+    "Do not set reviewStatus APPROVED, treat mutable PASS flags as attestation, dispatch Ollama, or promote main."
+  ]
+}
