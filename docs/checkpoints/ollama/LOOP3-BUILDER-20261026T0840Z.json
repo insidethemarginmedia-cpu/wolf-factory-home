@@ -1,0 +1,36 @@
+{
+  "kind": "WOLF_OLLAMA_LOOP3_BUILDER_CHECKPOINT",
+  "created_utc": "2026-10-26T08:40:40.744596+00:00",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "base_head": "76a2c68005b1388be6eb41b3c85ff9b74c7c09d5",
+  "source_commit": "1e5aca104e782ae1fb872de9adb64a346d3329a1",
+  "test_commit": "9dbfb30508b4c10feda7c83ddffca5429e9bf09d",
+  "source_sha256": "67b502076eea69b91deed09f90b0a749745d82942902852e0fa2f7d5102bb8b5",
+  "tests_sha256": "2a933b7a1907577b2f0b3cd6fbc4db00b04dbbaaff272f6a1c36dcb46d2635c6",
+  "node_version": "v24.22.1",
+  "builder_tests": {
+    "passed": 17,
+    "failed": 0,
+    "exit_code": 0,
+    "mode": "synthetic_mock_only"
+  },
+  "security_checks": {
+    "receipt_nonempty_error_fail_closed": "present_before_this_cycle",
+    "marker_mismatch_rejected": "present_before_this_cycle",
+    "workflow_consumer_requires_markerMatched_true": "static_inspection_PASS",
+    "post_pull_model_digest_requires_approved_digest": "static_inspection_PASS",
+    "independent_deadline_fetch_read_cancel": "implemented_and_builder_tested",
+    "max_deadline_ms": 30000
+  },
+  "independent_verifier_for_new_commits": "PENDING",
+  "G0_cost_quota_storage_license_policy": "UNKNOWN",
+  "image_digest_approved": "UNKNOWN",
+  "model_digest_approved": "UNKNOWN",
+  "workflow_dispatch_executed": false,
+  "real_ollama_inference_executed": false,
+  "private_factory_integrated": false,
+  "Flint_Groq_unchanged": true,
+  "production_unchanged": true,
+  "NEXT_READY": "Loop4: independently verify source/test commits and 17 builder cases including noncooperative fetch/read/cancel; assess remaining consumers and security. Loop2/G0: obtain independently evidenced permanent-EUR0 runner cost/quota/storage and reviewed image/model digests. Do not dispatch, merge, or promote main while any gate UNKNOWN."
+}
