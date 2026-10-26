@@ -72,3 +72,14 @@ test('HTTP failure is not inference', async () => {
   await assert.rejects(probeOllama({env, fetchImpl: async () => new Response('', {status: 503})}),
     /OLLAMA_HTTP_503/);
 });
+
+test('nonempty Ollama error field fails closed despite valid-looking receipt', async () => {
+  for (const error of ['model not found', '  ', {code: 500}, true]) {
+    await assert.rejects(probeOllama({env, fetchImpl: async () => new Response(JSON.stringify({...receipt, error}))}),
+      /OLLAMA_RECEIPT_ERROR/);
+  }
+});
+test('wrong marker cannot produce a validated state', async () => {
+  await assert.rejects(probeOllama({env, fetchImpl: async () => new Response(JSON.stringify({...receipt, response: 'WRONG'}))}),
+    /OLLAMA_MARKER_MISMATCH/);
+});

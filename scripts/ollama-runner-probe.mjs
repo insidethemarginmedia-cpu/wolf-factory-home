@@ -47,10 +47,16 @@ export async function probeOllama({env = process.env, fetchImpl = globalThis.fet
   });
   if (!response.ok) throw new Error('OLLAMA_HTTP_' + response.status);
   const data = await boundedJson(response);
+  // Ollama errors must not be promoted by otherwise valid-looking fields.
+  if (data && Object.hasOwn(data, 'error') && data.error !== null &&
+      (typeof data.error !== 'string' || data.error !== '')) {
+    throw new Error('OLLAMA_RECEIPT_ERROR');
+  }
   if (data?.done !== true || data.model !== model || typeof data.response !== 'string' ||
       !data.response.trim() || data.response.length > 2000) throw new Error('OLLAMA_RECEIPT_INVALID');
+  if (data.response.trim() !== 'WOLF_OLLAMA_PROBE_OK') throw new Error('OLLAMA_MARKER_MISMATCH');
   return Object.freeze({state: 'OLLAMA_API_RESPONSE_VALIDATED', model,
-    markerMatched: data.response.trim() === 'WOLF_OLLAMA_PROBE_OK',
+    markerMatched: true,
     elapsedMs: Math.round(performance.now() - start),
     evalCount: Number.isSafeInteger(data.eval_count) && data.eval_count >= 0 ? data.eval_count : null,
     privateFactoryIntegrated: false, durableMissionVerified: false});
