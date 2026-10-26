@@ -1,0 +1,71 @@
+{
+  "schema": "WolfLoop1RecoveryEvidence/v1",
+  "kind": "READ_ONLY_RECONCILIATION",
+  "observedAt": "2026-10-26T06:32:05Z",
+  "mission": "WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1",
+  "run": {
+    "id": 40271788791,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40271788791",
+    "event": "schedule",
+    "branch": "main",
+    "headSha": "75ed208929094b699b950386f5f9223fb69385f3",
+    "conclusion": "failure",
+    "attempt": 1,
+    "failedJob": "existing-factory / night-shift-admission",
+    "failedStep": "Require currently observable free provider quota before inference",
+    "dependentJobs": "7 skipped"
+  },
+  "pinnedPrivateFactorySourceSha": "2c1c05ba23867755093dc2605702f60d50a12aa3",
+  "quotaDiagnosis": {
+    "error": "GROQ_FREE_QUOTA_UNKNOWN_OR_EXHAUSTED",
+    "failedPredicate": "Missing or non-numeric x-ratelimit-remaining-requests or x-ratelimit-remaining-tokens headers from authenticated GET /openai/v1/models",
+    "exhausted": false,
+    "exhaustionProven": false,
+    "availability": "UNKNOWN",
+    "evidence": "Actual job log raises at script line 40, before admitQuota minimums at line 41; no observed numeric quota values in job log",
+    "note": "exhausted:false is not an observation of non-exhaustion; it denotes no exhaustion finding"
+  },
+  "durableSuspension": {
+    "commit": "e1cf5db91ae08ccc37a1d053f1bd27958cf93faf",
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1.json",
+    "branch": "feat/public-runtime-probe-20261022",
+    "state": "SUSPENDED",
+    "ownerRun": "40271788791",
+    "attemptBudget": 1,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+    "automaticRetry": false,
+    "blobSha": "13791fffba6b5dc095a3aac818e467faa2e66ead"
+  },
+  "effects": {
+    "inferenceExecuted": "NOT_OBSERVED",
+    "independentVerification": "NOT_EXECUTED",
+    "replayAuthorized": false,
+    "externalEffectsReconciled": false
+  },
+  "boundaries": {
+    "flint": "PRESERVE",
+    "groq": "PRESERVE",
+    "ollama": "ADDITIONAL_UNQUALIFIED",
+    "mainMutation": false,
+    "productionMutation": false,
+    "rerun": false,
+    "externalEffectReplay": false,
+    "cost": "EUR0_OR_DENY",
+    "privateCodeInPublicRunner": false
+  },
+  "nextReady": [
+    {
+      "owner": "Loop2",
+      "task": "Determine whether Groq model-list endpoint actually emits quota headers; obtain non-inference authoritative quota evidence; distinguish UNKNOWN from EXHAUSTED without a probe that consumes quota."
+    },
+    {
+      "owner": "Loop5",
+      "task": "Reconcile external effect ledger and ownerRun fence against durable evidence before any admission decision; preserve SUSPENDED and automaticRetry=false."
+    },
+    {
+      "owner": "Loop1",
+      "task": "Re-read branch HEAD and suspension state on next cycle, check new runs only read-only, preserve other loops' commits."
+    }
+  ],
+  "provenance": "GitHub Composio: GET_A_WORKFLOW_RUN, LIST_JOBS_FOR_A_WORKFLOW_RUN, DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN, GET_REPOSITORY_CONTENT, LIST_COMMITS"
+}
