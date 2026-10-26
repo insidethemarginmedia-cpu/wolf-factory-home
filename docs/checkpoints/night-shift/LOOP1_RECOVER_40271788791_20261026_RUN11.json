@@ -1,0 +1,83 @@
+{
+  "schema": "wolf.loop1.recover.v1",
+  "recorded_at_utc": "2026-10-26T13:39:59.704Z",
+  "owner": "LOOP1_RECOVER",
+  "operation": "read_only_reconciliation_and_unique_checkpoint",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "observed_prewrite_head": "4eda93d36e32173b0f4ec0b1539057f0e54283e7",
+  "public_main_head": "75ed208929094b699b950386f5f9223fb69385f3",
+  "private_factory": {
+    "repository": "donraposo1-source/project-wolf",
+    "branch": "feat/factory-real-worker-m1-20261006",
+    "observed_head": "21946c987a0ddbfbd570c68592a5adbd1d97b6ca"
+  },
+  "private_ollama_pr": {
+    "repository": "donraposo1-source/wolf-factory-home",
+    "number": 2,
+    "state": "open",
+    "draft": true,
+    "head": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+    "check_runs": 0
+  },
+  "night_shift_original": {
+    "run_id": 40271788791,
+    "conclusion": "failure",
+    "job_id": 121405978848,
+    "failed_step": "Require currently observable free provider quota before inference",
+    "error": "GROQ_FREE_QUOTA_UNKNOWN_OR_EXHAUSTED",
+    "quota_classification": "UNKNOWN_NOT_PROVEN_EXHAUSTED",
+    "provider_inference_not_requested_by_loop1": true
+  },
+  "night_shift_guard": {
+    "run_id": 40313736353,
+    "conclusion": "success",
+    "admission_job_id": 121541006453,
+    "admission_job_conclusion": "success",
+    "other_jobs": "7 skipped",
+    "log_receipt": "STOPPED_RECONCILIATION_REQUIRED",
+    "externalEffectsRepeated": false,
+    "operational_success": false
+  },
+  "suspension_fence": {
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1.json",
+    "blob_sha": "13791fffba6b5dc095a3aac818e467faa2e66ead",
+    "state": "SUSPENDED",
+    "ownerRun": "40271788791",
+    "attemptBudget": 1,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+    "automaticRetry": false,
+    "unaltered": true
+  },
+  "concurrent_findings": {
+    "governor_commit": "4eda93d36e32173b0f4ec0b1539057f0e54283e7",
+    "governor_checkpoint": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-RUN7.json",
+    "mock_only_pending_review_bypass": "INDEPENDENTLY_REPRODUCED_BY_LOOP5",
+    "negative_test_exit_code": 1,
+    "mocked_generate_calls": 1,
+    "real_inference": false,
+    "provenance_review": "PENDING",
+    "economic_G0": "UNKNOWN_DENY",
+    "dispatch": "DENY",
+    "public_branch_head_check_runs": 0
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "production_change": false,
+    "main_change": false,
+    "mission_retry": false,
+    "fence_change": false,
+    "ollama_qualified": false,
+    "flint_and_groq_preserved": true
+  },
+  "next_ready": {
+    "loop2": "Evidence of free quota without inference; economic G0 remains DENY until verified.",
+    "loop3": "Fix PENDING-review bypass with fail-closed gate and negative regression test; do not set review APPROVED.",
+    "loop4": "Independently retest exact pinned source and patch, require negative test PASS.",
+    "loop5": "Reconcile external effects for original suspended run; preserve governor DENY.",
+    "loop1": "Monitor new heads/runs/checkpoints and reconcile without replay or duplicate checkpoints."
+  }
+}
