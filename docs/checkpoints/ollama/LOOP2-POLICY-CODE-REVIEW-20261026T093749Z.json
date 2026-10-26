@@ -1,0 +1,73 @@
+{
+  "schema": "wolf.ollama.loop2.admission.policy-code.v8",
+  "observed_at_utc": "2026-10-26T09:37:49.312Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "370e9b76a00748fea603528beae3836634daeac6",
+  "mode": "authenticated_read_only_and_checkpoint_write; no settings changes; no dispatch",
+  "account_verified": {
+    "login": "insidethemarginmedia-cpu",
+    "plan": "free",
+    "source": "Composio GITHUB_GET_THE_AUTHENTICATED_USER on active GitHub connection",
+    "billing_payment_method_status": "UNKNOWN",
+    "personal_budget_hard_stop": "UNKNOWN_DENY",
+    "artifact_storage_headroom": "UNKNOWN_DENY",
+    "github_profile_disk_usage_not_actions_storage_headroom": true
+  },
+  "current_source": {
+    "workflow_path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+    "workflow_blob": "84651a7648b8f44435f24353d91b1709396d23a4",
+    "probe_path": "scripts/ollama-runner-probe.mjs",
+    "probe_blob": "23c6b2c544157c31a47d63101742489544f0e144",
+    "last_loop4_checkpoint": "LOOP4-VERIFIER-20261026-RUN6.json",
+    "loop4_source_blob_in_that_checkpoint": "aba8c4e6c0f3a0c4682454f4442587b4561874df",
+    "new_source_since_loop4": true,
+    "independent_verification_current_blob": "PENDING"
+  },
+  "fresh_policy_evidence": {
+    "effective_terms": "2026-08-27",
+    "standard_public_runners": "DOCUMENTED_FREE",
+    "free_plan_artifact_allowance": "500 MB shared Actions artifacts/Packages",
+    "free_plan_minutes": "2000 private-repository standard runner minutes monthly; public standard runner minutes documented free",
+    "storage_costs": "storage may be metered; current personal headroom not proven",
+    "no_payment_method_rule": "GitHub documentation says metered overage usage is blocked without a valid payment method, but this account's payment method status was not verified",
+    "personal_budgets": "GitHub docs describe personal budget controls in web UI; REST budget endpoints listed are for organizations; no authenticated personal hard-stop read was obtained",
+    "actions_terms": "only software development/testing; not persistent serverless/24x7 commercial inference service",
+    "urls": [
+      "https://docs.github.com/en/billing/reference/product-usage-included",
+      "https://docs.github.com/en/billing/how-tos/set-up-budgets",
+      "https://docs.github.com/en/rest/billing/budgets",
+      "https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features",
+      "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
+    ]
+  },
+  "new_static_review": {
+    "workflow_runner": "ubuntu-24.04 standard",
+    "job_timeout_minutes": 12,
+    "workflow_manual_dispatch": "branch_only; not registered on default branch; NOT_PERFORMED",
+    "workflow_upload_artifact": "NOT_PRESENT_IN_REVIEWED_YAML",
+    "workflow_cache": "NOT_PRESENT_IN_REVIEWED_YAML",
+    "workflow_uses_digest_image": "ollama/ollama@sha256:${OLLAMA_IMAGE_SHA256}",
+    "workflow_post_pull_model_digest_check": "present but expected digest comes from mutable repository variable",
+    "economic_guard": "WOLF_OLLAMA_G0_PASS repository variable and WOLF_OLLAMA_ZERO_COST_VERIFIED='1' script environment are self-asserted, not account-specific budget proof",
+    "immutable_digest_review_binding": "NOT_APPROVED",
+    "official_digest_provenance": "prior registry evidence retained, not re-fetched in this cycle",
+    "loop4_fresh_blob_review": "PENDING"
+  },
+  "admission": {
+    "economic_G0": "UNKNOWN_DENY",
+    "storage": "UNKNOWN_DENY",
+    "dispatch": "DENY",
+    "real_inference": "NOT_PERFORMED",
+    "continuous_backend": "DENY_BY_POLICY",
+    "model_0_5b": "DEVELOPMENT_TEST_CANDIDATE_ONLY",
+    "flint_groq": "PRESERVED",
+    "production": "UNTOUCHED"
+  },
+  "next_ready": {
+    "loop3": "Continue static/mock-only work; replace mutable/self-asserted digest admission with reviewed immutable binding; do not dispatch.",
+    "loop4": "Review current probe blob 23c6b2c5 rather than stale aba8c4e6; independently run targeted adversarial tests and validate digest binding.",
+    "loop5": "Keep G0 and dispatch DENY. Personal budget hard-stop and Actions storage headroom still lack authenticated proof. Never use historical USD0 as future guarantee."
+  },
+  "limitations": "No access to authenticated personal billing budgets/hard-stop/storage headroom or payment method status; no inference, no account setting changes, no dispatch."
+}
