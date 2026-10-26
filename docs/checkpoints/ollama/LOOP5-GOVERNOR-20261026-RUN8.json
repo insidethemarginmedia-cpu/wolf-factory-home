@@ -1,0 +1,118 @@
+{
+  "schema": "wolf.ollama.loop5.governor.v8",
+  "date_utc": "2026-10-26",
+  "role": "LOOP5_GOVERNOR",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "prewrite_head": "7b28b959719d6842eeb12cc96d4450ce7ea76b2f",
+  "prior_checkpoint": {
+    "path": "docs/checkpoints/ollama/LOOP5-GOVERNOR-20261026-RUN7.json",
+    "commit": "4eda93d36e32173b0f4ec0b1539057f0e54283e7"
+  },
+  "current_heads": {
+    "public_main": "75ed208929094b699b950386f5f9223fb69385f3",
+    "private_factory": {
+      "repo": "donraposo1-source/project-wolf",
+      "branch": "feat/factory-real-worker-m1-20261006",
+      "head": "21946c987a0ddbfbd570c68592a5adbd1d97b6ca"
+    },
+    "private_runtime_pr": {
+      "repo": "donraposo1-source/wolf-factory-home",
+      "number": 2,
+      "state": "open",
+      "draft": true,
+      "head": "680551b069b07b6c57357d9be77a05176ee2bbcf"
+    }
+  },
+  "material_delta": {
+    "loop3_fix": {
+      "commit": "efab387fca629d72919f5bfcef055c7b0c6f60db",
+      "probe_blob": "bdeb9cc2089c595d899efede779926192e9c1808",
+      "test_blob": "f1a3348d412a5331151b416046504291a48d5fb4",
+      "change": "Source-controlled reviewStatus PENDING rejects before any fetch; negative regression test added; candidate reviewStatus remains PENDING"
+    },
+    "loop4_independent_verification": {
+      "checkpoint_path": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026-RUN9.json",
+      "commit": "0da06d322a24f613c945179d96774e456295451f",
+      "checkpoint_followup": "7b28b959719d6842eeb12cc96d4450ce7ea76b2f",
+      "runtime": "Node v22.16.0",
+      "method": "Independent offline mocked fetch; source reconstruction checked with git hash-object",
+      "before": {
+        "negative_test_exit": 1,
+        "mock_fetch": 2,
+        "mock_generate": 1
+      },
+      "after": {
+        "negative_test_exit": 0,
+        "negative_test_pass": 1,
+        "mock_fetch": 0,
+        "mock_generate": 0,
+        "rejection": "OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED"
+      },
+      "downstream_synthetic": {
+        "tests": 7,
+        "pass": 7,
+        "fail": 0,
+        "exit": 0
+      },
+      "real_inference": false,
+      "workflow_blob_unchanged": true,
+      "workflow_lint_rerun": false
+    },
+    "loop1_recovery": {
+      "checkpoint_commit": "432c72ee5825d9147b21ee96fe66a493cdd041b5",
+      "night_shift_failed_run": 40271788791,
+      "guard_stop_run": 40313736353,
+      "guard_stop_other_jobs": "7_SKIPPED",
+      "mission": "SUSPENDED",
+      "external_effects": "UNKNOWN_UNTIL_RECONCILED",
+      "automatic_retry": false,
+      "quota": "UNKNOWN_NOT_PROVEN_EXHAUSTED"
+    },
+    "loop2_admission": {
+      "last_material_commit": "af362cfc447b6685af262fccfff82a6b4365e111",
+      "account_specific_budget_hard_stop": "UNKNOWN_DENY",
+      "storage_headroom": "UNKNOWN_DENY",
+      "immutable_model_and_image_provenance_review": "PENDING"
+    }
+  },
+  "governor_actions": [
+    "Reconciled latest public qualification and main heads, private Factory head and existing private runtime PR #2 via connected Composio GitHub.",
+    "Read exact Loop4 verifier checkpoint and verified GitHub commits/blobs for fix and independent tests.",
+    "Updated existing Loop3 schedule to avoid duplicate patch/tests and only address new material counterexamples.",
+    "Updated existing Loop2 schedule to prioritize read-only account-specific economic and provenance evidence.",
+    "Updated existing Loop1 schedule to preserve suspended mission and avoid duplicate replay or redundant checks.",
+    "Preserved existing Loop4 verifier schedule and its independent checkpoint; did not create new loops."
+  ],
+  "risk_register": {
+    "G0": "UNKNOWN_DENY",
+    "DISPATCH": "DENY",
+    "REVIEW_STATUS": "PENDING",
+    "MODEL_LICENSE_3B": "DENY",
+    "REAL_OLLAMA_INFERENCE": "NOT_PROVEN",
+    "FACTORY_AUTONOMY": "NOT_PROVEN",
+    "NIGHT_SHIFT": "GUARD_STOP_ONLY",
+    "ORIGINAL_MISSION": "SUSPENDED_EXTERNAL_EFFECTS_UNKNOWN",
+    "FLINT_GROQ": "PRESERVED"
+  },
+  "NEXT_READY": {
+    "loop1": "Seek new read-only evidence of original suspended mission external effects and provider quota, no replay or fence change.",
+    "loop2": "Find official account-specific hard-stop budget/payment/storage evidence and independent image/model digest/license review; maintain UNKNOWN_DENY if unavailable.",
+    "loop3": "Do not repeat fixed PENDING gate; patch only newly reproduced fail-closed issues on new blobs.",
+    "loop4": "Do not repeat same-blob verification; independently test only new material changes or new provenance evidence.",
+    "loop5": "Reconcile new HEADs and independent evidence; admit no Ollama until G0, provenance, security, licensing, quota all independently PASS; persist checkpoint only for material changes."
+  },
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "NO_BILLING": true,
+    "NO_PRODUCTION": true,
+    "NO_TOSHIBA": true,
+    "NO_TERMUX": true,
+    "NO_SECRETS_IN_CHAT": true,
+    "NO_PRIVATE_DATA_PUBLIC_RUNNER": true,
+    "NO_NEW_FACTORY_REPO_BRANCH_PR": true
+  }
+}
