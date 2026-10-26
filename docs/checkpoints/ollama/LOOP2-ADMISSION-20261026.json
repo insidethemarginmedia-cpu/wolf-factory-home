@@ -1,0 +1,50 @@
+{
+  "schema": "wolf.ollama.loop2.admission.v1",
+  "observed_at_utc": "2026-10-26T02:32:50Z",
+  "scope": "Public, synthetic, isolated Ollama qualification only; no private Factory code, credentials, production or commercial inference service.",
+  "public_repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "public_branch": "feat/public-runtime-probe-20261022",
+  "baseline_head": "83f2e66709d61fb8228c747621637a82cba5177a",
+  "private_adapter": "donraposo1-source/wolf-factory-home PR #2; keep private",
+  "decisions": {
+    "public_standard_runner_minutes": "PASS: GitHub documents standard hosted runners as free for public repositories; does not imply paid runners or storage are free.",
+    "public_runner_hardware": "PASS_DOCUMENTED: ubuntu-latest public 4 vCPU, 16 GB RAM, 14 GB SSD, x64. Actual memory/disk availability must be measured during a job.",
+    "job_duration": "PASS_DOCUMENTED: hosted job hard maximum 6 hours; not persistent.",
+    "public_runner_for_project_related_synthetic_testing": "CONDITIONAL_PASS: GitHub terms permit development/testing associated with repository; still require bounded low-burden job and no artifact/cache overage.",
+    "public_runner_as_general_purpose_commercial_or_24x7_factory_worker": "FAIL_POLICY: GitHub Additional Product Terms disallow using Actions as an application/service or unrelated to repository software development; do not repurpose public runners as permanent AI backend.",
+    "account_specific_storage_billing": "UNKNOWN: artifact/package storage can accrue charges; prohibit artifacts, caches and paid features until account-specific budget verified.",
+    "qwen2_5_coder_0_5b": "PASS_LICENSE: Ollama registry tag 0.5b Apache-2.0, download ~398 MB; CPU inference not yet verified.",
+    "qwen2_5_coder_1_5b": "PASS_LICENSE: Ollama registry tag 1.5b Apache-2.0, download ~986 MB; CPU inference not yet verified.",
+    "qwen2_5_coder_3b": "DENY_UNTIL_LICENSE_REVIEW: Ollama registry lists Qwen RESEARCH LICENSE AGREEMENT; do not treat as Apache-2.0.",
+    "qwen2_5_coder_7b": "PASS_LICENSE_ONLY: Ollama tag 7b Apache-2.0, ~4.7 GB download; memory/performance and practical runner fit UNKNOWN.",
+    "ollama_runtime": "PASS_SOFTWARE_LICENSE: Ollama source MIT; specific model weights have independent licenses.",
+    "private_data_isolation": "PASS_DESIGN_ONLY: public workflow may run only synthetic/public inputs, no private source or secrets. Existing Night Shift workflow contains secret references and must not be reused for Ollama qualification without independent security review.",
+    "actual_ollama_inference": "NOT_VERIFIED: no real model inference executed in this loop.",
+    "worker_integration": "NOT_ADMITTED: Flint and Groq remain unchanged; Ollama is add-only and not operational."
+  },
+  "recommended_next_edge": [
+    "Loop 3: create a bounded, manually dispatched development/test-only synthetic inference probe in the EXISTING public repo, after verifying exact workflow and safe permissions. Never run it as a commercial/production worker.",
+    "Probe only qwen2.5-coder:0.5b first, with strict timeout, disk/memory measurements, no secrets, no artifacts or cache, permissions: contents:read, no reusable private-controller workflow.",
+    "Loop 4: independently verify observed model response, memory, time, exit status, test outputs, no data leakage, and terms compliance.",
+    "Loop 5: prohibit using GitHub-hosted runners as permanent backend; investigate separate genuinely zero-cost authorized worker hosting if 24x7 inference remains necessary."
+  ],
+  "evidence": [
+    "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+    "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
+    "https://docs.github.com/en/actions/reference/limits",
+    "https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features",
+    "https://registry.ollama.com/library/qwen2.5-coder:0.5b",
+    "https://registry.ollama.com/library/qwen2.5-coder:1.5b",
+    "https://ollama.com/library/qwen2.5-coder:3b",
+    "https://registry.ollama.com/library/qwen2.5-coder:7b",
+    "https://github.com/ollama/ollama",
+    "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40251817855"
+  ],
+  "cost_controls": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  },
+  "next_ready": "G0_POLICY_GATED_SYNTHETIC_DEV_TEST_ONLY"
+}
