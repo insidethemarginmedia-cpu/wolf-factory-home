@@ -1,0 +1,108 @@
+{
+  "schema": "WolfLoop1RecoveryEvidence/v2",
+  "kind": "READ_ONLY_RECONCILIATION",
+  "observedAtUtc": "2026-10-26T07:31:30Z",
+  "run": {
+    "id": 40271788791,
+    "htmlUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40271788791",
+    "event": "schedule",
+    "headSha": "75ed208929094b699b950386f5f9223fb69385f3",
+    "status": "completed",
+    "conclusion": "failure",
+    "attempt": 1,
+    "failedJobId": 121405978848,
+    "failedStep": "Require currently observable free provider quota before inference",
+    "dependentJobsSkipped": 7
+  },
+  "source": {
+    "privateFactoryPinnedSha": "2c1c05ba23867755093dc2605702f60d50a12aa3",
+    "privateOllamaAdapterHead": "680551b069b07b6c57357d9be77a05176ee2bbcf",
+    "publicMainHead": "75ed208929094b699b950386f5f9223fb69385f3",
+    "publicFeatureHeadBeforeWrite": "e5a1a26ef9c42a7612dd84c5feeb87b24afd40b6"
+  },
+  "durableSuspension": {
+    "branch": "feat/public-runtime-probe-20261022",
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1.json",
+    "blobSha": "13791fffba6b5dc095a3aac818e467faa2e66ead",
+    "state": "SUSPENDED",
+    "ownerRun": "40271788791",
+    "attemptBudget": 1,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+    "automaticRetry": false
+  },
+  "quotaDiagnosis": {
+    "error": "GROQ_FREE_QUOTA_UNKNOWN_OR_EXHAUSTED",
+    "classification": "UNKNOWN_NOT_PROVEN_EXHAUSTED",
+    "observed": "GET /openai/v1/models returned successful HTTP response; source predicate rejected missing or non-numeric remaining-requests or remaining-tokens values before numeric threshold evaluation",
+    "headerPresence": "NOT_RECORDED_IN_LOG",
+    "headerValues": "NOT_RECORDED_IN_LOG",
+    "remainingRequests": "UNKNOWN",
+    "remainingTokens": "UNKNOWN",
+    "sourceLine": 40,
+    "quotaThresholdLine": 41,
+    "providerDocs": "https://console.groq.com/docs/rate-limits",
+    "providerDocsCaveat": "General rate-limit headers documented, but GET /models behavior not independently proven",
+    "noProbeNoInference": true
+  },
+  "concurrentIndependentVerifier": {
+    "path": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026T0637Z.json",
+    "observedAtUtc": "2026-10-26T06:37:48Z",
+    "status": "FAIL",
+    "builderRegressionTests": "13/13 PASS",
+    "adversarialPolicyViolations": 3,
+    "cancellationLiveness": "FAIL_NONCOOPERATIVE_READER",
+    "realInference": "NOT_PERFORMED",
+    "dispatch": "NOT_PERFORMED"
+  },
+  "economicAdmission": {
+    "path": "docs/checkpoints/ollama/LOOP2-REGISTRY-PROVENANCE-20261026T0636Z.json",
+    "accountBudgetAndStorage": "UNKNOWN_DENY",
+    "syntheticDispatch": "DENY_NO_DISPATCH"
+  },
+  "effectReconciliation": {
+    "externalEffects": "UNKNOWN_UNTIL_RECONCILED",
+    "replayAuthorized": false,
+    "inferenceObserved": false,
+    "rerun": false,
+    "changedFence": false,
+    "changedAttemptBudget": false,
+    "mainChanged": false,
+    "productionChanged": false
+  },
+  "nextReady": [
+    {
+      "owner": "Loop2",
+      "task": "Find authoritative non-inference, account-specific Groq quota evidence; do not infer exhaustion from missing/invalid headers or public limits. Keep economic gates fail-closed."
+    },
+    {
+      "owner": "Loop3",
+      "task": "Address Loop4's own-error-property, model digest boundary, and noncooperative cancellation findings on existing feature branch only."
+    },
+    {
+      "owner": "Loop4",
+      "task": "Independently retest exact changed source SHA; no dispatch while acceptance FAIL or G0 UNKNOWN."
+    },
+    {
+      "owner": "Loop5",
+      "task": "Reconcile external effect ledger and ownerRun fence before any new admission decision; preserve SUSPENDED and automaticRetry=false."
+    },
+    {
+      "owner": "Loop1",
+      "task": "Re-read heads, workflow runs and durable suspension next cycle; preserve concurrent work."
+    }
+  ],
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "flint": "PRESERVE",
+    "groq": "PRESERVE",
+    "ollama": "ADDITIONAL_UNQUALIFIED",
+    "noMainWrites": true,
+    "noProductionWrites": true,
+    "noToshiba": true,
+    "noTermux": true,
+    "noPrivateCodePublicRunner": true
+  }
+}
