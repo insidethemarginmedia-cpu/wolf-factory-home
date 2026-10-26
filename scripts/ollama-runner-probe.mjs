@@ -2,7 +2,8 @@
 import {pathToFileURL} from 'node:url';
 const PROMPT = 'Reply with exactly WOLF_OLLAMA_PROBE_OK. Do not use tools.';
 const MAX_BYTES = 16384;
-const MODELS = new Set(['qwen2.5-coder:0.5b', 'qwen2.5-coder:1.5b', 'qwen2.5-coder:3b']);
+// Only models with reviewed licensing are eligible. 3b remains denied pending review.
+const MODELS = new Set(['qwen2.5-coder:0.5b', 'qwen2.5-coder:1.5b']);
 
 async function boundedJson(response) {
   if (!response.body?.getReader) throw new Error('OLLAMA_BODY_UNREADABLE');

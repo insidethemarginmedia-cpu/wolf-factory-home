@@ -23,6 +23,21 @@ test('unknown model is denied', async () => {
   await assert.rejects(probeOllama({env: {...env, WOLF_OLLAMA_PROBE_MODEL: 'llama3:70b'}, fetchImpl: fakeFetch}),
     /OLLAMA_MODEL_NOT_ALLOWED/);
 });
+test('unreviewed 3b model is denied before network access', async () => {
+  let calls = 0;
+  await assert.rejects(probeOllama({env: {...env, WOLF_OLLAMA_PROBE_MODEL: 'qwen2.5-coder:3b'},
+    fetchImpl: async () => {calls++; throw new Error('NETWORK_MUST_NOT_BE_CALLED');}}),
+  /OLLAMA_MODEL_NOT_ALLOWED/);
+  assert.equal(calls, 0);
+});
+test('reviewed 1.5b model remains eligible for synthetic validation', async () => {
+  const model = 'qwen2.5-coder:1.5b';
+  const result = await probeOllama({env: {...env, WOLF_OLLAMA_PROBE_MODEL: model},
+    fetchImpl: async () => new Response(JSON.stringify({...receipt, model}))});
+  assert.equal(result.model, model);
+  assert.equal(result.markerMatched, true);
+  assert.equal(result.privateFactoryIntegrated, false);
+});
 test('remote and credential-bearing endpoints are denied', async () => {
   for (const endpoint of ['https://127.0.0.1:11434', 'http://example.org:11434',
     'http://127.0.0.1:11434/other', 'http://user:pass@127.0.0.1:11434']) {
