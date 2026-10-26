@@ -60,6 +60,9 @@ export async function probeOllama({env = process.env, fetchImpl = globalThis.fet
   // Only 0.5b has a registry-provenance candidate; licensing alone is insufficient.
   if (model !== OLLAMA_CANDIDATE_PINS.modelName)
     throw new Error('OLLAMA_MODEL_DIGEST_NOT_REVIEWED');
+  // Source-owned candidate pins are not independently approved; reject before any fetch.
+  if (OLLAMA_CANDIDATE_PINS.reviewStatus !== 'APPROVED')
+    throw new Error('OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED');
   // A mutable flag is not evidence of review. Loop 4 must independently attest
   // the exact source blobs and G0 before any real invocation is authorized.
   if (env.WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS !== 'PASS')

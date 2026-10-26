@@ -1,6 +1,24 @@
-import test from 'node:test';
+import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {probeOllama, requireApprovedModelDigest} from '../scripts/ollama-runner-probe.mjs';
+import {mkdtemp, readFile, writeFile, copyFile, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath, pathToFileURL} from 'node:url';
+import {probeOllama as probeOllamaUnreviewed} from '../scripts/ollama-runner-probe.mjs';
+
+// Unit tests below use a TEMPORARY synthetic APPROVED fixture to exercise downstream
+// response validation. It is NOT an independent review or executable G0 admission.
+const sourceDir = fileURLToPath(new URL('../scripts/', import.meta.url));
+const fixtureDir = await mkdtemp(join(tmpdir(), 'wolf-ollama-synthetic-review-'));
+const candidateSource = await readFile(join(sourceDir, 'ollama-candidate-pins.mjs'), 'utf8');
+assert.match(candidateSource, /reviewStatus: 'PENDING'/);
+await writeFile(join(fixtureDir, 'ollama-candidate-pins.mjs'),
+  candidateSource.replace("reviewStatus: 'PENDING'", "reviewStatus: 'APPROVED'"));
+await copyFile(join(sourceDir, 'ollama-runner-probe.mjs'),
+  join(fixtureDir, 'ollama-runner-probe.mjs'));
+const {probeOllama, requireApprovedModelDigest} =
+  await import(pathToFileURL(join(fixtureDir, 'ollama-runner-probe.mjs')).href);
+after(async () => rm(fixtureDir, {recursive: true, force: true}));
 import {OLLAMA_CANDIDATE_PINS, requireCandidatePinBinding} from '../scripts/ollama-candidate-pins.mjs';
 
 const env = {WOLF_OLLAMA_PROBE_ENABLED: '1', WOLF_OLLAMA_ZERO_COST_VERIFIED: '1',
@@ -191,4 +209,17 @@ test('direct probe rejects error property on tags before generate', async () => 
     return new Response(JSON.stringify({...tagsReceipt, error: null}));
   }}), /OLLAMA_TAGS_INVALID/);
   assert.equal(generates, 0);
+});
+
+test('PENDING source review rejects caller PASS before any fetch or generate', async () => {
+  let fetchCalls = 0;
+  let generateCalls = 0;
+  await assert.rejects(probeOllamaUnreviewed({env, fetchImpl: async (url, options) => {
+    fetchCalls++;
+    if (url.endsWith('/api/generate')) generateCalls++;
+    return fakeFetch(url, options);
+  }}), /OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED/);
+  assert.equal(OLLAMA_CANDIDATE_PINS.reviewStatus, 'PENDING');
+  assert.equal(fetchCalls, 0);
+  assert.equal(generateCalls, 0);
 });
