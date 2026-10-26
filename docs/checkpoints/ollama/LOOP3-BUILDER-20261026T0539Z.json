@@ -1,0 +1,64 @@
+{
+  "schema": "wolf.ollama.loop3.builder.v4",
+  "observed_at_utc": "2026-10-26T05:39:18Z",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "feat/public-runtime-probe-20261022",
+  "pre_checkpoint_head": "c0b0f63b5d0f62f2a86fd40d140a1efea5463517",
+  "previous_independent_verifier": "docs/checkpoints/ollama/LOOP4-VERIFIER-20261026T0436Z.json",
+  "builder_commits": [
+    {
+      "sha": "aac5c72c6e8bd69e2bfd5383e8610babd004dd77",
+      "purpose": "fail closed on nonempty Ollama error and wrong marker"
+    },
+    {
+      "sha": "c0b0f63b5d0f62f2a86fd40d140a1efea5463517",
+      "purpose": "require observed model digest to equal separately approved digest before inference"
+    }
+  ],
+  "exact_committed_blobs": {
+    "scripts/ollama-runner-probe.mjs": "aba8c4e6c0f3a0c4682454f4442587b4561874df",
+    "tests/ollama-runner-probe.test.mjs": "d490d9f995dcb8cd142a34ed864390cbaea7b72e",
+    ".github/workflows/ollama-public-synthetic-qualification.yml": "84651a7648b8f44435f24353d91b1709396d23a4"
+  },
+  "local_builder_verification": {
+    "runtime": "Node.js v22.16.0",
+    "command": "node --test tests/ollama-runner-probe.test.mjs",
+    "tests_total": 13,
+    "passed": 13,
+    "failed": 0,
+    "exit_code": 0,
+    "exact_blob_match_confirmed": true,
+    "workflow_yaml_parser": "PyYAML safe_load PASS",
+    "workflow_static_gates": "PASS: G0, Loop4 review, model digest approval, model SHA256, markerMatched true, digest check before inference",
+    "scope": "local builder tests and static checks; NOT independent Loop4 verification and NOT real Ollama inference"
+  },
+  "findings": {
+    "nonempty_error_field": "BLOCKED_WITH_OLLAMA_RECEIPT_ERROR",
+    "wrong_marker": "BLOCKED_WITH_OLLAMA_MARKER_MISMATCH; no validated state emitted",
+    "marker_consumer": "workflow rejects result.markerMatched !== true before declaring marker verified",
+    "approved_model_digest": "post-pull observed digest must exactly match independently approved 64-char lowercase SHA256 before inference",
+    "mutable_tag_alone": "NOT_ACCEPTED_AS_DIGEST_EVIDENCE",
+    "G0_account_budget_storage": "UNKNOWN_DENY",
+    "image_digest_provenance": "UNKNOWN_DENY",
+    "model_approved_digest": "UNKNOWN_DENY",
+    "loop4_review_new_source": "PENDING",
+    "github_workflow_dispatch": "NOT_PERFORMED",
+    "real_ollama_inference": "NOT_PERFORMED",
+    "flint_groq": "PRESERVED",
+    "private_factory_integration": "NOT_PERFORMED",
+    "production_changed": false
+  },
+  "next_ready": [
+    "Loop 4: independently run Node tests with exit code against exact blobs and review updated workflow YAML, error and marker fail-closed, approved model digest gate.",
+    "Loop 2: independently establish account budget/storage zero-cost and immutable official image/model digest provenance; variables alone do not prove approval.",
+    "Do not dispatch while any G0/review/digest gate is UNKNOWN; workflow remains feature branch only.",
+    "After all independent gates PASS, only then consider bounded public synthetic workflow test without private code/secrets."
+  ],
+  "policy": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "dispatch_allowed": false
+  }
+}
