@@ -257,6 +257,23 @@ jobs:
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: node scripts/private-controller-preflight.mjs --github-auth-only
+      - name: Read current free request allowance without inference
+        if: github.event_name == 'workflow_dispatch' && inputs.execute_integrated != true && inputs.verify_private_regression != true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: 'node --input-type=module <<''NODE''
+      
+          const r=await fetch(''https://openrouter.ai/api/v1/key'',{headers:{authorization:''Bearer ''+process.env.OPENROUTER_API_KEY},redirect:''error'',signal:AbortSignal.timeout(20000)});
+      
+          if(!r.ok)throw Error(''FREE_KEY_METADATA_UNAVAILABLE'');
+      
+          const d=(await r.json()).data,q=d.free_model_daily_requests;
+      
+          console.log(''WOLF_FREE_ALLOWANCE=''+JSON.stringify({httpStatus:r.status,isFreeTier:d.is_free_tier===true,zeroKeyLimit:d.limit===0,byokUsageZero:d.byok_usage===0,dailyRequests:q&&[''limit'',''remaining'',''used''].every(k=>Number.isSafeInteger(q[k])&&q[k]>=0)?q:''NOT_OBSERVED'',inferencePerformed:false}));
+      
+          NODE
+      
+          '
       - name: Diagnose existing runner publication credential without writes
         if: github.event_name == 'workflow_dispatch' && inputs.diagnose_publication == true
         env:
@@ -1120,5 +1137,6 @@ jobs:
         set -euo pipefail
         npm test
         npm run build
+
 
 
