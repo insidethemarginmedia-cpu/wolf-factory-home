@@ -91,7 +91,7 @@ jobs:
     outputs:
       ready: ${{ steps.reserve.outputs.ready == 'true' && steps.quota.outcome == 'success' }}
     env:
-      WOLF_FACTORY_EXPECTED_SHA: aa4e17e721f3659a772700e5c695dab09cd9bc24
+      WOLF_FACTORY_EXPECTED_SHA: 92a97b95369e55cf446f0205abdc596f4968d7e7
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
@@ -104,7 +104,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: aa4e17e721f3659a772700e5c695dab09cd9bc24
+        ref: 92a97b95369e55cf446f0205abdc596f4968d7e7
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
@@ -348,7 +348,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: aa4e17e721f3659a772700e5c695dab09cd9bc24
+          ref: 92a97b95369e55cf446f0205abdc596f4968d7e7
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           path: private-groq-observer
           persist-credentials: false
@@ -465,7 +465,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: aa4e17e721f3659a772700e5c695dab09cd9bc24
+      WOLF_FACTORY_EXPECTED_SHA: 92a97b95369e55cf446f0205abdc596f4968d7e7
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -480,14 +480,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: aa4e17e721f3659a772700e5c695dab09cd9bc24
+          ref: 92a97b95369e55cf446f0205abdc596f4968d7e7
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'aa4e17e721f3659a772700e5c695dab09cd9bc24'
+          test "$(git rev-parse HEAD)" = '92a97b95369e55cf446f0205abdc596f4968d7e7'
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
