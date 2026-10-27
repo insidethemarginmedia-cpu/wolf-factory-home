@@ -656,6 +656,8 @@ jobs:
           import {spawnSync} from 'node:child_process';
           const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
           const text=String(p.stderr||'');
+          const safe=text.replace(/https?:\/\/[^\s]+/g,'[REDACTED_URL]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').split(process.env.WOLF_FACTORY_REPO_TOKEN||'\0').join('[REDACTED_TOKEN]').slice(0,4000);
+          console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
           const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
           console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
           if(p.status!==0)throw Error(reason);
@@ -1100,6 +1102,8 @@ jobs:
         import {spawnSync} from 'node:child_process';
         const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
         const text=String(p.stderr||'');
+          const safe=text.replace(/https?:\/\/[^\s]+/g,'[REDACTED_URL]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').split(process.env.WOLF_FACTORY_REPO_TOKEN||'\0').join('[REDACTED_TOKEN]').slice(0,4000);
+          console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
         const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
         console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
         if(p.status!==0)throw Error(reason);
