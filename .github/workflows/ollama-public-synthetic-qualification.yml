@@ -73,6 +73,10 @@ jobs:
           set -euo pipefail
           node --input-type=module <<'NODE'
           import {requireCandidatePinBinding} from './scripts/ollama-candidate-pins.mjs';
+          import {OLLAMA_CANDIDATE_PINS} from './scripts/ollama-candidate-pins.mjs';
+          if (OLLAMA_CANDIDATE_PINS.reviewStatus !== 'APPROVED') {
+            throw new Error('OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED_BEFORE_DOWNLOAD');
+          }
           requireCandidatePinBinding({
             image: process.env.OLLAMA_IMAGE_SHA256,
             model: process.env.OLLAMA_MODEL_SHA256,
