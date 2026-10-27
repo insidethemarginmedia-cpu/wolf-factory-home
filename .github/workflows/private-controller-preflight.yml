@@ -582,6 +582,7 @@ jobs:
           echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
       - name: Reuse qualified pinned ephemeral Ollama for existing Factory review
         if: inputs.execute_integrated == true || inputs.night_shift == true
+        continue-on-error: true # Ollama is advisory; failure must not block Flint/Groq or DBOS
         shell: bash
         run: "set -euo pipefail\ntest \"$(nproc)\" -ge 3\ntest \"$(free -b | awk '/^Mem:/ {print $2}')\" -ge 12884901888\ntimeout 180s docker pull \"\
           ollama/ollama@sha256:${OLLAMA_IMAGE_SHA256}\"\ndocker run -d --rm --name wolf-ollama --cpus=3 --memory=10g --pids-limit=256 --cap-drop=ALL\
