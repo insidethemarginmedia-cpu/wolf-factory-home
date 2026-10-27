@@ -11,7 +11,17 @@
   "state": "SUSPENDED",
   "ownerRun": "40271788791",
   "attemptBudget": 1,
-  "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+  "externalEffectState": "NO_MISSION_EFFECTS_VERIFIED",
   "reason": "BOUNDED_ATTEMPT_FAILED_OR_QUOTA_UNKNOWN",
-  "automaticRetry": false
+  "automaticRetry": false,
+  "reconciliation": {
+    "state": "PRE_INFERENCE_FAILURE_CONFIRMED",
+    "sourceRunId": "40271788791",
+    "sourceJobId": "121405978848",
+    "failureStep": "Require currently observable free provider quota before inference",
+    "failureCode": "GROQ_FREE_QUOTA_UNKNOWN_OR_EXHAUSTED",
+    "downstreamMissionJobs": "SKIPPED",
+    "evidenceUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40271788791",
+    "automaticRetryAuthorized": false
+  }
 }
