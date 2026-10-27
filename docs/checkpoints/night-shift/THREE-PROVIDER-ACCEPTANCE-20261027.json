@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-27",
+  "verdict": "PARTIAL",
+  "scope": "Existing Factory; no main modification, no new controller",
+  "source": {
+    "privateHead": "36fee061a384cedbacb2441060358af8b62cb670",
+    "runtimeHead": "1b5dcd50f96b4254cc4e304bfd43558e221839cf",
+    "mainHead": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053"
+  },
+  "verification": {
+    "rootTests": 1157,
+    "rootPass": 1157,
+    "securityTests": 42,
+    "securityPass": 42,
+    "providerTests": 19,
+    "providerPass": 19,
+    "localFactoryTests": 232,
+    "localFactoryPass": 232,
+    "localBuild": "PASS",
+    "actionlint": "PASS"
+  },
+  "integratedAttempt": {
+    "runUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40538666373",
+    "event": "workflow_dispatch",
+    "conclusion": "failure",
+    "missionId": "OMEGA_A_40538666373",
+    "reason": "OLLAMA_CEZAR_REVIEW_NOT_VERIFIED",
+    "publicationDryRunExitCode": 0,
+    "flint": {
+      "generationId": "gen-1793117796-VgT6pOpHrkpAo0rnx6e5",
+      "model": "recursive/flint-v1.0:free",
+      "costUsd": 0
+    },
+    "executor": {
+      "sandboxId": "b9110409-abcc-4c6a-b682-b69bc7fa1868",
+      "regressionExitCode": 0,
+      "sourceSha256": "ba1a531f581d2e6094e978ed6f7aca7a8d92eeb62c6e7ad73ee692f7f18bc772",
+      "cleanup": "DESTROYED"
+    },
+    "missionCheckpoint": "NOT_VERIFIED",
+    "nextReady": "NOT_VERIFIED"
+  },
+  "ollama": {
+    "runUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40538665980",
+    "sessionId": "ses_e81db98dcffex2ee54Mwr8OYcn",
+    "model": "ollama/qwen2.5-coder:0.5b",
+    "tokensUsed": 1972,
+    "toolCalls": 0,
+    "costEvents": [
+      0
+    ],
+    "response": "REJECT",
+    "semanticReview": "NOT_VERIFIED",
+    "factoryIntegrated": false
+  },
+  "freeAllowance": {
+    "runUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40537611455",
+    "httpStatus": 200,
+    "isFreeTier": true,
+    "zeroKeyLimit": true,
+    "byokUsageZero": true,
+    "dailyRequests": {
+      "used": 0,
+      "limit": 50,
+      "remaining": 50
+    },
+    "inferencePerformed": false
+  },
+  "groq": {
+    "metadataStatus": "QUOTA_HEADERS_MISSING",
+    "modelsHttpStatus": 200,
+    "credentialProjectMatch": "NOT_VERIFIED",
+    "currentInferenceReceipt": "NOT_VERIFIED",
+    "nightShiftAdmission": "BLOCKED"
+  },
+  "scheduling": {
+    "historicalScheduleEventObserved": true,
+    "latestImplementationScheduled": "NOT_VERIFIED",
+    "mainStillPinsRuntime": "c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1",
+    "suspendedJournalPreserved": true,
+    "automaticRetry": false
+  },
+  "cost": {
+    "observedFlintUsd": 0,
+    "observedOllamaUsd": 0,
+    "billingActivated": false,
+    "paidFallback": false,
+    "trialCredit": false,
+    "wholeSystemInvoiceAudit": "NOT_VERIFIED"
+  },
+  "blockers": [
+    "Qualified small Ollama model responds but rejects correct code; strict review retained",
+    "Groq live quota evidence missing; no admission-policy change",
+    "Existing scheduled mission remains suspended; no reset or unknown-effect retry",
+    "New implementation is feature-branch only; main activation requires separate authorization after acceptance"
+  ]
+}
