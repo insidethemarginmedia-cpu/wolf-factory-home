@@ -104,7 +104,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: de5f2472d0494cd6fd2059ef9edf57609985c936
+        ref: aa4e17e721f3659a772700e5c695dab09cd9bc24
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
@@ -113,7 +113,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: node scripts/wolf-night-shift-wakeup.mjs prepare
-    - name: Require currently observable free provider quota before inference
+    - name: Admit one bounded direct Groq Free attempt without OpenRouter quota dependency
       id: quota
       if: steps.reserve.outputs.ready == 'true'
       env:
