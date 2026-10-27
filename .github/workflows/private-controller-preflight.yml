@@ -576,7 +576,7 @@ jobs:
           \ serve\nready=0\nfor attempt in $(seq 1 30); do\n  if curl --fail --silent --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then\
           \ ready=1; break; fi\n  sleep 1\ndone\ntest \"$ready\" -eq 1\ntimeout 240s docker exec wolf-ollama ollama pull \"$OLLAMA_MODEL\"\nnode --input-type=module\
           \ <<'NODE'\nconst r=await fetch('http://127.0.0.1:11434/api/tags',{signal:AbortSignal.timeout(5000)});\nif(!r.ok)throw Error('OLLAMA_TAGS_UNAVAILABLE');\n\
-          const d=await r.json(),m=d.models?.find(m=>m.name===process.env.OLLAMA_MODEL);\nif(!m||m.digest!=='sha256:'+process.env.OLLAMA_MODEL_SHA256)throw\
+          const d=await r.json(),m=d.models?.find(m=>m.name===process.env.OLLAMA_MODEL);\nif(!m||m.digest!==process.env.OLLAMA_MODEL_SHA256)throw\
           \ Error('OLLAMA_MODEL_DIGEST_MISMATCH');\nconsole.log('WOLF_OLLAMA_FACTORY_RUNTIME='+JSON.stringify({state:'QUALIFIED_LOCAL_RUNTIME_READY',model:m.name,modelDigest:m.digest,endpoint:'127.0.0.1:11434',inferencePerformed:false}));\n\
           NODE\n"
       - name: Prepare explicitly selected SSH publication credential
