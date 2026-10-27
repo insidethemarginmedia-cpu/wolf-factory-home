@@ -87,7 +87,7 @@ jobs:
     outputs:
       ready: ${{ steps.reserve.outputs.ready == 'true' && steps.quota.outcome == 'success' }}
     env:
-      WOLF_FACTORY_EXPECTED_SHA: 21946c987a0ddbfbd570c68592a5adbd1d97b6ca
+      WOLF_FACTORY_EXPECTED_SHA: de5f2472d0494cd6fd2059ef9edf57609985c936
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       EUR_SPEND: '0'
@@ -98,7 +98,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 21946c987a0ddbfbd570c68592a5adbd1d97b6ca
+        ref: de5f2472d0494cd6fd2059ef9edf57609985c936
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
@@ -325,7 +325,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 21946c987a0ddbfbd570c68592a5adbd1d97b6ca
+          ref: de5f2472d0494cd6fd2059ef9edf57609985c936
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           path: private-groq-observer
           persist-credentials: false
@@ -429,13 +429,20 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      WOLF_OLLAMA_FACTORY_ENABLED: '1'
+      WOLF_OLLAMA_ZERO_COST_VERIFIED: '1'
+      WOLF_OLLAMA_ENDPOINT: http://127.0.0.1:11434
+      WOLF_OLLAMA_MODEL_DIGEST: 4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09
+      OLLAMA_IMAGE_SHA256: 459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da
+      OLLAMA_MODEL_SHA256: 4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09
+      OLLAMA_MODEL: qwen2.5-coder:0.5b
       CEZAR_SHA: 1b13522dd3642a4ea8331629b3680838164d2a2e
       OPENCODE_VERSION_PIN: 1.18.34
       WOLF_FACTORY_CWD: ${{ github.workspace }}
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 21946c987a0ddbfbd570c68592a5adbd1d97b6ca
+      WOLF_FACTORY_EXPECTED_SHA: 2f1d65c2d6de6e25cb87c3f109632e564ca0b2a3
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -450,14 +457,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 21946c987a0ddbfbd570c68592a5adbd1d97b6ca
+          ref: 2f1d65c2d6de6e25cb87c3f109632e564ca0b2a3
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '21946c987a0ddbfbd570c68592a5adbd1d97b6ca'
+          test "$(git rev-parse HEAD)" = '2f1d65c2d6de6e25cb87c3f109632e564ca0b2a3'
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -560,6 +567,18 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/cezar"
           npm run build --prefix "$RUNNER_TEMP/cezar"
           echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
+      - name: Reuse qualified pinned ephemeral Ollama for existing Factory review
+        if: inputs.execute_integrated == true || inputs.night_shift == true
+        shell: bash
+        run: "set -euo pipefail\ntest \"$(nproc)\" -ge 3\ntest \"$(free -b | awk '/^Mem:/ {print $2}')\" -ge 12884901888\ntimeout 180s docker pull \"\
+          ollama/ollama@sha256:${OLLAMA_IMAGE_SHA256}\"\ndocker run -d --rm --name wolf-ollama --cpus=3 --memory=10g --pids-limit=256 --cap-drop=ALL\
+          \ --security-opt=no-new-privileges -e OLLAMA_NUM_PARALLEL=1 -e OLLAMA_MAX_LOADED_MODELS=1 -p 127.0.0.1:11434:11434 \"ollama/ollama@sha256:${OLLAMA_IMAGE_SHA256}\"\
+          \ serve\nready=0\nfor attempt in $(seq 1 30); do\n  if curl --fail --silent --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then\
+          \ ready=1; break; fi\n  sleep 1\ndone\ntest \"$ready\" -eq 1\ntimeout 240s docker exec wolf-ollama ollama pull \"$OLLAMA_MODEL\"\nnode --input-type=module\
+          \ <<'NODE'\nconst r=await fetch('http://127.0.0.1:11434/api/tags',{signal:AbortSignal.timeout(5000)});\nif(!r.ok)throw Error('OLLAMA_TAGS_UNAVAILABLE');\n\
+          const d=await r.json(),m=d.models?.find(m=>m.name===process.env.OLLAMA_MODEL);\nif(!m||m.digest!=='sha256:'+process.env.OLLAMA_MODEL_SHA256)throw\
+          \ Error('OLLAMA_MODEL_DIGEST_MISMATCH');\nconsole.log('WOLF_OLLAMA_FACTORY_RUNTIME='+JSON.stringify({state:'QUALIFIED_LOCAL_RUNTIME_READY',model:m.name,modelDigest:m.digest,endpoint:'127.0.0.1:11434',inferencePerformed:false}));\n\
+          NODE\n"
       - name: Prepare explicitly selected SSH publication credential
         if: (inputs.execute_integrated == true && inputs.use_publication_deploy_key == true) || inputs.night_shift == true
         env:
@@ -620,7 +639,7 @@ jobs:
           import {spawnSync} from 'node:child_process';
           const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
           const text=String(p.stderr||'');
-          const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
+          const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
           console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
           if(p.status!==0)throw Error(reason);
           NODE
@@ -694,6 +713,12 @@ jobs:
           import fs from 'node:fs';import path from 'node:path';
           for(const name of ['wolf-publication-key','wolf-publication-known-hosts'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
           NODE
+
+      - name: Destroy only this disposable Ollama container
+        if: always() && (inputs.execute_integrated == true || inputs.night_shift == true)
+        run: 'docker rm -f wolf-ollama 2>/dev/null || true
+      
+          '
 
   runner-loss-prepare:
     needs: security-tests
@@ -1058,7 +1083,7 @@ jobs:
         import {spawnSync} from 'node:child_process';
         const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
         const text=String(p.stderr||'');
-        const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
+        const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
         console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
         if(p.status!==0)throw Error(reason);
         NODE
@@ -1095,4 +1120,5 @@ jobs:
         set -euo pipefail
         npm test
         npm run build
+
 
