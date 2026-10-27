@@ -1,0 +1,18 @@
+# Registration-only entrypoint. Production/default branch must never execute Ollama.
+name: Wolf Ollama Public Synthetic Qualification
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_public_synthetic_only:
+        description: "Explicitly confirm public synthetic development test only"
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+jobs:
+  default-branch-inert:
+    if: ${{ github.ref == 'refs/heads/feat/public-runtime-probe-20261022' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "REGISTRATION_ONLY_DO_NOT_RUN_ON_MAIN"
