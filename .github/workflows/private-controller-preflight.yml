@@ -459,7 +459,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: fa0dbb45f7d8e02e55e87a33376985dbabfa1127
+      WOLF_FACTORY_EXPECTED_SHA: 6771d3e7660ec4a5a726e6a4aa1c6031a4d94772
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -474,14 +474,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: fa0dbb45f7d8e02e55e87a33376985dbabfa1127
+          ref: 6771d3e7660ec4a5a726e6a4aa1c6031a4d94772
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'fa0dbb45f7d8e02e55e87a33376985dbabfa1127'
+          test "$(git rev-parse HEAD)" = '6771d3e7660ec4a5a726e6a4aa1c6031a4d94772'
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
