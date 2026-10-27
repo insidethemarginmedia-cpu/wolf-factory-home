@@ -3,7 +3,7 @@ export const OLLAMA_CANDIDATE_PINS = Object.freeze({
   imageLinuxAmd64: '459985308d740b99071719baec2740a60f5b2b2d9b835c171991ae25690203da',
   modelName: 'qwen2.5-coder:0.5b',
   modelManifest: '4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09',
-  reviewStatus: 'PENDING',
+  reviewStatus: 'FOUNDER_WAIVED_REGISTRY_VERIFIED',
   provenance: 'docs/checkpoints/ollama/LOOP2-REGISTRY-PROVENANCE-20261026T0636Z.json',
 });
 export function requireCandidatePinBinding({image, model}) {

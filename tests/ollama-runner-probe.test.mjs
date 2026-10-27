@@ -6,24 +6,12 @@ import {join} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {probeOllama as probeOllamaUnreviewed} from '../scripts/ollama-runner-probe.mjs';
 
-// Unit tests below use a TEMPORARY synthetic APPROVED fixture to exercise downstream
-// response validation. It is NOT an independent review or executable G0 admission.
-const sourceDir = fileURLToPath(new URL('../scripts/', import.meta.url));
-const fixtureDir = await mkdtemp(join(tmpdir(), 'wolf-ollama-synthetic-review-'));
-const candidateSource = await readFile(join(sourceDir, 'ollama-candidate-pins.mjs'), 'utf8');
-assert.match(candidateSource, /reviewStatus: 'PENDING'/);
-await writeFile(join(fixtureDir, 'ollama-candidate-pins.mjs'),
-  candidateSource.replace("reviewStatus: 'PENDING'", "reviewStatus: 'APPROVED'"));
-await copyFile(join(sourceDir, 'ollama-runner-probe.mjs'),
-  join(fixtureDir, 'ollama-runner-probe.mjs'));
-const {probeOllama, requireApprovedModelDigest} =
-  await import(pathToFileURL(join(fixtureDir, 'ollama-runner-probe.mjs')).href);
-after(async () => rm(fixtureDir, {recursive: true, force: true}));
+// Tests exercise exact source pins without fictitious APPROVED fixtures.
+import {probeOllama, requireApprovedModelDigest} from '../scripts/ollama-runner-probe.mjs';
 import {OLLAMA_CANDIDATE_PINS, requireCandidatePinBinding} from '../scripts/ollama-candidate-pins.mjs';
 
 const env = {WOLF_OLLAMA_PROBE_ENABLED: '1', WOLF_OLLAMA_ZERO_COST_VERIFIED: '1',
   WOLF_OLLAMA_PROBE_MODEL: 'qwen2.5-coder:0.5b',
-  WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS: 'PASS',
   OLLAMA_IMAGE_SHA256: OLLAMA_CANDIDATE_PINS.imageLinuxAmd64,
   OLLAMA_MODEL_SHA256: OLLAMA_CANDIDATE_PINS.modelManifest};
 const receipt = {model: env.WOLF_OLLAMA_PROBE_MODEL, done: true,
@@ -159,7 +147,7 @@ test('any present Ollama error property fails closed, including falsy values', a
 });
 
 test('candidate pins are fixed in source; mutable repo variables cannot choose another digest', () => {
-  assert.equal(OLLAMA_CANDIDATE_PINS.reviewStatus, 'PENDING');
+  assert.equal(OLLAMA_CANDIDATE_PINS.reviewStatus, 'FOUNDER_WAIVED_REGISTRY_VERIFIED');
   assert.equal(requireCandidatePinBinding({image: env.OLLAMA_IMAGE_SHA256,
     model: env.OLLAMA_MODEL_SHA256}), true);
   assert.throws(() => requireCandidatePinBinding({image: 'f'.repeat(64),
@@ -167,10 +155,11 @@ test('candidate pins are fixed in source; mutable repo variables cannot choose a
   assert.throws(() => requireCandidatePinBinding({image: env.OLLAMA_IMAGE_SHA256,
     model: 'f'.repeat(64)}), /OLLAMA_CANDIDATE_PIN_BINDING_MISMATCH/);
 });
-test('direct probe denies absent independent review flag before any fetch', async () => {
+test('administrative review variable cannot authorize an unpinned digest', async () => {
   let calls = 0;
-  await assert.rejects(probeOllama({env: {...env, WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS: ''},
-    fetchImpl: async () => {calls++;}}), /OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED/);
+  await assert.rejects(probeOllama({env: {...env, WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS: 'PASS',
+    OLLAMA_MODEL_SHA256: 'f'.repeat(64)}, fetchImpl: async () => {calls++;}}),
+    /OLLAMA_CANDIDATE_PIN_BINDING_MISMATCH/);
   assert.equal(calls, 0);
 });
 test('direct probe denies mutable model digest mismatch before any fetch', async () => {
@@ -211,15 +200,8 @@ test('direct probe rejects error property on tags before generate', async () => 
   assert.equal(generates, 0);
 });
 
-test('PENDING source review rejects caller PASS before any fetch or generate', async () => {
-  let fetchCalls = 0;
-  let generateCalls = 0;
-  await assert.rejects(probeOllamaUnreviewed({env, fetchImpl: async (url, options) => {
-    fetchCalls++;
-    if (url.endsWith('/api/generate')) generateCalls++;
-    return fakeFetch(url, options);
-  }}), /OLLAMA_INDEPENDENT_DIGEST_REVIEW_REQUIRED/);
-  assert.equal(OLLAMA_CANDIDATE_PINS.reviewStatus, 'PENDING');
-  assert.equal(fetchCalls, 0);
-  assert.equal(generateCalls, 0);
+test('valid source pins permit response checks without review flag', async () => {
+  const result = await probeOllama({env: {...env, WOLF_OLLAMA_MODEL_DIGEST_REVIEW_PASS: ''},
+    fetchImpl: fakeFetch});
+  assert.equal(result.markerMatched, true);
 });
