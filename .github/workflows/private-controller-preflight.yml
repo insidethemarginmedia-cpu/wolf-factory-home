@@ -18,6 +18,10 @@ on:
         required: true
   workflow_dispatch:
     inputs:
+      night_shift:
+        description: Run one bounded manual wakeup through the existing Factory
+        type: boolean
+        default: false
       diagnose_publication:
         description: Inspect existing runner credential scope and Git receive-pack admission without writing
         type: boolean
@@ -87,7 +91,9 @@ jobs:
     outputs:
       ready: ${{ steps.reserve.outputs.ready == 'true' && steps.quota.outcome == 'success' }}
     env:
-      WOLF_FACTORY_EXPECTED_SHA: de5f2472d0494cd6fd2059ef9edf57609985c936
+      WOLF_FACTORY_EXPECTED_SHA: aa4e17e721f3659a772700e5c695dab09cd9bc24
+      WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
+      GROQ_FREE_PLAN_CONFIRMED: 'true'
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       EUR_SPEND: '0'
@@ -342,7 +348,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: de5f2472d0494cd6fd2059ef9edf57609985c936
+          ref: aa4e17e721f3659a772700e5c695dab09cd9bc24
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           path: private-groq-observer
           persist-credentials: false
@@ -548,17 +554,13 @@ jobs:
           for name in WOLF_FACTORY_REPO_TOKEN GROQ_API_KEY BOXXKITE_API_KEY; do
             if test -z "${!name:-}"; then echo "INTEGRATED_CONFIGURATION_REQUIRED=$name"; exit 78; fi
           done
-          if test '${{ inputs.night_shift }}' = 'true' && test -z "${OPENROUTER_API_KEY:-}"; then
-            echo INTEGRATED_CONFIGURATION_REQUIRED=OPENROUTER_API_KEY; exit 78
-          fi
-      - name: Reuse qualified OpenRouter Free policy without repeated account-level audit
+      - name: Validate exact qualified model policy without provider requalification
         if: inputs.night_shift == true
         run: |
           set -euo pipefail
-          # Credential presence is checked above; exact model free pricing and
-          # zero-cost inference receipts remain enforced by direct-openrouter-executor.
+          # Exact model admission and zero-cost receipts are enforced by the selected direct provider.
           node --test tests/wolf-engineering-model-policy.test.mjs
-          echo INTEGRATED_OPENROUTER_ECONOMIC_QUALIFICATION=REUSED
+          echo INTEGRATED_QUALIFIED_MODEL_POLICY=REUSED
       - name: Reuse or install pinned existing OpenCode runtime
         if: inputs.execute_integrated == true || inputs.night_shift == true
         shell: bash
