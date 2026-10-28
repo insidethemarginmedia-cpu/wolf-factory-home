@@ -633,7 +633,7 @@ export async function resolveAdmittedPrivateSource({
 // The pre-push hook records intent before the network effect. A later push may
 // reconcile only that exact candidate by immutable remote readback; it never
 // follows an arbitrary descendant or retries an unresolved publication.
-export function renderCompareAndSwapPrePushGuard({leaseFilePath, nodeExecutable = process.execPath, minLeaseFence = 1}) {
+export function renderCompareAndSwapPrePushGuard({leaseFilePath, nodeExecutable = process.execPath, minLeaseFence = 1, expectedMissionId = null, kctAuthorityPath = null}) {
   return `#!${nodeExecutable}
 const fs = require('node:fs');
 const {spawnSync} = require('node:child_process');
@@ -641,6 +641,8 @@ const leasePath = ${JSON.stringify(leaseFilePath)};
 const minimumFence = ${minLeaseFence};
 const canonicalRepository = ${JSON.stringify(CANONICAL_REPOSITORY)};
 const canonicalBranch = ${JSON.stringify(CANONICAL_BRANCH)};
+const expectedMissionId = ${JSON.stringify(expectedMissionId)};
+const kctAuthorityPath = ${JSON.stringify(kctAuthorityPath)};
 const deny = reason => { throw Object.assign(new Error(reason), {wolfReason: reason}); };
 const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 const git = args => {
@@ -657,6 +659,25 @@ try {
   if (lease.repository !== canonicalRepository || lease.branch !== canonicalBranch || !sha(lease.expectedRemoteSha) || !sha(lease.admittedSha)) deny('CAS_LEASE_STATE_MISMATCH');
   const workerFence = Number(process.env.WOLF_GIT_PUBLICATION_FENCE);
   if (!Number.isSafeInteger(lease.leaseFence) || lease.leaseFence < minimumFence || !Number.isSafeInteger(workerFence) || workerFence !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');
+  // P0-A: Mission identity - the lease must carry the admitted mission identity.
+  if (expectedMissionId) {
+    if (!lease.missionId) deny('LEASE_OWNERSHIP_NOT_VALIDATED');
+    if (lease.missionId !== expectedMissionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');
+  }
+  // P0-A: Fence authority from external KCT/DBOS state - the same process cannot
+  // self-authorize by overwriting a sidecar file. Cross-check against the
+  // authoritative checkpoint written by a previous recovery cycle.
+  let kctFence = null;
+  if (kctAuthorityPath) {
+    try {
+      const kct = JSON.parse(fs.readFileSync(kctAuthorityPath, 'utf8'));
+      kctFence = Number.isSafeInteger(kct.newFence) ? kct.newFence : (Number.isSafeInteger(kct.leaseFence) ? kct.leaseFence : null);
+    } catch {
+      // If the authoritative KCT state is inaccessible, fail closed.
+      deny('KCT_AUTHORITY_INACCESSIBLE');
+    }
+  }
+  if (kctFence !== null && lease.leaseFence < kctFence) deny('STALE_LEASE_FENCE_REJECTED');
   const lines = fs.readFileSync(0, 'utf8').trim().split(/\\r?\\n/).filter(Boolean);
   if (lines.length > 1) deny('MULTIPLE_PUBLICATION_REFS_DENIED');
   for (const line of lines) {
@@ -702,6 +723,7 @@ export function installCompareAndSwapPrePushGuard({
   targetBranch = CANONICAL_BRANCH,
   leaseFence = 1,
   missionId = null,
+  kctAuthorityPath = null,
 } = {}) {
   if (targetBranch === 'main' || targetBranch !== CANONICAL_BRANCH) {
     throw Error('UNAUTHORIZED_TARGET_BRANCH');
@@ -714,6 +736,9 @@ export function installCompareAndSwapPrePushGuard({
   }
   if (typeof leaseFilePath !== 'string' || !leaseFilePath.trim()) {
     throw Error('CAS_LEASE_FILE_REQUIRED');
+  }
+  if (typeof missionId !== 'string' || !missionId.trim()) {
+    throw Error('CAS_LEASE_MISSION_ID_REQUIRED');
   }
   if (!Number.isSafeInteger(leaseFence) || leaseFence < 1) {
     throw Error('INVALID_LEASE_FENCE');
@@ -739,7 +764,7 @@ export function installCompareAndSwapPrePushGuard({
   });
 
   const resolvedLeasePath = path.resolve(leaseFilePath);
-  const hookScript = renderCompareAndSwapPrePushGuard({leaseFilePath: resolvedLeasePath, minLeaseFence: leaseFence});
+  const hookScript = renderCompareAndSwapPrePushGuard({leaseFilePath: resolvedLeasePath, minLeaseFence: leaseFence, expectedMissionId: missionId || null, kctAuthorityPath});
   const hookPath = path.join(hooksDir, 'pre-push');
   fs.writeFileSync(hookPath, hookScript, {mode: 0o700});
   return {
@@ -1052,6 +1077,119 @@ function publishCompareAndSwapCommitLocked({
     checkpointId: checkpointId || null,
     leaseFence,
   });
+}
+
+// P0-B recovery: reconcile durable UNKNOWN_UNTIL_RECONCILED publication records
+// against authoritative remote Git state. Never auto-retry an external effect.
+// Resume only when the result is proven; preserve checkpoint lineage and mission identity.
+export function recoverPublicationUncertainty({
+  journalPath = process.env.WOLF_PUBLICATION_JOURNAL_PATH,
+  cwd = process.cwd(),
+  env = process.env,
+  spawnImpl = spawnSync,
+  expectedRepository = CANONICAL_REPOSITORY,
+  targetBranch = CANONICAL_BRANCH,
+  allowLocalRemoteForTesting = false,
+} = {}) {
+  if (typeof journalPath !== 'string' || !journalPath.trim() || !fs.existsSync(journalPath)) {
+    return {recovered: [], unreconciled: [], journalMissing: true};
+  }
+
+  let entries;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+    entries = Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    throw Error('PUBLICATION_JOURNAL_CORRUPT');
+  }
+
+  const recovered = [];
+  const unreconciled = [];
+
+  for (const entry of entries) {
+    if (
+      !entry ||
+      entry.externalEffectState !== 'UNKNOWN_UNTIL_RECONCILED' ||
+      entry.repository !== expectedRepository ||
+      entry.branch !== targetBranch
+    ) {
+      continue;
+    }
+
+    const lsRemote = spawnImpl(
+      'git',
+      ['ls-remote', '--exit-code', 'origin', `refs/heads/${targetBranch}`],
+      {
+        cwd,
+        encoding: 'utf8',
+        timeout: 30000,
+        env: {...env, GIT_TERMINAL_PROMPT: '0'},
+      },
+    );
+
+    if (lsRemote.status !== 0 || lsRemote.signal || lsRemote.error) {
+      unreconciled.push({
+        ...entry,
+        reconciliationAttemptedAt: new Date().toISOString(),
+        reason: 'REMOTE_UNVERIFIABLE',
+        diagnostic: {
+          exitCode: lsRemote.status,
+          signal: lsRemote.signal ?? null,
+          errorCode: lsRemote.error?.code ?? null,
+        },
+      });
+      continue;
+    }
+
+    const match = new RegExp(
+      `^([a-f0-9]{40})\\s+refs/heads/${targetBranch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+      'm',
+    ).exec(String(lsRemote.stdout || '').trim());
+
+    const observedSha = match ? match[1] : null;
+
+    if (observedSha && observedSha === entry.headSha) {
+      const verifiedRecord = {
+        ...entry,
+        published: true,
+        externalEffectState: 'VERIFIED',
+        verifiedAt: new Date().toISOString(),
+        reconciledFrom: 'UNKNOWN_UNTIL_RECONCILED',
+      };
+      recovered.push(verifiedRecord);
+    } else if (observedSha && observedSha !== entry.headSha) {
+      unreconciled.push({
+        ...entry,
+        reconciliationAttemptedAt: new Date().toISOString(),
+        reason: 'CONFLICTING_REMOTE_STATE',
+        observedSha,
+        expectedSha: entry.headSha,
+      });
+    } else {
+      unreconciled.push({
+        ...entry,
+        reconciliationAttemptedAt: new Date().toISOString(),
+        reason: 'REMOTE_REF_NOT_OBSERVED',
+      });
+    }
+  }
+
+  const updatedEntries = entries.map(entry => {
+    const recoveredMatch = recovered.find(r => r.headSha === entry.headSha && r.missionId === entry.missionId);
+    if (recoveredMatch) return recoveredMatch;
+    const unreconciledMatch = unreconciled.find(u => u.headSha === entry.headSha && u.missionId === entry.missionId);
+    if (unreconciledMatch) return unreconciledMatch;
+    return entry;
+  });
+
+  writePublicationJournal(journalPath, updatedEntries);
+
+  return {
+    recovered,
+    unreconciled,
+    journalMissing: false,
+    reconciledAt: new Date().toISOString(),
+  };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

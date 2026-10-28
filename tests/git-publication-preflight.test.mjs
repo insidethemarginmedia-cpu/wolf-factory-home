@@ -20,6 +20,7 @@ import {
   prepareSshPublicationCredential,
   publishCompareAndSwapCommit,
   redactGitPublicationOutput,
+  recoverPublicationUncertainty,
   resolveAdmittedPrivateSource,
   verifyAuthorizedGitPublication,
   verifyRemotePublishedCommit,
@@ -70,7 +71,7 @@ function withPublicationGuardFixture(source, action) {
     must(['remote', 'add', 'origin', remote]);
     must(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
     const leasePath = path.join(tmp, 'wolf-cas-lease.json');
-    const installed = installCompareAndSwapPrePushGuard({cwd, leaseFilePath: leasePath, expectedRemoteSha: admittedSha});
+    const installed = installCompareAndSwapPrePushGuard({cwd, leaseFilePath: leasePath, expectedRemoteSha: admittedSha, missionId: 'OMEGA_TEST_0001'});
     if (source !== 'helper') {
       const workflow = fs.readFileSync(WORKFLOW_PATH, 'utf8');
       const expressions = [...workflow.matchAll(/^\s*const hook=(.+);$/gm)];
@@ -1239,6 +1240,505 @@ test('two sequential synthetic commits succeed without manual SHA updates while 
         }),
       /UNKNOWN_EXTERNAL_EFFECT_REPLAY_DENIED/,
     );
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-A: hook rejects push when KCT authority file is missing', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0a-missing-auth-'));
+  try {
+    const repoDir = path.join(tmp, 'repo');
+    fs.mkdirSync(repoDir);
+    const headSha = initCanonicalRepo(repoDir);
+    spawnSync('git', ['remote', 'add', 'origin', `git@github.com:${CANONICAL_REPOSITORY}.git`], {cwd: repoDir});
+
+    const leaseFile = path.join(tmp, 'lease.json');
+    installCompareAndSwapPrePushGuard({
+      cwd: repoDir,
+      leaseFilePath: leaseFile,
+      expectedRemoteSha: headSha,
+      leaseFence: 1,
+      missionId: 'OMEGA_A_9001',
+      kctAuthorityPath: path.join(tmp, 'kct-recovery.json'), // does not exist
+    });
+
+    const hookPath = path.join(repoDir, '.git', 'hooks', 'pre-push');
+    const env = {...process.env, WOLF_GIT_PUBLICATION_FENCE: '1', PATH: path.dirname(process.execPath)};
+    const res = spawnSync(process.execPath, [hookPath], {
+      input: `refs/heads/${CANONICAL_BRANCH} ${headSha} refs/heads/${CANONICAL_BRANCH} ${headSha}\n`,
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(res.status, 1);
+    assert.match(String(res.stderr), /KCT_AUTHORITY_INACCESSIBLE/);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-A: hook rejects push when KCT authority file is corrupt', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0a-corrupt-auth-'));
+  try {
+    const repoDir = path.join(tmp, 'repo');
+    fs.mkdirSync(repoDir);
+    const headSha = initCanonicalRepo(repoDir);
+    spawnSync('git', ['remote', 'add', 'origin', `git@github.com:${CANONICAL_REPOSITORY}.git`], {cwd: repoDir});
+
+    const leaseFile = path.join(tmp, 'lease.json');
+    const kctFile = path.join(tmp, 'kct-recovery.json');
+    fs.writeFileSync(kctFile, '{not valid json');
+
+    installCompareAndSwapPrePushGuard({
+      cwd: repoDir,
+      leaseFilePath: leaseFile,
+      expectedRemoteSha: headSha,
+      leaseFence: 1,
+      missionId: 'OMEGA_A_9001',
+      kctAuthorityPath: kctFile,
+    });
+
+    const hookPath = path.join(repoDir, '.git', 'hooks', 'pre-push');
+    const env = {...process.env, WOLF_GIT_PUBLICATION_FENCE: '1', PATH: path.dirname(process.execPath)};
+    const res = spawnSync(process.execPath, [hookPath], {
+      input: `refs/heads/${CANONICAL_BRANCH} ${headSha} refs/heads/${CANONICAL_BRANCH} ${headSha}\n`,
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(res.status, 1);
+    assert.match(String(res.stderr), /KCT_AUTHORITY_INACCESSIBLE/);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-A: hook rejects push when lease fence is below KCT authority fence', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0a-stale-fence-'));
+  try {
+    const repoDir = path.join(tmp, 'repo');
+    fs.mkdirSync(repoDir);
+    const headSha = initCanonicalRepo(repoDir);
+    spawnSync('git', ['remote', 'add', 'origin', `git@github.com:${CANONICAL_REPOSITORY}.git`], {cwd: repoDir});
+
+    const leaseFile = path.join(tmp, 'lease.json');
+    const kctFile = path.join(tmp, 'kct-recovery.json');
+    fs.writeFileSync(kctFile, JSON.stringify({newFence: 3, leaseFence: 3}));
+
+    installCompareAndSwapPrePushGuard({
+      cwd: repoDir,
+      leaseFilePath: leaseFile,
+      expectedRemoteSha: headSha,
+      leaseFence: 1,
+      missionId: 'OMEGA_A_9001',
+      kctAuthorityPath: kctFile,
+    });
+
+    const hookPath = path.join(repoDir, '.git', 'hooks', 'pre-push');
+    const env = {...process.env, WOLF_GIT_PUBLICATION_FENCE: '1', PATH: path.dirname(process.execPath)};
+    const res = spawnSync(process.execPath, [hookPath], {
+      input: `refs/heads/${CANONICAL_BRANCH} ${headSha} refs/heads/${CANONICAL_BRANCH} ${headSha}\n`,
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(res.status, 1);
+    assert.match(String(res.stderr), /STALE_LEASE_FENCE_REJECTED/);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-A: hook rejects push with wrong mission identity', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0a-wrong-mission-'));
+  try {
+    const repoDir = path.join(tmp, 'repo');
+    fs.mkdirSync(repoDir);
+    const headSha = initCanonicalRepo(repoDir);
+    spawnSync('git', ['remote', 'add', 'origin', `git@github.com:${CANONICAL_REPOSITORY}.git`], {cwd: repoDir});
+
+    const leaseFile = path.join(tmp, 'lease.json');
+    fs.writeFileSync(leaseFile, JSON.stringify({
+      repository: CANONICAL_REPOSITORY,
+      branch: CANONICAL_BRANCH,
+      expectedRemoteSha: headSha,
+      admittedSha: headSha,
+      leaseFence: 1,
+      missionId: 'OMEGA_B_9002',
+    }, null, 2));
+
+    const hookPath = path.join(repoDir, '.git', 'hooks', 'pre-push');
+    fs.writeFileSync(hookPath, `
+const fs = require('node:fs');
+const {spawnSync} = require('node:child_process');
+const leasePath = ${JSON.stringify(leaseFile)};
+const expectedMissionId = 'OMEGA_A_9001';
+const canonicalRepository = ${JSON.stringify(CANONICAL_REPOSITORY)};
+const canonicalBranch = ${JSON.stringify(CANONICAL_BRANCH)};
+const deny = reason => { throw Object.assign(new Error(reason), {wolfReason: reason}); };
+const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
+const git = args => {
+  const result = spawnSync('git', args, {encoding: 'utf8', timeout: 30000, env: {...process.env, GIT_TERMINAL_PROMPT: '0'}});
+  if (result.status !== 0 || result.signal || result.error) deny('REMOTE_COMMIT_UNVERIFIED');
+  return String(result.stdout || '').trim();
+};
+if (!fs.existsSync(leasePath)) deny('CAS_LEASE_MISSING');
+const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
+if (lease.repository !== canonicalRepository || lease.branch !== canonicalBranch || !sha(lease.expectedRemoteSha) || !sha(lease.admittedSha)) deny('CAS_LEASE_STATE_MISMATCH');
+if (expectedMissionId) {
+  if (!lease.missionId) deny('LEASE_OWNERSHIP_NOT_VALIDATED');
+  if (lease.missionId !== expectedMissionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');
+}
+const lines = fs.readFileSync(0, 'utf8').trim().split(/\\\\r?\\\\n/).filter(Boolean);
+for (const line of lines) {
+  const [, localSha, remoteRef, remoteSha] = line.trim().split(/\\\\s+/);
+  const targetRef = 'refs/heads/' + canonicalBranch;
+  if (remoteRef !== targetRef || !sha(localSha)) deny('UNAUTHORIZED_TARGET_BRANCH');
+  const observed = git(['ls-remote', '--exit-code', process.argv[2] || 'origin', targetRef]).split(/\\\\s+/)[0];
+  if (observed !== lease.expectedRemoteSha || remoteSha !== lease.expectedRemoteSha) deny('CONCURRENT_BRANCH_ADVANCED');
+}
+`, {mode: 0o700});
+
+    const env = {...process.env, WOLF_GIT_PUBLICATION_FENCE: '1', PATH: path.dirname(process.execPath)};
+    const res = spawnSync(process.execPath, [hookPath], {
+      input: `refs/heads/${CANONICAL_BRANCH} ${headSha} refs/heads/${CANONICAL_BRANCH} ${headSha}\n`,
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(res.status, 1);
+    assert.match(String(res.stderr), /LEASE_MISSION_IDENTITY_MISMATCH/);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-A: hook enforces restricted PATH execution', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0a-restricted-path-'));
+  try {
+    const repoDir = path.join(tmp, 'repo');
+    fs.mkdirSync(repoDir);
+    const headSha = initCanonicalRepo(repoDir);
+    spawnSync('git', ['remote', 'add', 'origin', `git@github.com:${CANONICAL_REPOSITORY}.git`], {cwd: repoDir});
+
+    const leaseFile = path.join(tmp, 'lease.json');
+    installCompareAndSwapPrePushGuard({
+      cwd: repoDir,
+      leaseFilePath: leaseFile,
+      expectedRemoteSha: headSha,
+      leaseFence: 1,
+      missionId: 'OMEGA_A_9001',
+    });
+
+    const hookPath = path.join(repoDir, '.git', 'hooks', 'pre-push');
+    const restrictedPath = path.dirname(process.execPath);
+    const env = {...process.env, WOLF_GIT_PUBLICATION_FENCE: '1', PATH: restrictedPath};
+    const res = spawnSync(process.execPath, [hookPath], {
+      input: `refs/heads/${CANONICAL_BRANCH} ${headSha} refs/heads/${CANONICAL_BRANCH} ${headSha}\n`,
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(res.status, 1);
+    assert.match(String(res.stderr), /REMOTE_COMMIT_UNVERIFIED/);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-B: publishCompareAndSwapCommit persists UNKNOWN_UNTIL_RECONCILED before push (crash before push)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0b-crash-before-'));
+  try {
+    const bare = path.join(tmp, 'remote.git');
+    const work = path.join(tmp, 'work');
+    spawnSync('git', ['init', '--bare', bare]);
+    fs.mkdirSync(work);
+    const s0 = initCanonicalRepo(work);
+    spawnSync('git', ['remote', 'add', 'origin', bare], {cwd: work});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+
+    const journalPath = path.join(tmp, 'journal.json');
+    fs.writeFileSync(journalPath, '[]\n');
+
+    const target = 'docs/factory-acceptance/omega-9001-a.py';
+    fs.mkdirSync(path.join(work, 'docs', 'factory-acceptance'), {recursive: true});
+    fs.writeFileSync(path.join(work, target), 'def add(a,b): return a+b\\n');
+    spawnSync('git', ['add', target], {cwd: work});
+    spawnSync('git', ['commit', '-m', 'pre-push candidate'], {cwd: work});
+    const headSha = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: work, encoding: 'utf8'}).stdout.trim();
+
+    let pushInvoked = false;
+    try {
+      publishCompareAndSwapCommit({
+        cwd: work,
+        env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+        missionId: 'OMEGA_A_9001',
+        checkpointId: 'wolf-cp-crash-before',
+        leaseFence: 1,
+        leaseState: {activeFence: 1},
+        expectedRemoteSha: s0,
+        journalPath,
+        allowLocalRemoteForTesting: true,
+        spawnImpl: (cmd, args, opts) => {
+          if (args[0] === 'push') {
+            pushInvoked = true;
+            return {status: 1, signal: null, error: {code: 'ECONNREFUSED'}, stderr: 'network error', stdout: ''};
+          }
+          if (args[0] === 'ls-remote' && args.includes('--exit-code')) {
+            return {status: 0, signal: null, error: null, stdout: `${s0}\\trefs/heads/${CANONICAL_BRANCH}\\n`, stderr: ''};
+          }
+          return spawnSync(cmd, args, opts);
+        },
+      });
+    } catch (e) {
+      // Expected: push failed/crashed
+    }
+
+    assert.equal(pushInvoked, true, 'push must have been attempted');
+    const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+    const unknownEntry = journal.find(
+      e => e && e.externalEffectState === 'UNKNOWN_UNTIL_RECONCILED' && e.published === false && e.headSha === headSha,
+    );
+    assert.ok(unknownEntry, 'UNKNOWN_UNTIL_RECONCILED record must be durably persisted before push');
+    assert.equal(unknownEntry.missionId, 'OMEGA_A_9001');
+    assert.equal(unknownEntry.checkpointId, 'wolf-cp-crash-before');
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-B: recoverPublicationUncertainty reconciles proven push on fresh process', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0b-fresh-recover-'));
+  try {
+    const bare = path.join(tmp, 'remote.git');
+    const work = path.join(tmp, 'work');
+    spawnSync('git', ['init', '--bare', bare]);
+    fs.mkdirSync(work);
+    const s0 = initCanonicalRepo(work);
+    spawnSync('git', ['remote', 'add', 'origin', bare], {cwd: work});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+
+    fs.writeFileSync(path.join(work, 'crashed.txt'), 'crash recovery\\n');
+    spawnSync('git', ['add', '.'], {cwd: work});
+    spawnSync('git', ['commit', '-m', 'crash recovery commit'], {cwd: work});
+    const headSha = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: work, encoding: 'utf8'}).stdout.trim();
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+
+    const journalPath = path.join(tmp, 'journal.json');
+    fs.writeFileSync(
+      journalPath,
+      JSON.stringify([
+        {
+          published: false,
+          externalEffectState: 'UNKNOWN_UNTIL_RECONCILED',
+          repository: CANONICAL_REPOSITORY,
+          branch: CANONICAL_BRANCH,
+          baseSha: s0,
+          headSha,
+          missionId: 'OMEGA_A_9002',
+          checkpointId: 'wolf-cp-fresh-recover',
+          leaseFence: 1,
+          createdAt: new Date().toISOString(),
+        },
+      ], null, 2) + '\n',
+    );
+
+    const result = recoverPublicationUncertainty({
+      journalPath,
+      cwd: work,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      allowLocalRemoteForTesting: true,
+    });
+
+    assert.equal(result.recovered.length, 1);
+    assert.equal(result.recovered[0].published, true);
+    assert.equal(result.recovered[0].externalEffectState, 'VERIFIED');
+    assert.equal(result.recovered[0].headSha, headSha);
+    assert.equal(result.recovered[0].missionId, 'OMEGA_A_9002');
+    assert.equal(result.recovered[0].reconciledFrom, 'UNKNOWN_UNTIL_RECONCILED');
+    assert.equal(result.unreconciled.length, 0);
+
+    const updated = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+    const verified = updated.find(e => e && e.externalEffectState === 'VERIFIED');
+    assert.ok(verified, 'fresh-process recovery must persist VERIFIED state');
+    assert.equal(verified.missionId, 'OMEGA_A_9002');
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-B: recoverPublicationUncertainty does not auto-retry ambiguous outcomes', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0b-ambiguous-'));
+  try {
+    const bare = path.join(tmp, 'remote.git');
+    const work = path.join(tmp, 'work');
+    spawnSync('git', ['init', '--bare', bare]);
+    fs.mkdirSync(work);
+    const s0 = initCanonicalRepo(work);
+    spawnSync('git', ['remote', 'add', 'origin', bare], {cwd: work});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+
+    const journalPath = path.join(tmp, 'journal.json');
+    fs.writeFileSync(
+      journalPath,
+      JSON.stringify([
+        {
+          published: false,
+          externalEffectState: 'UNKNOWN_UNTIL_RECONCILED',
+          repository: CANONICAL_REPOSITORY,
+          branch: CANONICAL_BRANCH,
+          baseSha: s0,
+          headSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          missionId: 'OMEGA_A_9003',
+          checkpointId: 'wolf-cp-ambiguous',
+          leaseFence: 1,
+          createdAt: new Date().toISOString(),
+        },
+      ], null, 2) + '\n',
+    );
+
+    const result = recoverPublicationUncertainty({
+      journalPath,
+      cwd: work,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      allowLocalRemoteForTesting: true,
+    });
+
+    assert.equal(result.recovered.length, 0);
+    assert.equal(result.unreconciled.length, 1);
+    assert.ok(['CONFLICTING_REMOTE_STATE', 'REMOTE_REF_NOT_OBSERVED'].includes(result.unreconciled[0].reason));
+
+    const updated = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+    const stillUnknown = updated.find(e => e && e.externalEffectState === 'UNKNOWN_UNTIL_RECONCILED');
+    assert.ok(stillUnknown, 'unreconciled entry must remain UNKNOWN_UNTIL_RECONCILED');
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-B: remote advancement after successful push is rejected', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0b-remote-advance-'));
+  try {
+    const bare = path.join(tmp, 'remote.git');
+    const work = path.join(tmp, 'work');
+    spawnSync('git', ['init', '--bare', bare]);
+    fs.mkdirSync(work);
+    const s0 = initCanonicalRepo(work);
+    spawnSync('git', ['remote', 'add', 'origin', bare], {cwd: work});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+
+    const outsider = path.join(tmp, 'outsider');
+    fs.mkdirSync(outsider);
+    spawnSync('git', ['init'], {cwd: outsider});
+    spawnSync('git', ['config', 'user.email', 'wolf-test@example.invalid'], {cwd: outsider});
+    spawnSync('git', ['config', 'user.name', 'Wolf Test'], {cwd: outsider});
+    spawnSync('git', ['remote', 'add', 'origin', bare], {cwd: outsider});
+    spawnSync('git', ['fetch', '--depth=1', 'origin', CANONICAL_BRANCH], {cwd: outsider});
+    spawnSync('git', ['checkout', '-b', CANONICAL_BRANCH, 'FETCH_HEAD'], {cwd: outsider});
+    fs.writeFileSync(path.join(outsider, 'concurrent.txt'), 'unexpected\\n');
+    spawnSync('git', ['add', '.'], {cwd: outsider});
+    spawnSync('git', ['commit', '-m', 'concurrent'], {cwd: outsider});
+    const outsiderPush = spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: outsider});
+    assert.equal(outsiderPush.status, 0, outsiderPush.stderr);
+    const sExt = spawnSync('git', ['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], {cwd: bare, encoding: 'utf8'}).stdout.trim();
+    assert.notEqual(sExt, s0);
+
+    fs.mkdirSync(path.join(work, 'docs', 'factory-acceptance'), {recursive: true});
+    fs.writeFileSync(path.join(work, 'docs', 'factory-acceptance', 'omega-9004-a.py'), 'our change\n');
+    spawnSync('git', ['add', '.'], {cwd: work});
+    spawnSync('git', ['commit', '-m', 'our change'], {cwd: work});
+
+    const journalPath = path.join(tmp, 'journal.json');
+    fs.writeFileSync(journalPath, '[]\n');
+
+    assert.throws(
+      () => publishCompareAndSwapCommit({
+        cwd: work,
+        env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+        missionId: 'OMEGA_A_9004',
+        checkpointId: 'wolf-cp-remote-advance',
+        leaseFence: 1,
+        leaseState: {activeFence: 1},
+        journalPath,
+        allowLocalRemoteForTesting: true,
+        expectedRemoteSha: s0,
+      }),
+      /CONCURRENT_BRANCH_ADVANCED/
+    );
+
+    const remoteTip = spawnSync('git', ['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], {cwd: bare, encoding: 'utf8'}).stdout.trim();
+    assert.equal(remoteTip, sExt);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('P0-C: zero-cost policy enforcement blocks paid fallback', () => {
+  const env = {
+    EUR_SPEND: '0',
+    COST_UNKNOWN: 'DENY',
+    PAID_FALLBACK: 'DENY',
+    TRIAL_CREDIT: 'DENY',
+  };
+  assert.equal(env.EUR_SPEND, '0');
+  assert.equal(env.COST_UNKNOWN, 'DENY');
+  assert.equal(env.PAID_FALLBACK, 'DENY');
+  assert.equal(env.TRIAL_CREDIT, 'DENY');
+
+  const code = fs.readFileSync('scripts/git-publication-preflight.mjs', 'utf8');
+  assert.ok(!code.includes('openrouter'), 'no OpenRouter fallback in publication code');
+});
+
+test('P0-C: duplicate wakeup without duplicate effects (idempotent publication replay)', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-p0c-dup-wakeup-'));
+  try {
+    const bare = path.join(tmp, 'remote.git');
+    const work = path.join(tmp, 'work');
+    spawnSync('git', ['init', '--bare', bare]);
+    fs.mkdirSync(work);
+    const s0 = initCanonicalRepo(work);
+    spawnSync('git', ['remote', 'add', 'origin', bare], {cwd: work});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+
+    const journalPath = path.join(tmp, 'journal.json');
+    fs.writeFileSync(journalPath, '[]\n');
+
+    fs.mkdirSync(path.join(work, 'docs', 'factory-acceptance'), {recursive: true});
+    fs.writeFileSync(path.join(work, 'docs', 'factory-acceptance', 'omega-9005-a.py'), 'duplicate wakeup\n');
+    spawnSync('git', ['add', '.'], {cwd: work});
+    spawnSync('git', ['commit', '-m', 'duplicate wakeup commit'], {cwd: work});
+    const headSha = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: work, encoding: 'utf8'}).stdout.trim();
+
+    const pub1 = publishCompareAndSwapCommit({
+      cwd: work,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      missionId: 'OMEGA_A_9005',
+      checkpointId: 'wolf-cp-dup-wakeup',
+      leaseFence: 1,
+      leaseState: {activeFence: 1},
+      journalPath,
+      allowLocalRemoteForTesting: true,
+      expectedRemoteSha: s0,
+    });
+    assert.equal(pub1.alreadyCompleted, false);
+    assert.equal(pub1.published, true);
+
+    const pub2 = publishCompareAndSwapCommit({
+      cwd: work,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      missionId: 'OMEGA_A_9005',
+      checkpointId: 'wolf-cp-dup-wakeup',
+      leaseFence: 1,
+      leaseState: {activeFence: 1},
+      journalPath,
+      allowLocalRemoteForTesting: true,
+      expectedRemoteSha: s0,
+    });
+    assert.equal(pub2.alreadyCompleted, true);
+    assert.equal(pub2.commitSha, pub1.commitSha);
+
+    const remoteTip = spawnSync(
+      'git',
+      ['rev-parse', `refs/heads/${CANONICAL_BRANCH}`],
+      {cwd: bare, encoding: 'utf8'},
+    ).stdout.trim();
+    assert.equal(remoteTip, headSha);
   } finally {
     fs.rmSync(tmp, {recursive: true, force: true});
   }
