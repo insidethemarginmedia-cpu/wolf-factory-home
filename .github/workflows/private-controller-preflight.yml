@@ -2,6 +2,9 @@ name: Private Controller Access Preflight
 on:
   workflow_call:
     inputs:
+      public_runtime_sha:
+        type: string
+        required: true
       night_shift:
         type: boolean
         default: false
@@ -18,6 +21,10 @@ on:
         required: true
   workflow_dispatch:
     inputs:
+      public_runtime_sha:
+        description: Optional literal runtime SHA; direct dispatch otherwise uses its exact HEAD
+        type: string
+        default: ''
       night_shift:
         description: Run one bounded manual wakeup through the existing Factory
         type: boolean
@@ -77,6 +84,7 @@ on:
       - 'scripts/git-publication-preflight.mjs'
       - 'tests/git-publication-preflight.test.mjs'
       - 'tests/factory-source-admission.test.mjs'
+      - 'tests/public-runtime-pin.test.mjs'
       - 'tests/runner-checkpoint-publication.test.mjs'
 permissions:
   contents: read
@@ -90,12 +98,17 @@ jobs:
     timeout-minutes: 2
     permissions:
       contents: read
+      actions: read
     outputs:
+      public_runtime_sha: ${{ steps.pin.outputs.public_runtime_sha }}
       source_sha: ${{ steps.pin.outputs.source_sha }}
     steps:
     - name: Resolve authorized Factory HEAD once at admission
       id: pin
       env:
+        GITHUB_TOKEN: ${{ github.token }}
+        WOLF_NIGHT_SHIFT: ${{ inputs.night_shift }}
+        WOLF_PUBLIC_RUNTIME_SHA: ${{ inputs.public_runtime_sha }}
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         WOLF_EXECUTE_INTEGRATED: ${{ inputs.execute_integrated }}
         WOLF_VERIFY_RUNNER_LOSS: ${{ inputs.verify_runner_loss }}
@@ -106,6 +119,34 @@ jobs:
       run: |
         node --input-type=module <<'NODE'
         import fs from 'node:fs';
+        // PUBLIC_RUNTIME_PIN_BEGIN
+        async function resolvePublicRuntimePin(env, fetchImpl = globalThis.fetch) {
+          const repository = 'insidethemarginmedia-cpu/wolf-factory-home';
+          const scheduled = env.GITHUB_EVENT_NAME === 'schedule' && env.GITHUB_REF === 'refs/heads/main';
+          const manual = env.GITHUB_EVENT_NAME === 'workflow_dispatch' && ['refs/heads/feat/public-runtime-probe-20261022', 'refs/heads/fix/omega-acceptance-ready-20261028'].includes(env.GITHUB_REF);
+          if (env.GITHUB_REPOSITORY !== repository || env.GITHUB_ACTOR !== 'insidethemarginmedia-cpu' || (!scheduled && !manual)) throw Error('PUBLIC_RUNTIME_SCOPE_DENIED');
+          if (env.EUR_SPEND !== '0' || ['COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT'].some(k => env[k] !== 'DENY')) throw Error('PUBLIC_RUNTIME_COST_DENIED');
+          const pin = env.WOLF_PUBLIC_RUNTIME_SHA || (manual ? env.GITHUB_SHA : '');
+          if (!/^[a-f0-9]{40}$/.test(pin || '') || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '')) throw Error('PUBLIC_RUNTIME_IMMUTABLE_PIN_REQUIRED');
+          if (![env.GITHUB_RUN_ID, env.GITHUB_RUN_ATTEMPT].every(v => /^[1-9][0-9]*$/.test(v || '')) || !env.GITHUB_TOKEN) throw Error('PUBLIC_RUNTIME_CONTEXT_REQUIRED');
+          let run;
+          try {
+            const response = await fetchImpl('https://api.github.com/repos/' + repository + '/actions/runs/' + env.GITHUB_RUN_ID + '/attempts/' + env.GITHUB_RUN_ATTEMPT, {headers: {authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json'}, redirect: 'error', signal: AbortSignal.timeout(15000)});
+            if (!response.ok) throw Error();
+            const raw = await response.text();
+            if (Buffer.byteLength(raw) > 262144) throw Error();
+            run = JSON.parse(raw);
+          } catch { throw Error('PUBLIC_RUNTIME_METADATA_UNAVAILABLE'); }
+          if (String(run?.id) !== env.GITHUB_RUN_ID || String(run.run_attempt) !== env.GITHUB_RUN_ATTEMPT || run.event !== env.GITHUB_EVENT_NAME || run.head_sha !== env.GITHUB_SHA) throw Error('PUBLIC_RUNTIME_RUN_MISMATCH');
+          const prefix = repository + '/.github/workflows/private-controller-preflight.yml@';
+          if (run.referenced_workflows != null && !Array.isArray(run.referenced_workflows)) throw Error('PUBLIC_RUNTIME_CALLEE_MISMATCH');
+          const refs = (run.referenced_workflows || []).filter(r => typeof r?.path === 'string' && r.path.startsWith(prefix));
+          if (refs.length) {
+            if (refs.length !== 1 || refs[0].path !== prefix + pin || refs[0].sha !== pin) throw Error('PUBLIC_RUNTIME_CALLEE_MISMATCH');
+          } else if (!manual || run.path !== '.github/workflows/private-controller-preflight.yml' || pin !== env.GITHUB_SHA) throw Error('PUBLIC_RUNTIME_CALLEE_MISMATCH');
+          return pin;
+        }
+        // PUBLIC_RUNTIME_PIN_END
         // FACTORY_SOURCE_ADMISSION_BEGIN
         async function resolveFactorySource(env, fetchImpl = globalThis.fetch) {
           const manual = env.GITHUB_EVENT_NAME === 'workflow_dispatch' && [
@@ -147,7 +188,9 @@ jobs:
           return Object.freeze({repository, branch, sha: data.object.sha});
         }
         // FACTORY_SOURCE_ADMISSION_END
+        const publicPin = process.env.WOLF_NIGHT_SHIFT === 'true' ? await resolvePublicRuntimePin(process.env) : process.env.GITHUB_SHA;
         const admission = await resolveFactorySource(process.env);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, 'public_runtime_sha=' + publicPin + '\n');
         fs.appendFileSync(process.env.GITHUB_OUTPUT, 'source_sha=' + admission.sha + '\n');
         console.log('WOLF_FACTORY_SOURCE_ADMITTED=' + JSON.stringify(admission));
         NODE
@@ -199,7 +242,7 @@ jobs:
         GITHUB_TOKEN: ${{ github.token }}
       run: node scripts/wolf-night-shift-wakeup.mjs suspend
   security-tests:
-    needs: night-shift-admission
+    needs: [night-shift-admission, factory-source-admission]
     if: always() && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && (inputs.night_shift != true || needs.night-shift-admission.outputs.ready == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -208,7 +251,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-          ref: ${{ inputs.night_shift == true && 'f13d1a3e0a2abb93890a0e36746f4eefb9c94f82' || github.sha }}
+          ref: ${{ inputs.night_shift == true && needs.factory-source-admission.outputs.public_runtime_sha || github.sha }}
       - run: node --test tests/*.test.mjs
   dbos-runtime:
     needs: security-tests
