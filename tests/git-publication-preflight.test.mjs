@@ -8,13 +8,18 @@ import {fileURLToPath} from 'node:url';
 import {
   CANONICAL_BRANCH,
   CANONICAL_REPOSITORY,
+  MINIMUM_VERIFIED_FACTORY_SHA,
+  advanceCompareAndSwapLease,
   authorizeSyntheticEngineeringScope,
   classifyGitPublicationResult,
   cleanupSshPublicationCredential,
+  installCompareAndSwapPrePushGuard,
   isAuthorizedSyntheticReceiptFilename,
   normalizeOpenSshPrivateKey,
   prepareSshPublicationCredential,
+  publishCompareAndSwapCommit,
   redactGitPublicationOutput,
+  resolveAdmittedPrivateSource,
   verifyAuthorizedGitPublication,
   verifyRemotePublishedCommit,
 } from '../scripts/git-publication-preflight.mjs';
@@ -623,5 +628,456 @@ test('workflow enforces use_publication_deploy_key for integrated publication an
   ].map(m => m[1]);
   // Historical read-only source diagnostic remains pinned; mission pins are admitted at runtime.
   assert.deepEqual(expectedShaPins, ['ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6']);
-  assert.equal(latestPublishedPrivateSha, '58127da11aa1628a5f6e53376449574b7e2cc20e');
+  assert.equal(latestPublishedPrivateSha, MINIMUM_VERIFIED_FACTORY_SHA);
+  assert.equal(
+    workflowRaw.includes(MINIMUM_VERIFIED_FACTORY_SHA),
+    false,
+    'zero static mutable 58127da1 pins may remain in private-controller-preflight.yml',
+  );
+  assert.equal(
+    (workflowRaw.match(/--force-with-lease=refs\/heads\//g) || []).length,
+    2,
+    'both integrated-factory and runner-loss-recover preflight blocks must enforce --force-with-lease CAS',
+  );
+});
+
+test('resolveAdmittedPrivateSource resolves authorized HEAD, locks pre-admitted SHA, and rejects non-fast-forward or unauthorized sources', async () => {
+  const s0 = MINIMUM_VERIFIED_FACTORY_SHA;
+  const s1 = '7111111111111111111111111111111111111111';
+  const s2 = '8222222222222222222222222222222222222222';
+
+  await assert.rejects(
+    () => resolveAdmittedPrivateSource({env: {}}),
+    /PRIVATE_SOURCE_CREDENTIAL_REQUIRED/,
+  );
+
+  await assert.rejects(
+    () =>
+      resolveAdmittedPrivateSource({
+        env: {WOLF_FACTORY_REPO_TOKEN: 'tok'},
+        expectedBranch: 'main',
+      }),
+    /UNAUTHORIZED_TARGET_BRANCH/,
+  );
+
+  const locked = await resolveAdmittedPrivateSource({
+    env: {WOLF_FACTORY_REPO_TOKEN: 'tok', WOLF_FACTORY_ADMITTED_SHA: s1},
+    missionId: 'OMEGA_C_40699999999',
+    leaseFence: 3,
+    fetchImpl: () => {
+      throw Error('MUST_NOT_FETCH_WHEN_LOCKED');
+    },
+  });
+  assert.equal(locked.mode, 'LOCKED_UPSTREAM_ADMISSION');
+  assert.equal(locked.admittedSha, s1);
+  assert.equal(locked.leaseFence, 3);
+
+  const makeMockFetch = ({headSha, compareStatus = 'ahead', behindBy = 0, aheadBy = 1, isPrivate = true}) =>
+    async url => {
+      const u = String(url);
+      if (u.endsWith(`/repos/${CANONICAL_REPOSITORY}`)) {
+        return {
+          status: 200,
+          async json() {
+            return {full_name: CANONICAL_REPOSITORY, private: isPrivate};
+          },
+        };
+      }
+      if (u.endsWith(`/repos/${CANONICAL_REPOSITORY}/git/ref/heads/${CANONICAL_BRANCH}`)) {
+        return {
+          status: 200,
+          async json() {
+            return {ref: `refs/heads/${CANONICAL_BRANCH}`, object: {type: 'commit', sha: headSha}};
+          },
+        };
+      }
+      if (u.includes(`/compare/${s0}...${headSha}`)) {
+        return {
+          status: 200,
+          async json() {
+            return {status: compareStatus, behind_by: behindBy, ahead_by: aheadBy};
+          },
+        };
+      }
+      return {status: 404, async json() { return {}; }};
+    };
+
+  const atFloor = await resolveAdmittedPrivateSource({
+    env: {WOLF_FACTORY_REPO_TOKEN: 'tok'},
+    fetchImpl: makeMockFetch({headSha: s0}),
+  });
+  assert.equal(atFloor.mode, 'DYNAMIC_HEAD_ADMISSION');
+  assert.equal(atFloor.admittedSha, s0);
+  assert.equal(atFloor.aheadBy, 0);
+
+  const advanced1 = await resolveAdmittedPrivateSource({
+    env: {WOLF_FACTORY_REPO_TOKEN: 'tok'},
+    fetchImpl: makeMockFetch({headSha: s1, aheadBy: 1}),
+  });
+  assert.equal(advanced1.admittedSha, s1);
+  assert.equal(advanced1.aheadBy, 1);
+
+  const advanced2 = await resolveAdmittedPrivateSource({
+    env: {WOLF_FACTORY_REPO_TOKEN: 'tok'},
+    fetchImpl: makeMockFetch({headSha: s2, aheadBy: 2}),
+  });
+  assert.equal(advanced2.admittedSha, s2);
+  assert.equal(advanced2.aheadBy, 2);
+
+  await assert.rejects(
+    () =>
+      resolveAdmittedPrivateSource({
+        env: {WOLF_FACTORY_REPO_TOKEN: 'tok'},
+        fetchImpl: makeMockFetch({headSha: s2, compareStatus: 'diverged', behindBy: 1, aheadBy: 2}),
+      }),
+    /PRIVATE_SOURCE_LINEAGE_NOT_FAST_FORWARD/,
+  );
+
+  await assert.rejects(
+    () =>
+      resolveAdmittedPrivateSource({
+        env: {WOLF_FACTORY_REPO_TOKEN: 'tok'},
+        fetchImpl: makeMockFetch({headSha: s1, isPrivate: false}),
+      }),
+    /PRIVATE_SOURCE_REPOSITORY_MISMATCH/,
+  );
+});
+
+test('two sequential synthetic commits succeed without manual SHA updates while concurrent branch changes, stale fences, and unknown-effect replays fail closed', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-seq-cas-'));
+  try {
+    const bareRemote = path.join(tmp, 'project-wolf.git');
+    const seedDir = path.join(tmp, 'seed');
+    const journalPath = path.join(tmp, 'publication-journal.json');
+    spawnSync('git', ['init', '--bare', bareRemote]);
+    fs.mkdirSync(seedDir);
+    const s0 = initCanonicalRepo(seedDir);
+    spawnSync('git', ['remote', 'add', 'origin', bareRemote], {cwd: seedDir});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: seedDir});
+
+    const getRemoteTip = () =>
+      spawnSync('git', ['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], {
+        cwd: bareRemote,
+        encoding: 'utf8',
+      }).stdout.trim();
+
+    const makeLiveRemoteFetch = floorSha => async url => {
+      const u = String(url);
+      const currentTip = getRemoteTip();
+      if (u.endsWith(`/repos/${CANONICAL_REPOSITORY}`)) {
+        return {
+          status: 200,
+          async json() {
+            return {full_name: CANONICAL_REPOSITORY, private: true};
+          },
+        };
+      }
+      if (u.endsWith(`/repos/${CANONICAL_REPOSITORY}/git/ref/heads/${CANONICAL_BRANCH}`)) {
+        return {
+          status: 200,
+          async json() {
+            return {
+              ref: `refs/heads/${CANONICAL_BRANCH}`,
+              object: {type: 'commit', sha: currentTip},
+            };
+          },
+        };
+      }
+      if (u.includes(`/compare/${floorSha}...${currentTip}`)) {
+        const isAnc = spawnSync(
+          'git',
+          ['merge-base', '--is-ancestor', floorSha, currentTip],
+          {cwd: bareRemote},
+        );
+        const countRes = spawnSync(
+          'git',
+          ['rev-list', '--count', `${floorSha}..${currentTip}`],
+          {cwd: bareRemote, encoding: 'utf8'},
+        );
+        const ahead = Number.parseInt(String(countRes.stdout || '0').trim(), 10) || 0;
+        return {
+          status: 200,
+          async json() {
+            return isAnc.status === 0
+              ? {status: 'ahead', behind_by: 0, ahead_by: ahead}
+              : {status: 'diverged', behind_by: 1, ahead_by: ahead};
+          },
+        };
+      }
+      return {status: 404, async json() { return {}; }};
+    };
+
+    const checkoutAtSha = (dir, sha) => {
+      fs.mkdirSync(dir);
+      spawnSync('git', ['init'], {cwd: dir});
+      spawnSync('git', ['config', 'user.email', 'test@wolf.local'], {cwd: dir});
+      spawnSync('git', ['config', 'user.name', 'Wolf Test'], {cwd: dir});
+      spawnSync('git', ['remote', 'add', 'origin', bareRemote], {cwd: dir});
+      spawnSync('git', ['fetch', '--depth=1', 'origin', sha], {cwd: dir});
+      spawnSync('git', ['checkout', '-b', CANONICAL_BRANCH, 'FETCH_HEAD'], {cwd: dir});
+    };
+
+    // === MISSION 1 (OMEGA_A_5001): Admits S0 dynamically, commits S1, publishes via CAS ===
+    const admission1 = await resolveAdmittedPrivateSource({
+      env: {WOLF_FACTORY_REPO_TOKEN: 'tok', WOLF_FACTORY_MIN_VERIFIED_SHA: s0},
+      minVerifiedSha: s0,
+      missionId: 'OMEGA_A_5001',
+      leaseFence: 1,
+      fetchImpl: makeLiveRemoteFetch(s0),
+    });
+    assert.equal(admission1.admittedSha, s0);
+
+    const run1Dir = path.join(tmp, 'runner-1');
+    const lease1Path = path.join(tmp, 'lease-1.json');
+    checkoutAtSha(run1Dir, admission1.admittedSha);
+    installCompareAndSwapPrePushGuard({
+      cwd: run1Dir,
+      leaseFilePath: lease1Path,
+      expectedRemoteSha: admission1.admittedSha,
+      leaseFence: 1,
+      missionId: admission1.missionId,
+    });
+    assert.equal(
+      spawnSync('git', ['status', '--porcelain'], {cwd: run1Dir, encoding: 'utf8'}).stdout.trim(),
+      '',
+    );
+
+    const preflight1 = verifyAuthorizedGitPublication({
+      cwd: run1Dir,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      expectedRemoteSha: admission1.admittedSha,
+      missionId: admission1.missionId,
+      allowLocalRemoteForTesting: true,
+      journalPath,
+    });
+    assert.equal(preflight1.reason, 'AUTHORIZED');
+    assert.equal(preflight1.casEnforced, undefined);
+
+    const target1 = path.join(run1Dir, 'docs/factory-acceptance/omega-5001-a.py');
+    fs.mkdirSync(path.dirname(target1), {recursive: true});
+    fs.writeFileSync(target1, 'def add(a, b):\n    return a + b\n');
+    spawnSync('git', ['add', 'docs/factory-acceptance/omega-5001-a.py'], {cwd: run1Dir});
+    spawnSync('git', ['commit', '-m', 'Mission OMEGA_A_5001 synthetic repair'], {cwd: run1Dir});
+
+    const pub1 = publishCompareAndSwapCommit({
+      cwd: run1Dir,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      expectedRemoteSha: admission1.admittedSha,
+      missionId: 'OMEGA_A_5001',
+      checkpointId: 'wolf-cp-seq-1',
+      leaseFence: 1,
+      leaseState: {activeFence: 1},
+      journalPath,
+      allowLocalRemoteForTesting: true,
+    });
+    const s1 = pub1.commitSha;
+    assert.notEqual(s1, s0);
+    assert.equal(getRemoteTip(), s1);
+
+    // Idempotency: duplicate replay of Mission 1 returns existing receipt without pushing again
+    const replay1 = publishCompareAndSwapCommit({
+      cwd: run1Dir,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      expectedRemoteSha: admission1.admittedSha,
+      missionId: 'OMEGA_A_5001',
+      checkpointId: 'wolf-cp-seq-1',
+      leaseFence: 1,
+      leaseState: {activeFence: 1},
+      journalPath,
+      allowLocalRemoteForTesting: true,
+    });
+    assert.equal(replay1.alreadyCompleted, true);
+    assert.equal(replay1.commitSha, s1);
+    assert.equal(getRemoteTip(), s1);
+
+    // === MISSION 2 (OMEGA_B_5002): ZERO manual SHA pin changes — admits S1 automatically, commits S2, publishes via CAS ===
+    const admission2 = await resolveAdmittedPrivateSource({
+      env: {WOLF_FACTORY_REPO_TOKEN: 'tok', WOLF_FACTORY_MIN_VERIFIED_SHA: s0},
+      minVerifiedSha: s0,
+      missionId: 'OMEGA_B_5002',
+      leaseFence: 2,
+      fetchImpl: makeLiveRemoteFetch(s0),
+    });
+    assert.equal(admission2.admittedSha, s1);
+    assert.equal(admission2.aheadBy, 1);
+
+    const run2Dir = path.join(tmp, 'runner-2');
+    const lease2Path = path.join(tmp, 'lease-2.json');
+    checkoutAtSha(run2Dir, admission2.admittedSha);
+    installCompareAndSwapPrePushGuard({
+      cwd: run2Dir,
+      leaseFilePath: lease2Path,
+      expectedRemoteSha: admission2.admittedSha,
+      leaseFence: 2,
+      missionId: admission2.missionId,
+    });
+
+    // Re-running preflight for already-published Mission 1 is blocked before IO
+    assert.throws(
+      () =>
+        verifyAuthorizedGitPublication({
+          cwd: run2Dir,
+          env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+          expectedRemoteSha: admission2.admittedSha,
+          missionId: admission1.missionId,
+          allowLocalRemoteForTesting: true,
+          journalPath,
+        }),
+      /DUPLICATE_PUBLICATION_PREVENTED/,
+    );
+
+    const preflight2 = verifyAuthorizedGitPublication({
+      cwd: run2Dir,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      expectedRemoteSha: admission2.admittedSha,
+      missionId: admission2.missionId,
+      allowLocalRemoteForTesting: true,
+      journalPath,
+    });
+    assert.equal(preflight2.reason, 'AUTHORIZED');
+
+    const target2 = path.join(run2Dir, 'docs/factory-acceptance/omega-5002-b.py');
+    fs.mkdirSync(path.dirname(target2), {recursive: true});
+    fs.writeFileSync(target2, 'def normalize(v):\n    return " ".join(v.strip().lower().split())\n');
+    spawnSync('git', ['add', 'docs/factory-acceptance/omega-5002-b.py'], {cwd: run2Dir});
+    spawnSync('git', ['commit', '-m', 'Mission OMEGA_B_5002 synthetic repair'], {cwd: run2Dir});
+
+    // Stale lease fence fails closed before Git push
+    assert.throws(
+      () =>
+        publishCompareAndSwapCommit({
+          cwd: run2Dir,
+          env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+          expectedRemoteSha: admission2.admittedSha,
+          missionId: 'OMEGA_B_5002',
+          checkpointId: 'wolf-cp-seq-2',
+          leaseFence: 1,
+          leaseState: {activeFence: 2},
+          journalPath,
+          allowLocalRemoteForTesting: true,
+        }),
+      /STALE_LEASE_FENCE_REJECTED/,
+    );
+    assert.equal(getRemoteTip(), s1);
+
+    const pub2 = publishCompareAndSwapCommit({
+      cwd: run2Dir,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      expectedRemoteSha: admission2.admittedSha,
+      missionId: 'OMEGA_B_5002',
+      checkpointId: 'wolf-cp-seq-2',
+      leaseFence: 2,
+      leaseState: {activeFence: 2},
+      journalPath,
+      allowLocalRemoteForTesting: true,
+    });
+    const s2 = pub2.commitSha;
+    assert.notEqual(s2, s1);
+    assert.equal(getRemoteTip(), s2);
+
+    // Advance local CAS lease fence and verify stale fence rejection
+    const advancedLease = advanceCompareAndSwapLease({
+      leaseFilePath: lease2Path,
+      previousExpectedSha: s1,
+      nextExpectedSha: s2,
+      minLeaseFence: 2,
+      nextLeaseFence: 3,
+      missionId: 'OMEGA_C_5003',
+    });
+    assert.equal(advancedLease.expectedRemoteSha, s2);
+    assert.equal(advancedLease.leaseFence, 3);
+    assert.throws(
+      () =>
+        advanceCompareAndSwapLease({
+          leaseFilePath: lease2Path,
+          previousExpectedSha: s2,
+          nextExpectedSha: s2,
+          minLeaseFence: 2,
+          nextLeaseFence: 2,
+        }),
+      /STALE_LEASE_FENCE_REJECTED/,
+    );
+
+    // === CONCURRENT BRANCH CHANGE REJECTION: Mission 3 admits S2, outsider advances remote to S_ext, CAS rejects Mission 3 ===
+    const admission3 = await resolveAdmittedPrivateSource({
+      env: {WOLF_FACTORY_REPO_TOKEN: 'tok', WOLF_FACTORY_MIN_VERIFIED_SHA: s0},
+      minVerifiedSha: s0,
+      missionId: 'OMEGA_C_5003',
+      leaseFence: 3,
+      fetchImpl: makeLiveRemoteFetch(s0),
+    });
+    assert.equal(admission3.admittedSha, s2);
+
+    const run3Dir = path.join(tmp, 'runner-3');
+    const lease3Path = path.join(tmp, 'lease-3.json');
+    checkoutAtSha(run3Dir, admission3.admittedSha);
+    installCompareAndSwapPrePushGuard({
+      cwd: run3Dir,
+      leaseFilePath: lease3Path,
+      expectedRemoteSha: admission3.admittedSha,
+      leaseFence: 3,
+      missionId: admission3.missionId,
+    });
+    const target3 = path.join(run3Dir, 'docs/factory-acceptance/omega-5003-c.py');
+    fs.mkdirSync(path.dirname(target3), {recursive: true});
+    fs.writeFileSync(target3, 'def clamp(v):\n    return max(0, min(1, v))\n');
+    spawnSync('git', ['add', 'docs/factory-acceptance/omega-5003-c.py'], {cwd: run3Dir});
+    spawnSync('git', ['commit', '-m', 'Mission OMEGA_C_5003 candidate'], {cwd: run3Dir});
+
+    // Simulate concurrent external writer advancing remote branch to sExt
+    const outsiderDir = path.join(tmp, 'outsider');
+    checkoutAtSha(outsiderDir, s2);
+    fs.writeFileSync(path.join(outsiderDir, 'concurrent.txt'), 'unexpected concurrent write\n');
+    spawnSync('git', ['add', 'concurrent.txt'], {cwd: outsiderDir});
+    spawnSync('git', ['commit', '-m', 'Concurrent writer commit'], {cwd: outsiderDir});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: outsiderDir});
+    const sExt = getRemoteTip();
+    assert.notEqual(sExt, s2);
+
+    assert.throws(
+      () =>
+        publishCompareAndSwapCommit({
+          cwd: run3Dir,
+          env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+          expectedRemoteSha: admission3.admittedSha,
+          missionId: 'OMEGA_C_5003',
+          checkpointId: 'wolf-cp-seq-3',
+          leaseFence: 3,
+          leaseState: {activeFence: 3},
+          journalPath,
+          allowLocalRemoteForTesting: true,
+        }),
+      /CONCURRENT_BRANCH_ADVANCED/,
+    );
+    assert.equal(getRemoteTip(), sExt);
+
+    // Suspended mission with UNKNOWN_UNTIL_RECONCILED external effect is never replayed
+    const suspendedJournal = path.join(tmp, 'suspended-journal.json');
+    fs.writeFileSync(
+      suspendedJournal,
+      JSON.stringify([
+        {
+          missionId: 'WOLF_WAKEUP_MANUAL_40612336952',
+          state: 'SUSPENDED',
+          externalEffectState: 'UNKNOWN_UNTIL_RECONCILED',
+          automaticRetry: false,
+        },
+      ]),
+    );
+    assert.throws(
+      () =>
+        publishCompareAndSwapCommit({
+          cwd: run3Dir,
+          env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+          expectedRemoteSha: sExt,
+          missionId: 'WOLF_WAKEUP_MANUAL_40612336952',
+          leaseFence: 4,
+          journalPath: suspendedJournal,
+          allowLocalRemoteForTesting: true,
+        }),
+      /UNKNOWN_EXTERNAL_EFFECT_REPLAY_DENIED/,
+    );
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
 });

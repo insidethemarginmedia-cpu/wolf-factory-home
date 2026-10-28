@@ -5,6 +5,7 @@ import {pathToFileURL} from 'node:url';
 
 export const CANONICAL_REPOSITORY = 'donraposo1-source/project-wolf';
 export const CANONICAL_BRANCH = 'feat/factory-real-worker-m1-20261006';
+export const MINIMUM_VERIFIED_FACTORY_SHA = '58127da11aa1628a5f6e53376449574b7e2cc20e';
 export const GITHUB_SSH_KNOWN_HOST =
   'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n';
 
@@ -42,7 +43,11 @@ export function cleanupSshPublicationCredential({
   runnerTemp = env.RUNNER_TEMP,
 } = {}) {
   if (typeof runnerTemp !== 'string' || !runnerTemp.trim()) return;
-  for (const name of ['wolf-publication-key', 'wolf-publication-known-hosts']) {
+  for (const name of [
+    'wolf-publication-key',
+    'wolf-publication-known-hosts',
+    'wolf-cas-lease.json',
+  ]) {
     fs.rmSync(path.join(runnerTemp, name), {force: true});
   }
 }
@@ -209,6 +214,8 @@ export function verifyAuthorizedGitPublication({
   allowLocalRemoteForTesting = false,
   journalPath = env.WOLF_PUBLICATION_JOURNAL_PATH,
   expectedBaseSha = env.WOLF_FACTORY_EXPECTED_SHA,
+  expectedRemoteSha = undefined,
+  missionId = env.WOLF_MISSION_ID || null,
 } = {}) {
   if (targetBranch === 'main' || targetBranch !== CANONICAL_BRANCH) {
     throw Error('UNAUTHORIZED_TARGET_BRANCH');
@@ -216,6 +223,16 @@ export function verifyAuthorizedGitPublication({
   if (expectedRepository !== CANONICAL_REPOSITORY) {
     throw Error('UNAUTHORIZED_TARGET_REPOSITORY');
   }
+  const hasExplicitRemoteCas = expectedRemoteSha !== undefined && expectedRemoteSha !== null;
+  if (hasExplicitRemoteCas && !/^[a-f0-9]{40}$/.test(String(expectedRemoteSha))) {
+    throw Error('INVALID_EXPECTED_REMOTE_SHA');
+  }
+  const effectiveLeaseSha = hasExplicitRemoteCas
+    ? String(expectedRemoteSha)
+    : expectedBaseSha !== undefined && expectedBaseSha !== null
+      ? String(expectedBaseSha)
+      : null;
+
   const branchCheck = spawnImpl('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
     cwd,
     encoding: 'utf8',
@@ -234,6 +251,17 @@ export function verifyAuthorizedGitPublication({
     throw Error('INVALID_LOCAL_HEAD');
   }
 
+  if (hasExplicitRemoteCas && headSha !== effectiveLeaseSha) {
+    const ancestorCheck = spawnImpl(
+      'git',
+      ['merge-base', '--is-ancestor', effectiveLeaseSha, headSha],
+      {cwd, encoding: 'utf8', timeout: 5000},
+    );
+    if (ancestorCheck.status !== 0) {
+      throw Error('NON_FAST_FORWARD_LOCAL_LINEAGE_DENIED');
+    }
+  }
+
   if (typeof journalPath === 'string' && journalPath.trim() && fs.existsSync(journalPath)) {
     let entries;
     try {
@@ -242,15 +270,26 @@ export function verifyAuthorizedGitPublication({
       throw Error('PUBLICATION_JOURNAL_CORRUPT');
     }
     const list = Array.isArray(entries) ? entries : [entries];
+    const isPreCommitBaselineCheck =
+      effectiveLeaseSha !== null && headSha === effectiveLeaseSha;
     if (
-      list.some(
-        entry =>
-          entry &&
-          entry.published === true &&
-          entry.repository === expectedRepository &&
-          entry.branch === targetBranch &&
-          entry.headSha === headSha,
-      )
+      list.some(entry => {
+        if (
+          !entry ||
+          entry.published !== true ||
+          entry.repository !== expectedRepository ||
+          entry.branch !== targetBranch
+        ) {
+          return false;
+        }
+        if (missionId && entry.missionId && entry.missionId === missionId) {
+          return true;
+        }
+        if (entry.headSha === headSha) {
+          return !(isPreCommitBaselineCheck && missionId && entry.missionId !== missionId);
+        }
+        return false;
+      })
     ) {
       throw Error('DUPLICATE_PUBLICATION_PREVENTED');
     }
@@ -274,23 +313,28 @@ export function verifyAuthorizedGitPublication({
     throw Error('UNAUTHORIZED_GIT_REMOTE');
   }
 
-  if (expectedBaseSha !== undefined) {
+  if (!hasExplicitRemoteCas && expectedBaseSha !== undefined) {
     verifyRemotePublishedCommit({
       expectedSha: expectedBaseSha, cwd, env, spawnImpl,
       expectedRepository, targetBranch, allowLocalRemoteForTesting,
     });
   }
 
-  const pushResult = spawnImpl(
-    'git',
-    ['push', '--dry-run', 'origin', `HEAD:refs/heads/${targetBranch}`],
-    {
-      cwd,
-      encoding: 'utf8',
-      timeout: 30000,
-      env: {...env, GIT_TERMINAL_PROMPT: '0'},
-    },
-  );
+  const pushArgs = effectiveLeaseSha
+    ? [
+        'push',
+        '--dry-run',
+        `--force-with-lease=refs/heads/${targetBranch}:${effectiveLeaseSha}`,
+        'origin',
+        `HEAD:refs/heads/${targetBranch}`,
+      ]
+    : ['push', '--dry-run', 'origin', `HEAD:refs/heads/${targetBranch}`];
+  const pushResult = spawnImpl('git', pushArgs, {
+    cwd,
+    encoding: 'utf8',
+    timeout: 30000,
+    env: {...env, GIT_TERMINAL_PROMPT: '0'},
+  });
   const safeStderr = redactGitPublicationOutput(pushResult.stderr, env);
   const reason = classifyGitPublicationResult({
     status: pushResult.status,
@@ -458,6 +502,495 @@ export function verifyRemotePublishedCommit({
     commitSha: observedSha,
     transport,
   };
+}
+
+export async function resolveAdmittedPrivateSource({
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  expectedRepository = CANONICAL_REPOSITORY,
+  expectedBranch = CANONICAL_BRANCH,
+  minVerifiedSha = env.WOLF_FACTORY_MIN_VERIFIED_SHA || MINIMUM_VERIFIED_FACTORY_SHA,
+  lockedAdmittedSha = env.WOLF_FACTORY_ADMITTED_SHA || '',
+  missionId = env.WOLF_MISSION_ID || null,
+  leaseFence = 1,
+} = {}) {
+  if (expectedBranch === 'main' || expectedBranch !== CANONICAL_BRANCH) {
+    throw Error('UNAUTHORIZED_TARGET_BRANCH');
+  }
+  if (expectedRepository !== CANONICAL_REPOSITORY) {
+    throw Error('UNAUTHORIZED_TARGET_REPOSITORY');
+  }
+  if (typeof minVerifiedSha !== 'string' || !/^[a-f0-9]{40}$/.test(minVerifiedSha)) {
+    throw Error('INVALID_MINIMUM_VERIFIED_SHA');
+  }
+  if (!Number.isSafeInteger(leaseFence) || leaseFence < 1) {
+    throw Error('INVALID_LEASE_FENCE');
+  }
+  const token = env?.WOLF_FACTORY_REPO_TOKEN;
+  if (typeof token !== 'string' || !token.trim() || /[\r\n\0]/.test(token)) {
+    throw Error('PRIVATE_SOURCE_CREDENTIAL_REQUIRED');
+  }
+  if (typeof lockedAdmittedSha === 'string' && lockedAdmittedSha.trim()) {
+    const trimmed = lockedAdmittedSha.trim();
+    if (!/^[a-f0-9]{40}$/.test(trimmed)) {
+      throw Error('INVALID_LOCKED_ADMITTED_SHA');
+    }
+    return Object.freeze({
+      admitted: true,
+      mode: 'LOCKED_UPSTREAM_ADMISSION',
+      repository: expectedRepository,
+      branch: expectedBranch,
+      admittedSha: trimmed,
+      minVerifiedSha,
+      missionId: missionId || null,
+      leaseFence,
+    });
+  }
+
+  const headers = {
+    Authorization: `Bearer ${token.trim()}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'wolf-factory-source-admission',
+  };
+
+  async function githubJson(apiPath) {
+    let response;
+    try {
+      response = await fetchImpl(`https://api.github.com${apiPath}`, {
+        method: 'GET',
+        headers,
+        redirect: 'error',
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch {
+      throw Error('PRIVATE_SOURCE_ADMISSION_NETWORK_UNAVAILABLE');
+    }
+    if (!response || response.status !== 200) {
+      throw Error('PRIVATE_SOURCE_ADMISSION_DENIED');
+    }
+    try {
+      return await response.json();
+    } catch {
+      throw Error('PRIVATE_SOURCE_ADMISSION_MALFORMED');
+    }
+  }
+
+  const repoMeta = await githubJson(`/repos/${expectedRepository}`);
+  if (
+    !repoMeta ||
+    repoMeta.full_name !== expectedRepository ||
+    repoMeta.private !== true
+  ) {
+    throw Error('PRIVATE_SOURCE_REPOSITORY_MISMATCH');
+  }
+
+  const refMeta = await githubJson(
+    `/repos/${expectedRepository}/git/ref/heads/${expectedBranch}`,
+  );
+  const headSha = refMeta?.object?.sha;
+  if (
+    refMeta?.ref !== `refs/heads/${expectedBranch}` ||
+    refMeta?.object?.type !== 'commit' ||
+    typeof headSha !== 'string' ||
+    !/^[a-f0-9]{40}$/.test(headSha)
+  ) {
+    throw Error('PRIVATE_SOURCE_REF_INVALID');
+  }
+
+  let aheadBy = 0;
+  if (headSha !== minVerifiedSha) {
+    const cmp = await githubJson(
+      `/repos/${expectedRepository}/compare/${minVerifiedSha}...${headSha}`,
+    );
+    if (
+      !cmp ||
+      cmp.status !== 'ahead' ||
+      !Number.isSafeInteger(cmp.behind_by) ||
+      cmp.behind_by !== 0 ||
+      !Number.isSafeInteger(cmp.ahead_by) ||
+      cmp.ahead_by < 1
+    ) {
+      throw Error('PRIVATE_SOURCE_LINEAGE_NOT_FAST_FORWARD');
+    }
+    aheadBy = cmp.ahead_by;
+  }
+
+  return Object.freeze({
+    admitted: true,
+    mode: 'DYNAMIC_HEAD_ADMISSION',
+    repository: expectedRepository,
+    branch: expectedBranch,
+    admittedSha: headSha,
+    minVerifiedSha,
+    aheadBy,
+    missionId: missionId || null,
+    leaseFence,
+  });
+}
+
+export function installCompareAndSwapPrePushGuard({
+  cwd = process.cwd(),
+  leaseFilePath,
+  expectedRemoteSha,
+  expectedRepository = CANONICAL_REPOSITORY,
+  targetBranch = CANONICAL_BRANCH,
+  leaseFence = 1,
+  missionId = null,
+} = {}) {
+  if (targetBranch === 'main' || targetBranch !== CANONICAL_BRANCH) {
+    throw Error('UNAUTHORIZED_TARGET_BRANCH');
+  }
+  if (expectedRepository !== CANONICAL_REPOSITORY) {
+    throw Error('UNAUTHORIZED_TARGET_REPOSITORY');
+  }
+  if (typeof expectedRemoteSha !== 'string' || !/^[a-f0-9]{40}$/.test(expectedRemoteSha)) {
+    throw Error('INVALID_EXPECTED_REMOTE_SHA');
+  }
+  if (typeof leaseFilePath !== 'string' || !leaseFilePath.trim()) {
+    throw Error('CAS_LEASE_FILE_REQUIRED');
+  }
+  if (!Number.isSafeInteger(leaseFence) || leaseFence < 1) {
+    throw Error('INVALID_LEASE_FENCE');
+  }
+
+  const gitDir = path.join(cwd, '.git');
+  const hooksDir = path.join(gitDir, 'hooks');
+  if (!fs.existsSync(gitDir)) {
+    throw Error('GIT_WORKTREE_REQUIRED');
+  }
+  fs.mkdirSync(hooksDir, {recursive: true});
+
+  const leaseState = {
+    repository: expectedRepository,
+    branch: targetBranch,
+    expectedRemoteSha,
+    leaseFence,
+    missionId: missionId || null,
+  };
+  fs.writeFileSync(leaseFilePath, JSON.stringify(leaseState, null, 2) + '\n', {
+    mode: 0o600,
+  });
+
+  const resolvedLeasePath = path.resolve(leaseFilePath);
+  const hookScript = `#!/usr/bin/env node
+import fs from 'node:fs';
+import {spawnSync} from 'node:child_process';
+
+const leasePath = ${JSON.stringify(resolvedLeasePath)};
+if (!fs.existsSync(leasePath)) {
+  console.error('CAS_LEASE_MISSING');
+  process.exit(1);
+}
+const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
+const targetRef = 'refs/heads/' + lease.branch;
+const stdinText = fs.readFileSync(0, 'utf8').trim();
+if (!stdinText) process.exit(0);
+
+for (const line of stdinText.split(/\\r?\\n/)) {
+  if (!line.trim()) continue;
+  const [localRef, localSha, remoteRef, remoteSha] = line.trim().split(/\\s+/);
+  if (remoteRef !== targetRef || /^0+$/.test(localSha)) {
+    console.error('UNAUTHORIZED_TARGET_BRANCH');
+    process.exit(1);
+  }
+  const lsRemote = spawnSync(
+    'git',
+    ['ls-remote', '--exit-code', process.argv[2] || 'origin', targetRef],
+    {encoding: 'utf8', timeout: 30000, env: {...process.env, GIT_TERMINAL_PROMPT: '0'}},
+  );
+  if (lsRemote.status !== 0 || lsRemote.signal || lsRemote.error) {
+    console.error('REMOTE_COMMIT_UNVERIFIED');
+    process.exit(1);
+  }
+  const observed = String(lsRemote.stdout || '').trim().split(/\\s+/)[0] || '';
+  if (observed !== lease.expectedRemoteSha || (remoteSha && !/^0+$/.test(remoteSha) && remoteSha !== lease.expectedRemoteSha)) {
+    console.error('CONCURRENT_BRANCH_ADVANCED');
+    process.exit(1);
+  }
+  const ff = spawnSync('git', ['merge-base', '--is-ancestor', lease.expectedRemoteSha, localSha], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  if (ff.status !== 0) {
+    console.error('CONCURRENT_BRANCH_ADVANCED');
+    process.exit(1);
+  }
+}
+`;
+  const hookPath = path.join(hooksDir, 'pre-push');
+  fs.writeFileSync(hookPath, hookScript, {mode: 0o700});
+  return {
+    installed: true,
+    hookPath,
+    leaseFilePath: resolvedLeasePath,
+    leaseState,
+  };
+}
+
+export function advanceCompareAndSwapLease({
+  leaseFilePath,
+  previousExpectedSha,
+  nextExpectedSha,
+  minLeaseFence = 1,
+  nextLeaseFence = minLeaseFence,
+  missionId = undefined,
+} = {}) {
+  if (typeof leaseFilePath !== 'string' || !fs.existsSync(leaseFilePath)) {
+    throw Error('CAS_LEASE_MISSING');
+  }
+  if (
+    typeof previousExpectedSha !== 'string' ||
+    !/^[a-f0-9]{40}$/.test(previousExpectedSha) ||
+    typeof nextExpectedSha !== 'string' ||
+    !/^[a-f0-9]{40}$/.test(nextExpectedSha)
+  ) {
+    throw Error('INVALID_EXPECTED_REMOTE_SHA');
+  }
+  const current = JSON.parse(fs.readFileSync(leaseFilePath, 'utf8'));
+  if (!Number.isSafeInteger(current.leaseFence) || current.leaseFence < minLeaseFence) {
+    throw Error('STALE_LEASE_FENCE_REJECTED');
+  }
+  if (nextLeaseFence < current.leaseFence) {
+    throw Error('STALE_LEASE_FENCE_REJECTED');
+  }
+  if (current.expectedRemoteSha !== previousExpectedSha) {
+    throw Error('CAS_LEASE_STATE_MISMATCH');
+  }
+  const updated = {
+    ...current,
+    expectedRemoteSha: nextExpectedSha,
+    leaseFence: nextLeaseFence,
+    ...(missionId !== undefined ? {missionId} : {}),
+  };
+  fs.writeFileSync(leaseFilePath, JSON.stringify(updated, null, 2) + '\n', {
+    mode: 0o600,
+  });
+  return updated;
+}
+
+export function publishCompareAndSwapCommit({
+  cwd = process.cwd(),
+  env = process.env,
+  spawnImpl = spawnSync,
+  expectedRemoteSha,
+  expectedRepository = CANONICAL_REPOSITORY,
+  targetBranch = CANONICAL_BRANCH,
+  missionId = null,
+  checkpointId = null,
+  leaseFence = 1,
+  leaseState = null,
+  journalPath = env.WOLF_PUBLICATION_JOURNAL_PATH,
+  allowLocalRemoteForTesting = false,
+} = {}) {
+  if (targetBranch === 'main' || targetBranch !== CANONICAL_BRANCH) {
+    throw Error('UNAUTHORIZED_TARGET_BRANCH');
+  }
+  if (expectedRepository !== CANONICAL_REPOSITORY) {
+    throw Error('UNAUTHORIZED_TARGET_REPOSITORY');
+  }
+  if (typeof expectedRemoteSha !== 'string' || !/^[a-f0-9]{40}$/.test(expectedRemoteSha)) {
+    throw Error('INVALID_EXPECTED_REMOTE_SHA');
+  }
+  if (!Number.isSafeInteger(leaseFence) || leaseFence < 1) {
+    throw Error('INVALID_LEASE_FENCE');
+  }
+  if (leaseState && Number.isSafeInteger(leaseState.activeFence) && leaseFence < leaseState.activeFence) {
+    throw Error('STALE_LEASE_FENCE_REJECTED');
+  }
+
+  let journalEntries = [];
+  if (typeof journalPath === 'string' && journalPath.trim() && fs.existsSync(journalPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+      journalEntries = Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      throw Error('PUBLICATION_JOURNAL_CORRUPT');
+    }
+    const unknownPending = journalEntries.find(
+      entry =>
+        entry &&
+        entry.missionId &&
+        missionId &&
+        entry.missionId === missionId &&
+        entry.externalEffectState === 'UNKNOWN_UNTIL_RECONCILED',
+    );
+    if (unknownPending) {
+      throw Error('UNKNOWN_EXTERNAL_EFFECT_REPLAY_DENIED');
+    }
+    const alreadyPublished = journalEntries.find(
+      entry =>
+        entry &&
+        entry.published === true &&
+        entry.repository === expectedRepository &&
+        entry.branch === targetBranch &&
+        ((missionId && entry.missionId === missionId) ||
+          (checkpointId && entry.checkpointId === checkpointId)),
+    );
+    if (alreadyPublished) {
+      return Object.freeze({
+        published: true,
+        idempotentReplay: false,
+        alreadyCompleted: true,
+        repository: expectedRepository,
+        branch: targetBranch,
+        baseSha: alreadyPublished.baseSha,
+        commitSha: alreadyPublished.headSha,
+        missionId: alreadyPublished.missionId || null,
+        checkpointId: alreadyPublished.checkpointId || null,
+        leaseFence: alreadyPublished.leaseFence ?? leaseFence,
+      });
+    }
+  }
+
+  const branchCheck = spawnImpl('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
+    cwd,
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  if (branchCheck.status !== 0 || branchCheck.stdout.trim() !== targetBranch) {
+    throw Error('UNAUTHORIZED_LOCAL_BRANCH');
+  }
+
+  const headCheck = spawnImpl('git', ['rev-parse', '--verify', 'HEAD'], {
+    cwd,
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  const headSha = String(headCheck.stdout || '').trim();
+  if (headCheck.status !== 0 || !/^[a-f0-9]{40}$/.test(headSha)) {
+    throw Error('INVALID_LOCAL_HEAD');
+  }
+  if (headSha === expectedRemoteSha) {
+    throw Error('NO_NEW_COMMIT_TO_PUBLISH');
+  }
+
+  const ancestorCheck = spawnImpl(
+    'git',
+    ['merge-base', '--is-ancestor', expectedRemoteSha, headSha],
+    {cwd, encoding: 'utf8', timeout: 5000},
+  );
+  if (ancestorCheck.status !== 0) {
+    throw Error('NON_FAST_FORWARD_LOCAL_LINEAGE_DENIED');
+  }
+
+  const diffCheck = spawnImpl(
+    'git',
+    ['diff', '--name-only', `${expectedRemoteSha}..${headSha}`],
+    {cwd, encoding: 'utf8', timeout: 5000},
+  );
+  if (diffCheck.status !== 0) {
+    throw Error('LOCAL_DIFF_INSPECTION_FAILED');
+  }
+  const changedFiles = String(diffCheck.stdout || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  if (missionId) {
+    const scope = authorizeSyntheticEngineeringScope({missionId, changedFiles});
+    if (!scope.authorized) {
+      throw Error(scope.reason);
+    }
+  }
+
+  const transport = env.WOLF_FACTORY_GIT_TRANSPORT || 'https-token';
+  if (transport !== 'ssh-deploy-key' && transport !== 'https-token') {
+    throw Error('UNAUTHORIZED_GIT_TRANSPORT');
+  }
+  const remoteCheck = spawnImpl('git', ['remote', 'get-url', 'origin'], {
+    cwd,
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  const remoteUrl = String(remoteCheck.stdout || '').trim();
+  const expectedRemote =
+    transport === 'ssh-deploy-key'
+      ? `git@github.com:${expectedRepository}.git`
+      : `https://github.com/${expectedRepository}.git`;
+  if (remoteCheck.status !== 0 || (!allowLocalRemoteForTesting && remoteUrl !== expectedRemote)) {
+    throw Error('UNAUTHORIZED_GIT_REMOTE');
+  }
+
+  const pushResult = spawnImpl(
+    'git',
+    [
+      'push',
+      `--force-with-lease=refs/heads/${targetBranch}:${expectedRemoteSha}`,
+      'origin',
+      `${headSha}:refs/heads/${targetBranch}`,
+    ],
+    {
+      cwd,
+      encoding: 'utf8',
+      timeout: 30000,
+      env: {...env, GIT_TERMINAL_PROMPT: '0'},
+    },
+  );
+  const safeStderr = redactGitPublicationOutput(pushResult.stderr, env);
+  const reason = classifyGitPublicationResult({
+    status: pushResult.status,
+    stderr: String(pushResult.stderr || ''),
+    signal: pushResult.signal,
+    errorCode: pushResult.error?.code,
+  });
+  if (pushResult.status !== 0 || reason !== 'AUTHORIZED') {
+    const failure = Error(reason);
+    failure.diagnostic = {
+      exitCode: pushResult.status,
+      reason,
+      transport,
+      expectedRemoteSha,
+      candidateSha: headSha,
+      originalError: {
+        stderr: safeStderr,
+        signal: pushResult.signal ?? null,
+        errorCode: pushResult.error?.code,
+      },
+    };
+    throw failure;
+  }
+
+  const verified = verifyRemotePublishedCommit({
+    expectedSha: headSha,
+    cwd,
+    env,
+    spawnImpl,
+    expectedRepository,
+    targetBranch,
+    allowLocalRemoteForTesting,
+  });
+
+  if (typeof journalPath === 'string' && journalPath.trim()) {
+    const nextRecord = {
+      published: true,
+      externalEffectState: 'VERIFIED',
+      repository: expectedRepository,
+      branch: targetBranch,
+      baseSha: expectedRemoteSha,
+      headSha: verified.commitSha,
+      missionId: missionId || null,
+      checkpointId: checkpointId || null,
+      leaseFence,
+    };
+    fs.writeFileSync(
+      journalPath,
+      JSON.stringify([...journalEntries, nextRecord], null, 2) + '\n',
+    );
+  }
+
+  return Object.freeze({
+    published: true,
+    idempotentReplay: false,
+    alreadyCompleted: false,
+    repository: expectedRepository,
+    branch: targetBranch,
+    baseSha: expectedRemoteSha,
+    commitSha: verified.commitSha,
+    transport,
+    missionId: missionId || null,
+    checkpointId: checkpointId || null,
+    leaseFence,
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

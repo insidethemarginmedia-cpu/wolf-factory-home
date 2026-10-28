@@ -318,8 +318,8 @@ jobs:
           echo PRIVATE_DBOS_RUNNER_RECOVERY=PASS
 
   service-access:
-    needs: security-tests
-    if: always() && needs.security-tests.result == 'success' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
+    needs: [security-tests, factory-source-admission]
+    if: always() && needs.security-tests.result == 'success' && (inputs.verify_private_regression != true || needs.factory-source-admission.result == 'success') && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -420,7 +420,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 58127da11aa1628a5f6e53376449574b7e2cc20e
+          ref: ${{ needs.factory-source-admission.outputs.source_sha }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           path: private-groq-observer
           persist-credentials: false
@@ -732,6 +732,8 @@ jobs:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
           import {spawnSync} from 'node:child_process';
           const branch='feat/factory-real-worker-m1-20261006',repo='donraposo1-source/project-wolf';
           const transport=process.env.WOLF_FACTORY_GIT_TRANSPORT||'https-token';
@@ -746,7 +748,7 @@ jobs:
           const tip=spawnSync('git',['ls-remote','--exit-code','origin','refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
           if(tip.status!==0||tip.signal||tip.error)throw Error('REMOTE_COMMIT_UNVERIFIED');
           if(tip.stdout.trim()!==pinned+'\trefs/heads/'+branch)throw Error('CONCURRENT_BRANCH_ADVANCED');
-          const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+          const p=spawnSync('git',['push','--dry-run','--force-with-lease=refs/heads/'+branch+':'+pinned,'origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
           const text=String(p.stderr||'');
           let safe=text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[REDACTED_KEY]');
           for(const rawVal of [process.env.WOLF_FACTORY_REPO_TOKEN,process.env.GITHUB_TOKEN]){
@@ -757,8 +759,13 @@ jobs:
           safe=safe.slice(0,4000);
           console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
           const reason=p.status===0&&!p.signal&&!p.error?'AUTHORIZED':p.error?.code==='ETIMEDOUT'||p.signal==='SIGTERM'||p.signal==='SIGKILL'?'GIT_PUBLICATION_TIMEOUT':/host key verification failed|remote host identification has changed|no [a-z0-9-]+ host key is known/i.test(text)?'SSH_HOST_VERIFICATION_FAILED':/load key .*:(?:\s*invalid format|\s*error in libcrypto|\s*bad permissions|\s*no such file)|identity file .* not accessible/i.test(text)?'SSH_KEY_INVALID':/\b403\b|write access.*not granted|permission to .* denied|permission.*denied|authentication failed|could not read username|could not read password|terminal prompts disabled|repository not found/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/GH006|GH013|protected branch|repository rule violations|hook declined/i.test(text)?'BRANCH_PROTECTION_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|stale info|cannot lock ref .* expected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':/does not appear to be a git repository|no such remote|src refspec .* does not match any|invalid refspec/i.test(text)?'INVALID_GIT_REMOTE_OR_BRANCH':/could not resolve hostname|connection timed out|operation timed out|connection reset|kex_exchange_identification|network is unreachable/i.test(text)?'GIT_NETWORK_UNAVAILABLE':'GIT_PUBLICATION_PREFLIGHT_FAILED';
-          console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,transport,refUpdated:false}));
+          console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,transport,expectedRemoteSha:pinned,casEnforced:true,refUpdated:false}));
           if(p.status!==0||reason!=='AUTHORIZED')throw Error(reason);
+          const leasePath=path.resolve(process.env.RUNNER_TEMP,'wolf-cas-lease.json');
+          fs.writeFileSync(leasePath,JSON.stringify({repository:repo,branch,expectedRemoteSha:pinned,leaseFence:1},null,2)+'\n',{mode:0o600});
+          fs.mkdirSync('.git/hooks',{recursive:true});
+          const hook='#!/usr/bin/env node\nimport fs from "node:fs";import {spawnSync} from "node:child_process";\nconst lp='+JSON.stringify(leasePath)+';if(!fs.existsSync(lp)){console.error("CAS_LEASE_MISSING");process.exit(1);}\nconst lease=JSON.parse(fs.readFileSync(lp,"utf8")),targetRef="refs/heads/"+lease.branch,stdin=fs.readFileSync(0,"utf8").trim();\nif(stdin){for(const line of stdin.split(/\\r?\\n/)){if(!line.trim())continue;const [,localSha,remoteRef,remoteSha]=line.trim().split(/\\s+/);if(remoteRef!==targetRef||/^0+$/.test(localSha)){console.error("UNAUTHORIZED_TARGET_BRANCH");process.exit(1);}const ls=spawnSync("git",["ls-remote","--exit-code",process.argv[2]||"origin",targetRef],{encoding:"utf8",timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:"0"}});if(ls.status!==0||ls.signal||ls.error){console.error("REMOTE_COMMIT_UNVERIFIED");process.exit(1);}const obs=String(ls.stdout||"").trim().split(/\\s+/)[0]||"";if(obs!==lease.expectedRemoteSha||(remoteSha&&!/^0+$/.test(remoteSha)&&remoteSha!==lease.expectedRemoteSha)){console.error("CONCURRENT_BRANCH_ADVANCED");process.exit(1);}const ff=spawnSync("git",["merge-base","--is-ancestor",lease.expectedRemoteSha,localSha],{encoding:"utf8",timeout:5000});if(ff.status!==0){console.error("CONCURRENT_BRANCH_ADVANCED");process.exit(1);}}}\n';
+          fs.writeFileSync('.git/hooks/pre-push',hook,{mode:0o700});
           NODE
       - name: Execute Mission A then restart existing controller for automatic Mission B
         if: inputs.execute_integrated == true
@@ -776,6 +783,16 @@ jobs:
           set -e
           if test "$rc" -ne 79; then tail -c 8000 "$RUNNER_TEMP/wolf-first.log"; exit 1; fi
           grep WOLF_MISSION_A_DURABLE_BEFORE_RESTART "$RUNNER_TEMP/wolf-first.log"
+          mission_a_sha="$(git rev-parse --verify HEAD)"
+          git merge-base --is-ancestor "$WOLF_FACTORY_EXPECTED_SHA" "$mission_a_sha"
+          test "$mission_a_sha" != "$WOLF_FACTORY_EXPECTED_SHA"
+          MISSION_A_SHA="$mission_a_sha" node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const lp=path.join(process.env.RUNNER_TEMP,'wolf-cas-lease.json');
+          const cur=JSON.parse(fs.readFileSync(lp,'utf8'));
+          if(cur.expectedRemoteSha!==process.env.WOLF_FACTORY_EXPECTED_SHA)throw Error('CAS_LEASE_STATE_MISMATCH');
+          fs.writeFileSync(lp,JSON.stringify({...cur,expectedRemoteSha:process.env.MISSION_A_SHA,leaseFence:cur.leaseFence+1},null,2)+'\n',{mode:0o600});
+          NODE
           WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-recovery.log" 2>&1 || { tail -c 8000 "$RUNNER_TEMP/wolf-recovery.log"; exit 1; }
           node <<'NODE'
           const fs=require('fs'),path=require('path');
@@ -786,6 +803,8 @@ jobs:
           console.log('WOLF_INTEGRATED_ACCEPTANCE='+JSON.stringify({workflowID:final.workflowID,restartReceipt:final.restartReceipt,controllerPid:final.controllerPid,result:final.result,missions:final.evidence.map(p=>({missionId:p.spec.taskId,flint:p.providerReceipts.map(r=>r.generationId),opencode:p.integratedReview.opencode,groq:p.integratedReview.groq,executor:p.remoteReceipts,checkpoint:p.durable,verification:p.verifierReceipts.map(v=>({receiptId:v.receiptId,local:v.local,remote:v.remote})),trace:p.trace}))}));
           NODE
           local_head="$(git rev-parse --verify HEAD)"
+          git merge-base --is-ancestor "$mission_a_sha" "$local_head"
+          test "$local_head" != "$mission_a_sha"
           remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
           test "$remote_head" = "$local_head"
           echo "WOLF_REMOTE_COMMIT_VERIFIED=$remote_head"
@@ -802,6 +821,8 @@ jobs:
           set -euo pipefail
           WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs
           local_head="$(git rev-parse --verify HEAD)"
+          git merge-base --is-ancestor "$WOLF_FACTORY_EXPECTED_SHA" "$local_head"
+          test "$local_head" != "$WOLF_FACTORY_EXPECTED_SHA"
           remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
           test "$remote_head" = "$local_head"
           echo "WOLF_REMOTE_COMMIT_VERIFIED=$remote_head"
@@ -835,7 +856,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';import path from 'node:path';
-          for(const name of ['wolf-publication-key','wolf-publication-known-hosts'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
+          for(const name of ['wolf-publication-key','wolf-publication-known-hosts','wolf-cas-lease.json'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
           NODE
 
       - name: Destroy only this disposable Ollama container
@@ -1271,6 +1292,8 @@ jobs:
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
       run: |
         node --input-type=module <<'NODE'
+        import fs from 'node:fs';
+        import path from 'node:path';
         import {spawnSync} from 'node:child_process';
         const branch='feat/factory-real-worker-m1-20261006',repo='donraposo1-source/project-wolf';
         const transport=process.env.WOLF_FACTORY_GIT_TRANSPORT||'https-token';
@@ -1285,7 +1308,7 @@ jobs:
         const tip=spawnSync('git',['ls-remote','--exit-code','origin','refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
         if(tip.status!==0||tip.signal||tip.error)throw Error('REMOTE_COMMIT_UNVERIFIED');
         if(tip.stdout.trim()!==pinned+'\trefs/heads/'+branch)throw Error('CONCURRENT_BRANCH_ADVANCED');
-        const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+        const p=spawnSync('git',['push','--dry-run','--force-with-lease=refs/heads/'+branch+':'+pinned,'origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
         const text=String(p.stderr||'');
         let safe=text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[REDACTED_KEY]');
         for(const rawVal of [process.env.WOLF_FACTORY_REPO_TOKEN,process.env.GITHUB_TOKEN]){
@@ -1296,8 +1319,13 @@ jobs:
         safe=safe.slice(0,4000);
         console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
         const reason=p.status===0&&!p.signal&&!p.error?'AUTHORIZED':p.error?.code==='ETIMEDOUT'||p.signal==='SIGTERM'||p.signal==='SIGKILL'?'GIT_PUBLICATION_TIMEOUT':/host key verification failed|remote host identification has changed|no [a-z0-9-]+ host key is known/i.test(text)?'SSH_HOST_VERIFICATION_FAILED':/load key .*:(?:\s*invalid format|\s*error in libcrypto|\s*bad permissions|\s*no such file)|identity file .* not accessible/i.test(text)?'SSH_KEY_INVALID':/\b403\b|write access.*not granted|permission to .* denied|permission.*denied|authentication failed|could not read username|could not read password|terminal prompts disabled|repository not found/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/GH006|GH013|protected branch|repository rule violations|hook declined/i.test(text)?'BRANCH_PROTECTION_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|stale info|cannot lock ref .* expected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':/does not appear to be a git repository|no such remote|src refspec .* does not match any|invalid refspec/i.test(text)?'INVALID_GIT_REMOTE_OR_BRANCH':/could not resolve hostname|connection timed out|operation timed out|connection reset|kex_exchange_identification|network is unreachable/i.test(text)?'GIT_NETWORK_UNAVAILABLE':'GIT_PUBLICATION_PREFLIGHT_FAILED';
-        console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,transport,refUpdated:false}));
+        console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,transport,expectedRemoteSha:pinned,casEnforced:true,refUpdated:false}));
         if(p.status!==0||reason!=='AUTHORIZED')throw Error(reason);
+        const leasePath=path.resolve(process.env.RUNNER_TEMP,'wolf-cas-lease.json');
+        fs.writeFileSync(leasePath,JSON.stringify({repository:repo,branch,expectedRemoteSha:pinned,leaseFence:1},null,2)+'\n',{mode:0o600});
+        fs.mkdirSync('.git/hooks',{recursive:true});
+        const hook='#!/usr/bin/env node\nimport fs from "node:fs";import {spawnSync} from "node:child_process";\nconst lp='+JSON.stringify(leasePath)+';if(!fs.existsSync(lp)){console.error("CAS_LEASE_MISSING");process.exit(1);}\nconst lease=JSON.parse(fs.readFileSync(lp,"utf8")),targetRef="refs/heads/"+lease.branch,stdin=fs.readFileSync(0,"utf8").trim();\nif(stdin){for(const line of stdin.split(/\\r?\\n/)){if(!line.trim())continue;const [,localSha,remoteRef,remoteSha]=line.trim().split(/\\s+/);if(remoteRef!==targetRef||/^0+$/.test(localSha)){console.error("UNAUTHORIZED_TARGET_BRANCH");process.exit(1);}const ls=spawnSync("git",["ls-remote","--exit-code",process.argv[2]||"origin",targetRef],{encoding:"utf8",timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:"0"}});if(ls.status!==0||ls.signal||ls.error){console.error("REMOTE_COMMIT_UNVERIFIED");process.exit(1);}const obs=String(ls.stdout||"").trim().split(/\\s+/)[0]||"";if(obs!==lease.expectedRemoteSha||(remoteSha&&!/^0+$/.test(remoteSha)&&remoteSha!==lease.expectedRemoteSha)){console.error("CONCURRENT_BRANCH_ADVANCED");process.exit(1);}const ff=spawnSync("git",["merge-base","--is-ancestor",lease.expectedRemoteSha,localSha],{encoding:"utf8",timeout:5000});if(ff.status!==0){console.error("CONCURRENT_BRANCH_ADVANCED");process.exit(1);}}}\n';
+        fs.writeFileSync('.git/hooks/pre-push',hook,{mode:0o700});
         NODE
     - name: Recover the existing DBOS workflow and execute Mission C automatically
       env: *id001
@@ -1313,6 +1341,14 @@ jobs:
         fs.copyFileSync(path.join(root,'acceptance-final.json'),path.join(process.env.RUNNER_TEMP,'wolf-first-c-proof.json'));
         NODE
         first_head=$(git rev-parse HEAD)
+        git merge-base --is-ancestor "$WOLF_FACTORY_EXPECTED_SHA" "$first_head"
+        test "$first_head" != "$WOLF_FACTORY_EXPECTED_SHA"
+        FIRST_HEAD="$first_head" node <<'NODE'
+        const fs=require('fs'),path=require('path');
+        const lp=path.join(process.env.RUNNER_TEMP,'wolf-cas-lease.json');
+        const cur=JSON.parse(fs.readFileSync(lp,'utf8')),fence=JSON.parse(fs.readFileSync(path.join(process.env.WOLF_FACTORY_RUNTIME_ROOT,'kct-recovery.json'),'utf8'));
+        fs.writeFileSync(lp,JSON.stringify({...cur,expectedRemoteSha:process.env.FIRST_HEAD,leaseFence:fence.newFence},null,2)+'\n',{mode:0o600});
+        NODE
         WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-duplicate.log" 2>&1 || { tail -c 6000 "$RUNNER_TEMP/wolf-duplicate.log"; exit 1; }
         test "$(git rev-parse HEAD)" = "$first_head"
         remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
@@ -1327,7 +1363,7 @@ jobs:
       run: |
         node --input-type=module <<'NODE'
         import fs from 'node:fs';import path from 'node:path';
-        for(const name of ['wolf-publication-key','wolf-publication-known-hosts'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
+        for(const name of ['wolf-publication-key','wolf-publication-known-hosts','wolf-cas-lease.json'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
         NODE
     - name: Verify tests and production build after recovered publication
       shell: bash
