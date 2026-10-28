@@ -8,12 +8,15 @@ import {fileURLToPath} from 'node:url';
 import {
   CANONICAL_BRANCH,
   CANONICAL_REPOSITORY,
+  authorizeSyntheticEngineeringScope,
   classifyGitPublicationResult,
   cleanupSshPublicationCredential,
+  isAuthorizedSyntheticReceiptFilename,
   normalizeOpenSshPrivateKey,
   prepareSshPublicationCredential,
   redactGitPublicationOutput,
   verifyAuthorizedGitPublication,
+  verifyRemotePublishedCommit,
 } from '../scripts/git-publication-preflight.mjs';
 
 const WORKFLOW_PATH = path.resolve(
@@ -411,3 +414,166 @@ test('workflow YAML inline publication preflight and SSH preparation blocks rema
     fs.rmSync(tmp, {recursive: true, force: true});
   }
 });
+
+test('independent remote commit SHA verification succeeds on exact remote ref and fails closed on mismatch or main', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-remote-sha-'));
+  try {
+    const bare = path.join(tmp, 'remote.git');
+    const work = path.join(tmp, 'work');
+    spawnSync('git', ['init', '--bare', bare]);
+    fs.mkdirSync(work);
+    const firstSha = initCanonicalRepo(work);
+    spawnSync('git', ['remote', 'add', 'origin', bare], {cwd: work});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+
+    const verified = verifyRemotePublishedCommit({
+      expectedSha: firstSha,
+      cwd: work,
+      env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+      allowLocalRemoteForTesting: true,
+    });
+    assert.equal(verified.verified, true);
+    assert.equal(verified.commitSha, firstSha);
+
+    const wrongSha = firstSha.startsWith('a')
+      ? 'b' + firstSha.slice(1)
+      : 'a' + firstSha.slice(1);
+    assert.throws(
+      () =>
+        verifyRemotePublishedCommit({
+          expectedSha: wrongSha,
+          cwd: work,
+          env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+          allowLocalRemoteForTesting: true,
+        }),
+      /REMOTE_COMMIT_SHA_MISMATCH/,
+    );
+    assert.throws(
+      () =>
+        verifyRemotePublishedCommit({
+          expectedSha: firstSha,
+          cwd: work,
+          targetBranch: 'main',
+          allowLocalRemoteForTesting: true,
+        }),
+      /UNAUTHORIZED_TARGET_BRANCH/,
+    );
+    assert.throws(
+      () =>
+        verifyRemotePublishedCommit({
+          expectedSha: firstSha,
+          cwd: work,
+          env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
+          allowLocalRemoteForTesting: false,
+        }),
+      /UNAUTHORIZED_GIT_REMOTE/,
+    );
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('synthetic engineering scope and receipt allowlist admit OMEGA and WOLF_WAKEUP missions and deny unauthorized paths', () => {
+  assert.deepEqual(
+    authorizeSyntheticEngineeringScope({
+      missionId: 'WOLF_WAKEUP_MANUAL_40606320022',
+      changedFiles: ['docs/factory-acceptance/wolf-wakeup-manual-40606320022.py'],
+    }),
+    {
+      authorized: true,
+      reason: 'SYNTHETIC_ENGINEERING_SCOPE_AUTHORIZED',
+      missionId: 'WOLF_WAKEUP_MANUAL_40606320022',
+      target: 'docs/factory-acceptance/wolf-wakeup-manual-40606320022.py',
+    },
+  );
+  assert.equal(
+    authorizeSyntheticEngineeringScope({
+      missionId: 'WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1',
+      changedFiles: ['docs/factory-acceptance/wolf-wakeup-schedule-acceptance-v1.py'],
+    }).authorized,
+    true,
+  );
+  assert.equal(
+    authorizeSyntheticEngineeringScope({
+      missionId: 'OMEGA_A_40601088303',
+      changedFiles: ['docs/factory-acceptance/omega-40601088303-a.py'],
+    }).authorized,
+    true,
+  );
+
+  for (const deniedCase of [
+    {
+      missionId: 'WOLF_WAKEUP_MANUAL_40606320022',
+      changedFiles: ['docs/factory-acceptance/wolf-wakeup-manual-99999999999.py'],
+    },
+    {
+      missionId: 'WOLF_WAKEUP_MANUAL_40606320022',
+      changedFiles: [
+        'docs/factory-acceptance/wolf-wakeup-manual-40606320022.py',
+        '.github/workflows/private-controller-preflight.yml',
+      ],
+    },
+    {
+      missionId: 'WOLF_WAKEUP_MANUAL_40606320022',
+      changedFiles: ['docs/factory-acceptance/../secret.py'],
+    },
+    {
+      missionId: 'PROD_MISSION_1',
+      changedFiles: ['infra/autonomy/resident-entrypoint.mjs'],
+    },
+    {
+      missionId: 'WOLF_WAKEUP_MANUAL_40606320022',
+      changedFiles: [],
+    },
+  ]) {
+    assert.deepEqual(authorizeSyntheticEngineeringScope(deniedCase), {
+      authorized: false,
+      reason: 'GROQ_SYNTHETIC_ENGINEERING_SCOPE_DENIED',
+    });
+  }
+
+  assert.equal(
+    isAuthorizedSyntheticReceiptFilename('WOLF_WAKEUP_MANUAL_40606320022-provider.json'),
+    true,
+  );
+  assert.equal(
+    isAuthorizedSyntheticReceiptFilename('WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1-verifiers.json'),
+    true,
+  );
+  assert.equal(isAuthorizedSyntheticReceiptFilename('OMEGA_C_40238444987-remote.json'), true);
+  assert.equal(isAuthorizedSyntheticReceiptFilename('../secret-provider.json'), false);
+  assert.equal(isAuthorizedSyntheticReceiptFilename('MAIN_1-provider.json'), false);
+});
+
+test('workflow enforces use_publication_deploy_key for integrated publication and reconciled wakeup journals preserve safety invariants', () => {
+  const workflowRaw = fs.readFileSync(WORKFLOW_PATH, 'utf8');
+  assert.match(
+    workflowRaw,
+    /use_publication_deploy_key:\s*\n\s*description:[^\n]+\n\s*type:\s*boolean\s*\n\s*default:\s*true/,
+  );
+  assert.match(workflowRaw, /PUBLICATION_DEPLOY_KEY_SELECTION_REQUIRED=true/);
+  assert.equal((workflowRaw.match(/WOLF_REMOTE_COMMIT_VERIFIED=/g) || []).length, 3);
+  assert.match(workflowRaw, /WOLF_WAKEUP_MANUAL_\[0-9\]\+/);
+
+  const rootDir = path.resolve(path.dirname(WORKFLOW_PATH), '../..');
+  const j40605467853 = JSON.parse(
+    fs.readFileSync(
+      path.join(rootDir, 'docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40605467853.json'),
+      'utf8',
+    ),
+  );
+  assert.equal(j40605467853.state, 'SUSPENDED');
+  assert.equal(j40605467853.externalEffectState, 'NO_MISSION_EFFECTS_VERIFIED');
+  assert.equal(j40605467853.automaticRetry, false);
+
+  const j40606320022 = JSON.parse(
+    fs.readFileSync(
+      path.join(rootDir, 'docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40606320022.json'),
+      'utf8',
+    ),
+  );
+  assert.equal(j40606320022.state, 'SUSPENDED');
+  assert.equal(j40606320022.externalEffectState, 'UNKNOWN_UNTIL_RECONCILED');
+  assert.equal(j40606320022.automaticRetry, false);
+});
+

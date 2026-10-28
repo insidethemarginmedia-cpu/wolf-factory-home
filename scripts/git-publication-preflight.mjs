@@ -309,6 +309,147 @@ export function verifyAuthorizedGitPublication({
   return receipt;
 }
 
+export const SYNTHETIC_RECEIPT_FILENAME_PATTERN =
+  /^(?:OMEGA_[ABC]_[0-9]+|WOLF_WAKEUP_MANUAL_[0-9]+|WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V[0-9]+)-(provider|integrated-review|remote|verifiers|cleanup)\.json$/;
+
+export function isAuthorizedSyntheticReceiptFilename(name) {
+  return typeof name === 'string' && SYNTHETIC_RECEIPT_FILENAME_PATTERN.test(name);
+}
+
+export function expectedSyntheticTargetForMissionId(missionId) {
+  if (typeof missionId !== 'string') return null;
+  const omega = /^OMEGA_([ABC])_([0-9]+)$/.exec(missionId);
+  if (omega) {
+    return `docs/factory-acceptance/omega-${omega[2]}-${omega[1].toLowerCase()}.py`;
+  }
+  const manualWakeup = /^WOLF_WAKEUP_MANUAL_([0-9]+)$/.exec(missionId);
+  if (manualWakeup) {
+    return `docs/factory-acceptance/wolf-wakeup-manual-${manualWakeup[1]}.py`;
+  }
+  const scheduledWakeup = /^WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V([0-9]+)$/.exec(missionId);
+  if (scheduledWakeup) {
+    return `docs/factory-acceptance/wolf-wakeup-schedule-acceptance-v${scheduledWakeup[1]}.py`;
+  }
+  return null;
+}
+
+export function authorizeSyntheticEngineeringScope({missionId, changedFiles} = {}) {
+  const expectedTarget = expectedSyntheticTargetForMissionId(missionId);
+  if (!expectedTarget) {
+    return {authorized: false, reason: 'GROQ_SYNTHETIC_ENGINEERING_SCOPE_DENIED'};
+  }
+  if (!Array.isArray(changedFiles) || changedFiles.length !== 1) {
+    return {authorized: false, reason: 'GROQ_SYNTHETIC_ENGINEERING_SCOPE_DENIED'};
+  }
+  const candidate = changedFiles[0];
+  if (
+    typeof candidate !== 'string' ||
+    candidate.includes('..') ||
+    candidate.includes('\\') ||
+    candidate.startsWith('/') ||
+    candidate !== expectedTarget
+  ) {
+    return {authorized: false, reason: 'GROQ_SYNTHETIC_ENGINEERING_SCOPE_DENIED'};
+  }
+  return {
+    authorized: true,
+    reason: 'SYNTHETIC_ENGINEERING_SCOPE_AUTHORIZED',
+    missionId,
+    target: expectedTarget,
+  };
+}
+
+export function verifyRemotePublishedCommit({
+  expectedSha,
+  cwd = process.cwd(),
+  env = process.env,
+  spawnImpl = spawnSync,
+  expectedRepository = CANONICAL_REPOSITORY,
+  targetBranch = CANONICAL_BRANCH,
+  allowLocalRemoteForTesting = false,
+} = {}) {
+  if (targetBranch === 'main' || targetBranch !== CANONICAL_BRANCH) {
+    throw Error('UNAUTHORIZED_TARGET_BRANCH');
+  }
+  if (expectedRepository !== CANONICAL_REPOSITORY) {
+    throw Error('UNAUTHORIZED_TARGET_REPOSITORY');
+  }
+  if (typeof expectedSha !== 'string' || !/^[a-f0-9]{40}$/.test(expectedSha)) {
+    throw Error('INVALID_EXPECTED_COMMIT_SHA');
+  }
+  const transport = env.WOLF_FACTORY_GIT_TRANSPORT || 'ssh-deploy-key';
+  if (transport !== 'ssh-deploy-key' && transport !== 'https-token') {
+    throw Error('UNAUTHORIZED_GIT_TRANSPORT');
+  }
+  const remoteCheck = spawnImpl('git', ['remote', 'get-url', 'origin'], {
+    cwd,
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  const remoteUrl = String(remoteCheck.stdout || '').trim();
+  const expectedRemote =
+    transport === 'ssh-deploy-key'
+      ? `git@github.com:${expectedRepository}.git`
+      : `https://github.com/${expectedRepository}.git`;
+  if (remoteCheck.status !== 0 || (!allowLocalRemoteForTesting && remoteUrl !== expectedRemote)) {
+    throw Error('UNAUTHORIZED_GIT_REMOTE');
+  }
+  const lsRemote = spawnImpl(
+    'git',
+    ['ls-remote', '--exit-code', 'origin', `refs/heads/${targetBranch}`],
+    {
+      cwd,
+      encoding: 'utf8',
+      timeout: 30000,
+      env: {...env, GIT_TERMINAL_PROMPT: '0'},
+    },
+  );
+  const safeStderr = redactGitPublicationOutput(lsRemote.stderr, env);
+  if (lsRemote.status !== 0 || lsRemote.signal || lsRemote.error) {
+    const reason = classifyGitPublicationResult({
+      status: lsRemote.status,
+      stderr: String(lsRemote.stderr || ''),
+      signal: lsRemote.signal,
+      errorCode: lsRemote.error?.code,
+    });
+    const failure = Error(
+      reason === 'GIT_PUBLICATION_PREFLIGHT_FAILED' ? 'REMOTE_COMMIT_UNVERIFIED' : reason,
+    );
+    failure.diagnostic = {
+      exitCode: lsRemote.status,
+      reason: failure.message,
+      transport,
+      originalError: {
+        stderr: safeStderr,
+        signal: lsRemote.signal ?? null,
+        errorCode: lsRemote.error?.code,
+      },
+    };
+    throw failure;
+  }
+  const match = new RegExp(`^([a-f0-9]{40})\\s+refs/heads/${targetBranch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm').exec(
+    String(lsRemote.stdout || '').trim(),
+  );
+  const observedSha = match ? match[1] : null;
+  if (!observedSha || observedSha !== expectedSha) {
+    const failure = Error('REMOTE_COMMIT_SHA_MISMATCH');
+    failure.diagnostic = {
+      expectedSha,
+      observedSha,
+      branch: targetBranch,
+      transport,
+    };
+    throw failure;
+  }
+  return {
+    verified: true,
+    repository: expectedRepository,
+    branch: targetBranch,
+    commitSha: observedSha,
+    transport,
+  };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const mode = process.argv[2] || '--verify';
   try {
@@ -317,6 +458,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
     } else if (mode === '--cleanup-ssh') {
       cleanupSshPublicationCredential();
+    } else if (mode === '--verify-remote-sha') {
+      const receipt = verifyRemotePublishedCommit({expectedSha: process.argv[3]});
+      console.log('WOLF_REMOTE_COMMIT_VERIFIED=' + JSON.stringify(receipt));
     } else {
       const result = verifyAuthorizedGitPublication();
       console.log('WOLF_GIT_ORIGINAL_ERROR=' + JSON.stringify(result.originalError));

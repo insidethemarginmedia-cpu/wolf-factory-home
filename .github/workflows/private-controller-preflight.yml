@@ -41,7 +41,7 @@ on:
       use_publication_deploy_key:
         description: Use the explicitly authorized repository-scoped SSH publication credential
         type: boolean
-        default: false
+        default: true
       verify_private_regression:
         description: Run private regression and build only; no inference, sandbox or publication
         type: boolean
@@ -629,13 +629,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git switch -c feat/factory-real-worker-m1-20261006
-          if test "${WOLF_FACTORY_GIT_TRANSPORT:-https-token}" = ssh-deploy-key; then
-            git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
-          else
-            git remote set-url origin https://github.com/donraposo1-source/project-wolf.git
-            git config credential.helper '!f() { echo username=x-access-token; echo password="$WOLF_FACTORY_REPO_TOKEN"; }; f'
+          if test "${WOLF_FACTORY_GIT_TRANSPORT:-}" != ssh-deploy-key; then
+            echo PUBLICATION_DEPLOY_KEY_SELECTION_REQUIRED=true
+            exit 78
           fi
+          git switch -c feat/factory-real-worker-m1-20261006
+          git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
           node <<'NODE'
           const fs=require('fs'),path=require('path');
           const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
@@ -711,6 +710,10 @@ jobs:
           for(const p of final.evidence){if(!p.integratedReview||p.cycle.state!=='CYCLE_COMPLETED'||!p.durable?.checkpointId)throw Error('INTEGRATED_MISSION_EVIDENCE_REQUIRED');}
           console.log('WOLF_INTEGRATED_ACCEPTANCE='+JSON.stringify({workflowID:final.workflowID,restartReceipt:final.restartReceipt,controllerPid:final.controllerPid,result:final.result,missions:final.evidence.map(p=>({missionId:p.spec.taskId,flint:p.providerReceipts.map(r=>r.generationId),opencode:p.integratedReview.opencode,groq:p.integratedReview.groq,executor:p.remoteReceipts,checkpoint:p.durable,verification:p.verifierReceipts.map(v=>({receiptId:v.receiptId,local:v.local,remote:v.remote})),trace:p.trace}))}));
           NODE
+          local_head="$(git rev-parse --verify HEAD)"
+          remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
+          test "$remote_head" = "$local_head"
+          echo "WOLF_REMOTE_COMMIT_VERIFIED=$remote_head"
       - name: Execute one KCT admitted bounded synthetic Factory self-repair
         if: inputs.night_shift == true
         env:
@@ -719,15 +722,18 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
-        run: 'WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs
-      
+        shell: bash
+        run: |
+          set -euo pipefail
+          WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs
+          local_head="$(git rev-parse --verify HEAD)"
+          remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
+          test "$remote_head" = "$local_head"
+          echo "WOLF_REMOTE_COMMIT_VERIFIED=$remote_head"
           rm -f "$RUNNER_TEMP/wolf-publication-key" "$RUNNER_TEMP/wolf-publication-known-hosts"
-      
           npm test
-      
           npm run build
-      
-          node scripts/wolf-night-shift-wakeup.mjs finish'
+          node scripts/wolf-night-shift-wakeup.mjs finish
       - name: Suspend after failed repair; never retry unknown external effects
         if: failure() && inputs.night_shift == true
         env:
@@ -740,7 +746,7 @@ jobs:
           node <<'NODE'
           const fs=require('fs'),path=require('path');
           const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;if(!fs.existsSync(root))process.exit(0);
-          for(const f of fs.readdirSync(root).filter(n=>/^OMEGA_[AB]_[0-9]+-(provider|integrated-review|remote|verifiers|cleanup)\.json$/.test(n))){
+          for(const f of fs.readdirSync(root).filter(n=>/^(?:OMEGA_[ABC]_[0-9]+|WOLF_WAKEUP_MANUAL_[0-9]+|WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V[0-9]+)-(provider|integrated-review|remote|verifiers|cleanup)\.json$/.test(n))){
             const v=JSON.parse(fs.readFileSync(path.join(root,f),'utf8'));let evidence;
             if(f.endsWith('-provider.json'))evidence=v.map(r=>({generationId:r.generationId,model:r.model,costUsd:r.costUsd}));
             else if(f.endsWith('-remote.json'))evidence=v.map(r=>({jobId:r.jobId,sandboxId:r.sandboxId,passed:r.passed,exitCode:r.exitCode,sourceSha256:r.sourceSha256}));
@@ -1168,6 +1174,9 @@ jobs:
         first_head=$(git rev-parse HEAD)
         WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-duplicate.log" 2>&1 || { tail -c 6000 "$RUNNER_TEMP/wolf-duplicate.log"; exit 1; }
         test "$(git rev-parse HEAD)" = "$first_head"
+        remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
+        test "$remote_head" = "$first_head"
+        echo "WOLF_REMOTE_COMMIT_VERIFIED=$remote_head"
         node <<'NODE'
         const fs=require('fs'),path=require('path');const a=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'wolf-first-c-proof.json'),'utf8')),b=JSON.parse(fs.readFileSync(path.join(process.env.WOLF_FACTORY_RUNTIME_ROOT,'acceptance-final.json'),'utf8'));
         if(JSON.stringify(a.evidence)!==JSON.stringify(b.evidence)||b.evidence.length!==1||b.dbosStatus!=='SUCCESS')throw Error('DUPLICATE_WAKEUP_RECONCILIATION_FAILED');console.log('WOLF_DUPLICATE_WAKEUP=VERIFIED_NO_NEW_EFFECTS');

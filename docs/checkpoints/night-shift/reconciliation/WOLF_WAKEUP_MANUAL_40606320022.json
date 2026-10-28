@@ -1,0 +1,88 @@
+{
+  "schema": "WolfSuspendedMissionReconciliation/v1",
+  "missionId": "WOLF_WAKEUP_MANUAL_40606320022",
+  "state": "PRE_LLM_SCOPE_DENIAL_LOG_OBSERVED_EXTERNAL_AUDIT_PENDING",
+  "decision": "KEEP_SUSPENDED_NO_AUTOMATIC_RETRY",
+  "scope": "Correlated GitHub workflow metadata plus independently inspected Step 22 log excerpt. Journal externalEffectState remains UNKNOWN_UNTIL_RECONCILED until authenticated Boxxkite and private repository ref audit.",
+  "originalJournal": {
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40606320022.json",
+    "blob": "90fa29a7ac66bac33e5decea003457e6b479de42",
+    "state": "SUSPENDED",
+    "automaticRetry": false,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  },
+  "evidence": {
+    "runId": 40606320022,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40606320022",
+    "event": "workflow_dispatch",
+    "headSha": "e6620529fcab375cf4e113dbb7428073838cfa4c",
+    "privateSourceSha": "5d702100066e1965773a00998a97c7826e8cbd2f",
+    "jobs": [
+      {
+        "id": 122546607003,
+        "name": "night-shift-admission",
+        "conclusion": "success"
+      },
+      {
+        "id": 122546659935,
+        "name": "security-tests",
+        "conclusion": "success"
+      },
+      {
+        "id": 122546702249,
+        "name": "service-access",
+        "conclusion": "success"
+      },
+      {
+        "id": 122546702314,
+        "name": "integrated-factory",
+        "conclusion": "failure",
+        "failedStepNumber": 22,
+        "failedStepName": "Execute one KCT admitted bounded synthetic Factory self-repair",
+        "startedAt": "2026-10-28T00:07:00Z",
+        "completedAt": "2026-10-28T00:07:17Z"
+      },
+      {
+        "id": 122546704081,
+        "name": "runner-loss-prepare",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122546704151,
+        "name": "opencode-runtime",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122546704456,
+        "name": "dbos-runtime",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122546704653,
+        "name": "runner-loss-recover",
+        "conclusion": "skipped"
+      }
+    ],
+    "missionOwnerInvoked": true,
+    "dbosServiceStarted": true,
+    "gitDryRunAuthorized": true,
+    "step22Failure": {
+      "terminalEvent": "ACCEPTANCE_CYCLE_BLOCKED",
+      "code": "ENGINEERING_EXECUTION_FAILED",
+      "reason": "GROQ_SYNTHETIC_ENGINEERING_SCOPE_DENIED",
+      "llmInvoked": null,
+      "scoutState": "DECISION_REQUIRES_REASONING",
+      "scoutTrust": "UNTRUSTED_WORKER_OUTPUT",
+      "changedFiles": [
+        "docs/factory-acceptance/wolf-wakeup-manual-40606320022.py"
+      ]
+    },
+    "boxxkiteExecutionAudit": "NOT_VERIFIED_FROM_UNAUTHENTICATED_SANDBOX",
+    "privateBranchRefAudit": "NOT_VERIFIED_FROM_UNAUTHENTICATED_SANDBOX",
+    "gitJournalEffectsPreserved": true,
+    "reason": "BLOCKED_AT_GROQ_SYNTHETIC_ENGINEERING_SCOPE_BEFORE_LLM_INVOCATION"
+  },
+  "journalReset": false,
+  "journalDeleted": false,
+  "missionReplayed": false
+}
