@@ -60,8 +60,14 @@ test('admission rejects mismatched refs, tags, invalid SHAs, denied HTTP and mal
     async () => response('HEAD'),
     async () => new Response('{}', {status: 403}),
     async () => new Response('not JSON'),
+    async () => new Response('null'),
     async () => new Response('x'.repeat(8193)),
   ]) await assert.rejects(resolve(env, fetchImpl), /FACTORY_SOURCE_/);
+});
+
+test('A/B and runner-loss C cannot share an admission and race against the same source pin', async () => {
+  const resolve = resolver();
+  await assert.rejects(resolve({...env, WOLF_EXECUTE_INTEGRATED: 'true', WOLF_VERIFY_RUNNER_LOSS: 'true'}, () => assert.fail('no IO')), /FACTORY_SOURCE_CONCURRENT_ACCEPTANCE_DENIED/);
 });
 
 test('network failure is sanitized and scheduled admission stays restricted to the existing main wakeup', async () => {

@@ -379,7 +379,12 @@ test('pinned admission rejects unexpected remote advancement even when a normal 
     spawnSync('git', ['add', '.'], {cwd: work});
     spawnSync('git', ['commit', '-m', 'candidate'], {cwd: work});
     assert.equal(spawnSync('git', ['push', '--dry-run', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work}).status, 0);
-    assert.throws(() => verifyAuthorizedGitPublication(options), /REMOTE_COMMIT_SHA_MISMATCH/);
+    assert.throws(() => verifyAuthorizedGitPublication(options), error => {
+      assert.equal(error.message, 'REMOTE_COMMIT_SHA_MISMATCH');
+      assert.equal(error.diagnostic.reason, 'REMOTE_COMMIT_SHA_MISMATCH');
+      assert.equal(error.diagnostic.exitCode, 0);
+      return true;
+    });
     assert.equal(spawnSync('git', ['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], {cwd: bare, encoding: 'utf8'}).stdout.trim(), advanced);
   } finally {
     fs.rmSync(tmp, {recursive: true, force: true});

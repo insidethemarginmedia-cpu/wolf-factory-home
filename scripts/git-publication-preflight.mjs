@@ -442,6 +442,8 @@ export function verifyRemotePublishedCommit({
   if (!observedSha || observedSha !== expectedSha) {
     const failure = Error('REMOTE_COMMIT_SHA_MISMATCH');
     failure.diagnostic = {
+      reason: failure.message,
+      exitCode: lsRemote.status,
       expectedSha,
       observedSha,
       branch: targetBranch,

@@ -96,6 +96,8 @@ jobs:
       id: pin
       env:
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        WOLF_EXECUTE_INTEGRATED: ${{ inputs.execute_integrated }}
+        WOLF_VERIFY_RUNNER_LOSS: ${{ inputs.verify_runner_loss }}
         EUR_SPEND: '0'
         COST_UNKNOWN: DENY
         PAID_FALLBACK: DENY
@@ -117,6 +119,9 @@ jobs:
           if (env.EUR_SPEND !== '0' || ['COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT'].some(k => env[k] !== 'DENY')) {
             throw Error('FACTORY_SOURCE_COST_DENIED');
           }
+          if (env.WOLF_EXECUTE_INTEGRATED === 'true' && env.WOLF_VERIFY_RUNNER_LOSS === 'true') {
+            throw Error('FACTORY_SOURCE_CONCURRENT_ACCEPTANCE_DENIED');
+          }
           const token = env.WOLF_FACTORY_REPO_TOKEN;
           if (typeof token !== 'string' || !token.trim() || /[\r\n\0]/.test(token)) throw Error('FACTORY_SOURCE_CREDENTIAL_REQUIRED');
           const repository = 'donraposo1-source/project-wolf';
@@ -135,7 +140,7 @@ jobs:
             if (Buffer.byteLength(raw) > 8192) throw Error();
             data = JSON.parse(raw);
           } catch { throw Error('FACTORY_SOURCE_RESPONSE_INVALID'); }
-          if (data.ref !== 'refs/heads/' + branch || data.object?.type !== 'commit' || !/^[a-f0-9]{40}$/.test(data.object?.sha || '')) {
+          if (data?.ref !== 'refs/heads/' + branch || data.object?.type !== 'commit' || !/^[a-f0-9]{40}$/.test(data.object?.sha || '')) {
             throw Error('FACTORY_SOURCE_REF_DENIED');
           }
           return Object.freeze({repository, branch, sha: data.object.sha});
