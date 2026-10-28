@@ -74,6 +74,8 @@ on:
       - 'tests/existing-worker-qualification.test.mjs'
       - 'scripts/boxxkite-service-diagnostic.mjs'
       - 'tests/boxxkite-service-diagnostic.test.mjs'
+      - 'scripts/git-publication-preflight.mjs'
+      - 'tests/git-publication-preflight.test.mjs'
 permissions:
   contents: read
 concurrency:
@@ -604,17 +606,23 @@ jobs:
           WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
         run: |
           node --input-type=module <<'NODE'
-          import fs from 'node:fs';import path from 'node:path';
-          const key=process.env.WOLF_FACTORY_DEPLOY_KEY;
-          if(!key||!key.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+          import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';
+          const raw=typeof process.env.WOLF_FACTORY_DEPLOY_KEY==='string'?process.env.WOLF_FACTORY_DEPLOY_KEY.replace(/\r\n?/g,'\n').trim():'';
+          if(!raw||!raw.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+          if(raw.includes('\0')||!raw.endsWith('-----END OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_INVALID');process.exit(78);}
           const keyFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-key');
           const hostsFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-known-hosts');
-          fs.writeFileSync(keyFile,key.trim()+'\n',{flag:'wx',mode:0o600});
-          fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
-          const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
-          const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
-          fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
-          console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+          fs.writeFileSync(keyFile,raw+'\n',{flag:'wx',mode:0o600});
+          const cleanup=()=>{for(const f of [keyFile,hostsFile])fs.rmSync(f,{force:true});};
+          try{
+            fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
+            const k=spawnSync('ssh-keygen',['-y','-f',keyFile],{stdio:['ignore','ignore','pipe'],timeout:5000});
+            if(k.status!==0||k.signal||k.error){cleanup();console.error('PUBLICATION_DEPLOY_KEY_INVALID');process.exit(78);}
+            const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+            const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
+            fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
+            console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+          }catch(e){cleanup();throw e;}
           NODE
       - name: Prepare bounded synthetic missions and authorized Git transport
         if: inputs.execute_integrated == true
@@ -626,8 +634,8 @@ jobs:
             git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
           else
             git remote set-url origin https://github.com/donraposo1-source/project-wolf.git
+            git config credential.helper '!f() { echo username=x-access-token; echo password="$WOLF_FACTORY_REPO_TOKEN"; }; f'
           fi
-          git config credential.helper '!f() { echo username=x-access-token; echo password="$WOLF_FACTORY_REPO_TOKEN"; }; f'
           node <<'NODE'
           const fs=require('fs'),path=require('path');
           const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
@@ -656,13 +664,27 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import {spawnSync} from 'node:child_process';
-          const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+          const branch='feat/factory-real-worker-m1-20261006',repo='donraposo1-source/project-wolf';
+          const transport=process.env.WOLF_FACTORY_GIT_TRANSPORT||'https-token';
+          if(transport!=='ssh-deploy-key'&&transport!=='https-token')throw Error('UNAUTHORIZED_GIT_TRANSPORT');
+          const cur=spawnSync('git',['symbolic-ref','--quiet','--short','HEAD'],{encoding:'utf8',timeout:5000});
+          if(cur.status!==0||cur.stdout.trim()!==branch)throw Error('UNAUTHORIZED_LOCAL_BRANCH');
+          const rem=spawnSync('git',['remote','get-url','origin'],{encoding:'utf8',timeout:5000});
+          const expectedRemote=transport==='ssh-deploy-key'?'git@github.com:'+repo+'.git':'https://github.com/'+repo+'.git';
+          if(rem.status!==0||rem.stdout.trim()!==expectedRemote)throw Error('UNAUTHORIZED_GIT_REMOTE');
+          const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
           const text=String(p.stderr||'');
-          const safe=text.replace(/https?:\/\/[^\s]+/g,'[REDACTED_URL]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').split(process.env.WOLF_FACTORY_REPO_TOKEN||'\0').join('[REDACTED_TOKEN]').slice(0,4000);
+          let safe=text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[REDACTED_KEY]');
+          for(const rawVal of [process.env.WOLF_FACTORY_REPO_TOKEN,process.env.GITHUB_TOKEN]){
+            if(typeof rawVal==='string'&&rawVal){for(const v of new Set([rawVal,rawVal.trim()].filter(Boolean))){for(const s of [v,encodeURIComponent(v),Buffer.from('x-access-token:'+v).toString('base64')])if(s)safe=safe.split(s).join('[REDACTED_TOKEN]');}}
+          }
+          safe=safe.replace(/authorization:\s*(?:basic|bearer)\s+[^\s'"]+/gi,'Authorization: [REDACTED_AUTH]').replace(/x-access-token:[^\s@'"]+/gi,'x-access-token:[REDACTED_TOKEN]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').replace(/(?:https?|ssh):\/\/[^\s'"]+/gi,'[REDACTED_URL]');
+          if(process.env.RUNNER_TEMP)safe=safe.split(process.env.RUNNER_TEMP).join('[REDACTED_RUNNER_TEMP]');
+          safe=safe.slice(0,4000);
           console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
-          const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
-          console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
-          if(p.status!==0)throw Error(reason);
+          const reason=p.status===0&&!p.signal&&!p.error?'AUTHORIZED':p.error?.code==='ETIMEDOUT'||p.signal==='SIGTERM'||p.signal==='SIGKILL'?'GIT_PUBLICATION_TIMEOUT':/host key verification failed|remote host identification has changed|no [a-z0-9-]+ host key is known/i.test(text)?'SSH_HOST_VERIFICATION_FAILED':/load key .*:(?:\s*invalid format|\s*error in libcrypto|\s*bad permissions|\s*no such file)|identity file .* not accessible/i.test(text)?'SSH_KEY_INVALID':/\b403\b|write access.*not granted|permission to .* denied|permission.*denied|authentication failed|could not read username|could not read password|terminal prompts disabled|repository not found/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/GH006|GH013|protected branch|repository rule violations|hook declined/i.test(text)?'BRANCH_PROTECTION_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|stale info|cannot lock ref .* expected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':/does not appear to be a git repository|no such remote|src refspec .* does not match any|invalid refspec/i.test(text)?'INVALID_GIT_REMOTE_OR_BRANCH':/could not resolve hostname|connection timed out|operation timed out|connection reset|kex_exchange_identification|network is unreachable/i.test(text)?'GIT_NETWORK_UNAVAILABLE':'GIT_PUBLICATION_PREFLIGHT_FAILED';
+          console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,transport,refUpdated:false}));
+          if(p.status!==0||reason!=='AUTHORIZED')throw Error(reason);
           NODE
       - name: Execute Mission A then restart existing controller for automatic Mission B
         if: inputs.execute_integrated == true
@@ -1078,17 +1100,23 @@ jobs:
         WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
       run: |
         node --input-type=module <<'NODE'
-        import fs from 'node:fs';import path from 'node:path';
-        const key=process.env.WOLF_FACTORY_DEPLOY_KEY;
-        if(!key||!key.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+        import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';
+        const raw=typeof process.env.WOLF_FACTORY_DEPLOY_KEY==='string'?process.env.WOLF_FACTORY_DEPLOY_KEY.replace(/\r\n?/g,'\n').trim():'';
+        if(!raw||!raw.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+        if(raw.includes('\0')||!raw.endsWith('-----END OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_INVALID');process.exit(78);}
         const keyFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-key');
         const hostsFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-known-hosts');
-        fs.writeFileSync(keyFile,key.trim()+'\n',{flag:'wx',mode:0o600});
-        fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
-        const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
-        const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
-        fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
-        console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+        fs.writeFileSync(keyFile,raw+'\n',{flag:'wx',mode:0o600});
+        const cleanup=()=>{for(const f of [keyFile,hostsFile])fs.rmSync(f,{force:true});};
+        try{
+          fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
+          const k=spawnSync('ssh-keygen',['-y','-f',keyFile],{stdio:['ignore','ignore','pipe'],timeout:5000});
+          if(k.status!==0||k.signal||k.error){cleanup();console.error('PUBLICATION_DEPLOY_KEY_INVALID');process.exit(78);}
+          const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+          const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
+          fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
+          console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+        }catch(e){cleanup();throw e;}
         NODE
     - name: Select existing authorized branch and Git publication transport
       shell: bash
@@ -1102,13 +1130,27 @@ jobs:
       run: |
         node --input-type=module <<'NODE'
         import {spawnSync} from 'node:child_process';
-        const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+        const branch='feat/factory-real-worker-m1-20261006',repo='donraposo1-source/project-wolf';
+        const transport=process.env.WOLF_FACTORY_GIT_TRANSPORT||'https-token';
+        if(transport!=='ssh-deploy-key'&&transport!=='https-token')throw Error('UNAUTHORIZED_GIT_TRANSPORT');
+        const cur=spawnSync('git',['symbolic-ref','--quiet','--short','HEAD'],{encoding:'utf8',timeout:5000});
+        if(cur.status!==0||cur.stdout.trim()!==branch)throw Error('UNAUTHORIZED_LOCAL_BRANCH');
+        const rem=spawnSync('git',['remote','get-url','origin'],{encoding:'utf8',timeout:5000});
+        const expectedRemote=transport==='ssh-deploy-key'?'git@github.com:'+repo+'.git':'https://github.com/'+repo+'.git';
+        if(rem.status!==0||rem.stdout.trim()!==expectedRemote)throw Error('UNAUTHORIZED_GIT_REMOTE');
+        const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
         const text=String(p.stderr||'');
-          const safe=text.replace(/https?:\/\/[^\s]+/g,'[REDACTED_URL]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').split(process.env.WOLF_FACTORY_REPO_TOKEN||'\0').join('[REDACTED_TOKEN]').slice(0,4000);
-          console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
-        const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
-        console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
-        if(p.status!==0)throw Error(reason);
+        let safe=text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[REDACTED_KEY]');
+        for(const rawVal of [process.env.WOLF_FACTORY_REPO_TOKEN,process.env.GITHUB_TOKEN]){
+          if(typeof rawVal==='string'&&rawVal){for(const v of new Set([rawVal,rawVal.trim()].filter(Boolean))){for(const s of [v,encodeURIComponent(v),Buffer.from('x-access-token:'+v).toString('base64')])if(s)safe=safe.split(s).join('[REDACTED_TOKEN]');}}
+        }
+        safe=safe.replace(/authorization:\s*(?:basic|bearer)\s+[^\s'"]+/gi,'Authorization: [REDACTED_AUTH]').replace(/x-access-token:[^\s@'"]+/gi,'x-access-token:[REDACTED_TOKEN]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').replace(/(?:https?|ssh):\/\/[^\s'"]+/gi,'[REDACTED_URL]');
+        if(process.env.RUNNER_TEMP)safe=safe.split(process.env.RUNNER_TEMP).join('[REDACTED_RUNNER_TEMP]');
+        safe=safe.slice(0,4000);
+        console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
+        const reason=p.status===0&&!p.signal&&!p.error?'AUTHORIZED':p.error?.code==='ETIMEDOUT'||p.signal==='SIGTERM'||p.signal==='SIGKILL'?'GIT_PUBLICATION_TIMEOUT':/host key verification failed|remote host identification has changed|no [a-z0-9-]+ host key is known/i.test(text)?'SSH_HOST_VERIFICATION_FAILED':/load key .*:(?:\s*invalid format|\s*error in libcrypto|\s*bad permissions|\s*no such file)|identity file .* not accessible/i.test(text)?'SSH_KEY_INVALID':/\b403\b|write access.*not granted|permission to .* denied|permission.*denied|authentication failed|could not read username|could not read password|terminal prompts disabled|repository not found/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/GH006|GH013|protected branch|repository rule violations|hook declined/i.test(text)?'BRANCH_PROTECTION_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|stale info|cannot lock ref .* expected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':/does not appear to be a git repository|no such remote|src refspec .* does not match any|invalid refspec/i.test(text)?'INVALID_GIT_REMOTE_OR_BRANCH':/could not resolve hostname|connection timed out|operation timed out|connection reset|kex_exchange_identification|network is unreachable/i.test(text)?'GIT_NETWORK_UNAVAILABLE':'GIT_PUBLICATION_PREFLIGHT_FAILED';
+        console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,transport,refUpdated:false}));
+        if(p.status!==0||reason!=='AUTHORIZED')throw Error(reason);
         NODE
     - name: Recover the existing DBOS workflow and execute Mission C automatically
       env: *id001
