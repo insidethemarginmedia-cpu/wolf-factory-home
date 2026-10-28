@@ -1,48 +1,103 @@
 {
-  "schema": "WolfOmegaAcceptanceReadiness/v1",
-  "recordedDate": "2026-10-28",
-  "verdict": "MANUAL_WAKEUP_SELF_REPAIR_VERIFIED_SCHEDULE_AND_MULTI_MISSION_PENDING",
-  "publicRuntimeBaseHead": "a94588646b2d7d627b8e2103329b22ea3f29545d",
-  "publicMainHead": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
-  "verifiedWakeupCheckpoint": {
-    "runId": 40613194518,
-    "runUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40613194518",
-    "integratedJobId": 122569548793,
-    "integratedJobUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40613194518/job/122569548793",
-    "journalCommitUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/commit/a94588646b2d7d627b8e2103329b22ea3f29545d",
-    "missionId": "WOLF_WAKEUP_MANUAL_40613194518",
-    "sourceShaBeforeRepair": "ee2d8ba15cd99d8788409c00c2fec3b1cd052370",
-    "publishedPrivateCommitSha": "58127da11aa1628a5f6e53376449574b7e2cc20e",
-    "checkpointId": "wolf-cp-2f859bf8538328f1eaae1c449013268084db59501ea66bfed6d51c2e23da388b",
+  "schema": "wolf-omega-acceptance-readiness-v2",
+  "recordedAt": "2026-10-28T02:36:00Z",
+  "publicRepository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "baseBranch": "feat/public-runtime-probe-20261022",
+  "basePublicHeadSha": "a94588646b2d7d627b8e2103329b22ea3f29545d",
+  "publishedPrBranch": "fix/omega-acceptance-ready-20261028",
+  "publishedPrHeadBeforeCasFastForward": "59e322c80457696290f58b125706f730bf6d74c5",
+  "publishedPullRequest": {
+    "number": 1,
+    "state": "open",
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/1"
+  },
+  "verifiedManualWakeupRun": {
+    "runId": "40613194518",
+    "runNumber": 150,
+    "wakeupId": "WOLF_WAKEUP_MANUAL_40613194518",
     "state": "COMPLETED",
     "externalEffectState": "VERIFIED",
-    "nextReady": "NEXT_READY",
-    "replayed": false
-  },
-  "alignedWorkflowExpectation": {
     "privateRepository": "donraposo1-source/project-wolf",
     "privateBranch": "feat/factory-real-worker-m1-20261006",
-    "expectedShaAlignedTo": "58127da11aa1628a5f6e53376449574b7e2cc20e",
-    "jobsAligned": [
-      "night-shift-admission",
-      "service-access:private-groq-observer",
-      "integrated-factory",
-      "runner-loss-prepare",
-      "runner-loss-recover"
-    ],
-    "manualIntegratedDeployKeyDefault": true,
-    "remoteCommitShaVerificationEnabled": true
+    "privateCommitSha": "58127da11aa1628a5f6e53376449574b7e2cc20e",
+    "checkpointId": "wolf-cp-2f859bf8538328f1eaae1c449013268084db59501ea66bfed6d51c2e23da388b",
+    "nextReady": "NEXT_READY"
   },
-  "economicControls": {
-    "EUR_SPEND": "0",
+  "verifiedIntegratedRestartRun": {
+    "runId": "40620484843",
+    "runNumber": 152,
+    "branch": "fix/omega-acceptance-ready-20261028",
+    "headSha": "cfe7420f8ab87f6a428eaa808a65f1e39522cdf9",
+    "jobId": "122593113167",
+    "state": "VERIFIED",
+    "sequence": "Mission A -> DBOS checkpoint -> Controller restart -> Automatic Mission B -> NEXT_READY_DRAINED",
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40620484843/job/122593113167"
+  },
+  "verifiedRunnerLossRecoveryRun": {
+    "runId": "40621309211",
+    "runNumber": 154,
+    "branch": "fix/omega-acceptance-ready-20261028",
+    "headSha": "a2b207d8d365732ba16b41f6d0cda57164e9cdfd",
+    "admittedPrivateSourceSha": "85d1665ad8d26c1576566b1a5564cafc59a92f52",
+    "checkpointArtifact": "docs/checkpoints/runner-loss/40621309211.json",
+    "checkpointCommitSha": "59e322c80457696290f58b125706f730bf6d74c5",
+    "prepareJobId": "122595835197",
+    "recoverJobId": "122596428779",
+    "state": "VERIFIED",
+    "sequence": "Runner loss -> Encrypted DBOS/KCT checkpoint -> Fresh runner durable recovery -> Mission C -> Duplicate wakeup verified no new effects",
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40621309211"
+  },
+  "dynamicSourceAdmissionAndCas": {
+    "shaConcurrencyDefect": "FIXED",
+    "minimumVerifiedFactorySha": "58127da11aa1628a5f6e53376449574b7e2cc20e",
+    "admissionMode": "factory-source-admission resolves authorized donraposo1-source/project-wolf:feat/factory-real-worker-m1-20261006 HEAD once per admitted run and rejects overlapping acceptance modes",
+    "compareAndSwap": "--force-with-lease=refs/heads/feat/factory-real-worker-m1-20261006:<admitted_sha> on preflight plus push-time .git/hooks/pre-push + wolf-cas-lease.json fast-forward lease fence across Mission A -> B and Mission C",
+    "concurrentBranchAdvancement": "REJECTED_FAIL_CLOSED_CONCURRENT_BRANCH_ADVANCED",
+    "manualShaUpdatesRequiredAfterMission": false
+  },
+  "suspendedJournalsPreservedNoReplay": [
+    {
+      "wakeupId": "WOLF_WAKEUP_MANUAL_40605467853",
+      "state": "SUSPENDED",
+      "externalEffectState": "NO_MISSION_EFFECTS_VERIFIED",
+      "automaticRetry": false
+    },
+    {
+      "wakeupId": "WOLF_WAKEUP_MANUAL_40606320022",
+      "state": "SUSPENDED",
+      "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+      "automaticRetry": false
+    },
+    {
+      "wakeupId": "WOLF_WAKEUP_MANUAL_40611540257",
+      "state": "SUSPENDED",
+      "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+      "automaticRetry": false
+    },
+    {
+      "wakeupId": "WOLF_WAKEUP_MANUAL_40612336952",
+      "state": "SUSPENDED",
+      "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+      "automaticRetry": false
+    },
+    {
+      "wakeupId": "WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1",
+      "state": "SUSPENDED",
+      "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+      "automaticRetry": false
+    }
+  ],
+  "economicAndSecurityInvariants": {
+    "EUR_SPEND": 0,
     "COST_UNKNOWN": "DENY",
     "PAID_FALLBACK": "DENY",
-    "TRIAL_CREDIT": "DENY"
+    "TRIAL_CREDIT": "DENY",
+    "providersPreserved": ["Groq", "Flint", "Ollama"],
+    "mainBranchModified": false,
+    "schedulerModified": false
   },
-  "remainingAcceptanceSequence": [
-    "Apply feature-branch patch onto insidethemarginmedia-cpu/wolf-factory-home:feat/public-runtime-probe-20261022 via draft PR and review.",
-    "Dispatch execute_integrated=true (use_publication_deploy_key=true) at aligned SHA 58127da11aa1628a5f6e53376449574b7e2cc20e to verify Mission A -> controller restart -> automatic Mission B -> NEXT_READY_DRAINED with WOLF_REMOTE_COMMIT_VERIFIED.",
-    "Advance WOLF_FACTORY_EXPECTED_SHA to the Mission B commit SHA and dispatch verify_runner_loss=true (use_publication_deploy_key=true) to verify fresh-runner DBOS recovery -> automatic Mission C -> duplicate-wakeup no-new-effects.",
-    "Only after feature-branch acceptance and separate explicit Founder authorization, update .github/workflows/night-shift-wakeup.yml on main and observe one unattended schedule wakeup."
+  "remainingAcceptanceGates": [
+    "Fast-forward push the push-time CAS + Groq-observer SHA alignment + sequential synthetic commit test commit onto fix/omega-acceptance-ready-20261028 (PR #1) and verify security-tests",
+    "Owner review and merge of PR #1 -> feat/public-runtime-probe-20261022 and owner-approved promotion before unattended scheduled wakeup (schedule on main) can be claimed VERIFIED"
   ]
 }
