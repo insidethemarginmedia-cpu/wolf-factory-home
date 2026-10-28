@@ -676,6 +676,7 @@ try {
       // If the authoritative KCT state is inaccessible, fail closed.
       deny('KCT_AUTHORITY_INACCESSIBLE');
     }
+    if (!Number.isSafeInteger(kctFence) || kctFence < 1) deny('KCT_AUTHORITY_INVALID');
   }
   if (kctFence !== null && lease.leaseFence < kctFence) deny('STALE_LEASE_FENCE_REJECTED');
   const lines = fs.readFileSync(0, 'utf8').trim().split(/\\r?\\n/).filter(Boolean);
@@ -1082,7 +1083,25 @@ function publishCompareAndSwapCommitLocked({
 // P0-B recovery: reconcile durable UNKNOWN_UNTIL_RECONCILED publication records
 // against authoritative remote Git state. Never auto-retry an external effect.
 // Resume only when the result is proven; preserve checkpoint lineage and mission identity.
-export function recoverPublicationUncertainty({
+export function recoverPublicationUncertainty(options = {}) {
+  if ((options.expectedRepository ?? CANONICAL_REPOSITORY) !== CANONICAL_REPOSITORY) throw Error('UNAUTHORIZED_TARGET_REPOSITORY');
+  if ((options.targetBranch ?? CANONICAL_BRANCH) !== CANONICAL_BRANCH) throw Error('UNAUTHORIZED_TARGET_BRANCH');
+  const journalPath = options.journalPath ?? process.env.WOLF_PUBLICATION_JOURNAL_PATH;
+  if (typeof journalPath !== 'string' || !journalPath.trim() || !fs.existsSync(journalPath)) {
+    return {recovered: [], unreconciled: [], journalMissing: true};
+  }
+  // Share the publisher's lock namespace so recovery cannot overwrite a newer intent.
+  let lock;
+  try { lock = fs.openSync(journalPath + '.lock', 'wx', 0o600); }
+  catch { throw Error('PUBLICATION_JOURNAL_BUSY'); }
+  try { return recoverPublicationUncertaintyLocked({...options, journalPath}); }
+  finally {
+    fs.closeSync(lock);
+    fs.rmSync(journalPath + '.lock', {force: true});
+  }
+}
+
+function recoverPublicationUncertaintyLocked({
   journalPath = process.env.WOLF_PUBLICATION_JOURNAL_PATH,
   cwd = process.cwd(),
   env = process.env,
@@ -1091,9 +1110,13 @@ export function recoverPublicationUncertainty({
   targetBranch = CANONICAL_BRANCH,
   allowLocalRemoteForTesting = false,
 } = {}) {
-  if (typeof journalPath !== 'string' || !journalPath.trim() || !fs.existsSync(journalPath)) {
-    return {recovered: [], unreconciled: [], journalMissing: true};
-  }
+  const transport = env.WOLF_FACTORY_GIT_TRANSPORT || 'https-token';
+  if (!['https-token', 'ssh-deploy-key'].includes(transport)) throw Error('UNAUTHORIZED_GIT_TRANSPORT');
+  const remote = spawnImpl('git', ['remote', 'get-url', '--all', 'origin'], {cwd, encoding: 'utf8', timeout: 5000});
+  const remoteUrl = String(remote.stdout || '').trim();
+  const expectedRemote = transport === 'ssh-deploy-key' ? `git@github.com:${expectedRepository}.git` : `https://github.com/${expectedRepository}.git`;
+  const localFixture = allowLocalRemoteForTesting && (path.isAbsolute(remoteUrl) || remoteUrl.startsWith('file://'));
+  if (remote.status !== 0 || remote.signal || remote.error || (!localFixture && remoteUrl !== expectedRemote)) throw Error('UNAUTHORIZED_GIT_REMOTE');
 
   let entries;
   try {

@@ -85,6 +85,82 @@ function withPublicationGuardFixture(source, action) {
   }
 }
 
+function unknownPublicationFixture({tmp, cwd, must, admittedSha}) {
+  const target = 'docs/factory-acceptance/omega-9801-a.py';
+  fs.mkdirSync(path.dirname(path.join(cwd, target)), {recursive: true});
+  fs.writeFileSync(path.join(cwd, target), 'def add(a,b): return a+b\n');
+  must(['add', target]);
+  must(['commit', '-m', 'owned publication for isolated recovery verification']);
+  must(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+  const journalPath = path.join(tmp, 'unknown-publication.json');
+  fs.writeFileSync(journalPath, JSON.stringify([{repository: CANONICAL_REPOSITORY, branch: CANONICAL_BRANCH, missionId: 'OMEGA_A_9801', checkpointId: 'wolf-cp-independent-recovery', baseSha: admittedSha, headSha: must(['rev-parse', 'HEAD']), leaseFence: 1, published: false, externalEffectState: 'UNKNOWN_UNTIL_RECONCILED'}]));
+  return journalPath;
+}
+
+test('recovery refuses proof from an unauthorized origin and leaves uncertainty unchanged', () => {
+  withPublicationGuardFixture('helper', fixture => {
+    const journalPath = unknownPublicationFixture(fixture);
+    const before = fs.readFileSync(journalPath, 'utf8');
+    assert.throws(() => recoverPublicationUncertainty({cwd: fixture.cwd, journalPath}), /UNAUTHORIZED_GIT_REMOTE/);
+    assert.equal(fs.readFileSync(journalPath, 'utf8'), before);
+    for (const scope of [{targetBranch: 'main'}, {expectedRepository: 'other/repository'}]) {
+      assert.throws(() => recoverPublicationUncertainty({cwd: fixture.cwd, journalPath, ...scope, spawnImpl: () => assert.fail('scope must be checked before IO')}), /UNAUTHORIZED_TARGET_/);
+      assert.equal(fs.readFileSync(journalPath, 'utf8'), before);
+    }
+  });
+});
+
+test('recovery respects an active publication journal lock without discarding its intent', () => {
+  withPublicationGuardFixture('helper', fixture => {
+    const journalPath = unknownPublicationFixture(fixture);
+    const before = fs.readFileSync(journalPath, 'utf8');
+    fs.writeFileSync(journalPath + '.lock', 'active publisher');
+    assert.throws(() => recoverPublicationUncertainty({cwd: fixture.cwd, journalPath, allowLocalRemoteForTesting: true, spawnImpl: () => assert.fail('locked journal must not perform IO')}), /PUBLICATION_JOURNAL_BUSY/);
+    assert.equal(fs.readFileSync(journalPath, 'utf8'), before);
+    assert.equal(fs.readFileSync(journalPath + '.lock', 'utf8'), 'active publisher');
+  });
+});
+
+test('the generated guard fails closed when a readable KCT authority has no valid positive fence', () => {
+  withPublicationGuardFixture('helper', ({tmp, cwd, remote, admittedSha, leasePath, env}) => {
+    const authority = path.join(tmp, 'kct-authority.json');
+    const installed = installCompareAndSwapPrePushGuard({cwd, leaseFilePath: leasePath, expectedRemoteSha: admittedSha, missionId: 'OMEGA_A_9801', kctAuthorityPath: authority});
+    for (const invalid of [{}, {newFence: 0}, {leaseFence: -1}, {newFence: '2'}]) {
+      fs.writeFileSync(authority, JSON.stringify(invalid));
+      const result = spawnSync(process.execPath, [installed.hookPath, 'origin', remote], {cwd, env, encoding: 'utf8', input: `HEAD ${admittedSha} refs/heads/${CANONICAL_BRANCH} ${admittedSha}\n`});
+      assert.equal(result.status, 1, 'invalid authority cannot authorize a publication');
+      assert.match(result.stderr, /KCT_AUTHORITY_INVALID/);
+    }
+  });
+});
+
+test('mission identity is checked by the actual generated guard before any Git lookup', () => {
+  withPublicationGuardFixture('helper', ({cwd, leasePath, admittedSha, env}) => {
+    const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
+    fs.writeFileSync(leasePath, JSON.stringify({...lease, missionId: 'OMEGA_B_9802'}));
+    const result = spawnSync(process.execPath, [path.join(cwd, '.git/hooks/pre-push')], {cwd, env: {...env, PATH: path.dirname(process.execPath)}, encoding: 'utf8', input: `HEAD ${admittedSha} refs/heads/${CANONICAL_BRANCH} ${admittedSha}\n`});
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /LEASE_MISSION_IDENTITY_MISMATCH/);
+  });
+});
+
+test('a separate process reconciles exact Git readback without publishing or repeating the effect', () => {
+  withPublicationGuardFixture('helper', fixture => {
+    const journalPath = unknownPublicationFixture(fixture);
+    const head = fixture.must(['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], fixture.remote);
+    const moduleUrl = new URL('../scripts/git-publication-preflight.mjs', import.meta.url).href;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', `import {recoverPublicationUncertainty} from ${JSON.stringify(moduleUrl)}; const result=recoverPublicationUncertainty(JSON.parse(process.argv[1])); console.log(JSON.stringify({pid:process.pid,result}));`, JSON.stringify({cwd: fixture.cwd, journalPath, allowLocalRemoteForTesting: true})], {cwd: fixture.cwd, env: fixture.env, encoding: 'utf8'});
+    assert.equal(child.status, 0, child.stderr);
+    const receipt = JSON.parse(child.stdout);
+    assert.notEqual(receipt.pid, process.pid);
+    assert.equal(receipt.result.recovered.length, 1);
+    assert.equal(receipt.result.recovered[0].headSha, head);
+    assert.equal(receipt.result.unreconciled.length, 0);
+    assert.equal(JSON.parse(fs.readFileSync(journalPath, 'utf8'))[0].externalEffectState, 'VERIFIED');
+    assert.equal(fixture.must(['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], fixture.remote), head);
+  });
+});
+
 test('actual publication guards allow a mission code commit followed by its durable checkpoint without following unrelated remote advancement', () => {
   for (const source of ['helper', 'integrated-factory', 'runner-loss-recover']) {
     withPublicationGuardFixture(source, ({tmp, cwd, remote, git, must, env, admittedSha, leasePath}) => {
