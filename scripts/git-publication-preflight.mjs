@@ -673,7 +673,7 @@ export function installCompareAndSwapPrePushGuard({
   });
 
   const resolvedLeasePath = path.resolve(leaseFilePath);
-  const hookScript = `#!/usr/bin/env node
+  const hookScript = `#!${process.execPath}
 import fs from 'node:fs';
 import {spawnSync} from 'node:child_process';
 
