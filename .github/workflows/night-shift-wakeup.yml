@@ -15,6 +15,7 @@ jobs:
       contents: write
     uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@961f7e75e1a0aa3a5191641edd7613d6dde6c729
     with:
+      public_runtime_sha: 961f7e75e1a0aa3a5191641edd7613d6dde6c729
       night_shift: true
     secrets:
       WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
