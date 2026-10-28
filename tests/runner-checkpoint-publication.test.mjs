@@ -27,7 +27,7 @@ function publisher() {
   assert.ok(match, 'runner-loss must publish its encrypted snapshot to the authorized feature branch');
   return new Function(match[1] + '\nreturn publishFeatureCheckpoint;')();
 }
-function network({race = false, duplicate = false, wrongReadback = false, unknown = false} = {}) {
+function network({race = false, duplicate = false, wrongReadback = false, unknown = false, returnedContent = content} = {}) {
   const calls = [];
   let tip = base;
   return {calls, tip: () => tip, fetchImpl: async (url, options) => {
@@ -52,7 +52,7 @@ function network({race = false, duplicate = false, wrongReadback = false, unknow
       if (race) { tip = '4'.repeat(40); return res({}, 422); }
       tip = commit; return res({object: {sha: commit}});
     }
-    if (method === 'GET' && route.endsWith('?ref=' + commit)) return res({content: Buffer.from(wrongReadback ? '{}' : content).toString('base64')});
+    if (method === 'GET' && route.endsWith('?ref=' + commit)) return res({content: Buffer.from(wrongReadback ? '{}' : returnedContent).toString('base64')});
     assert.fail('unexpected API operation: ' + method + ' ' + route);
   }};
 }
@@ -90,4 +90,11 @@ test('concurrent advancement, duplicate snapshots, uncertain writes and readback
     if (scenario.race) assert.equal(net.tip(), '4'.repeat(40));
     if (scenario.duplicate) assert.equal(net.calls.some(c => c.method === 'POST'), false);
   }
+});
+
+test('duplicate JSON keys cannot hide plaintext in bytes submitted as an encrypted envelope', async () => {
+  const malicious = '{"ciphertext":"SYNTHETIC_PLAINTEXT_MARKER",' + content.slice(1);
+  const net = network({returnedContent: malicious});
+  await assert.rejects(publisher()(env, malicious, net.fetchImpl), /CHECKPOINT_CANONICAL_ENVELOPE_REQUIRED/);
+  assert.equal(net.calls.length, 0);
 });

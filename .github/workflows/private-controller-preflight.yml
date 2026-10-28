@@ -1015,6 +1015,7 @@ jobs:
           if (!token || /[\r\n\0]/.test(token) || !/^[a-f0-9]{40}$/.test(base || '') || !/^[0-9]+$/.test(run || '') || !/^[a-f0-9]{40}$/.test(env.WOLF_FACTORY_EXPECTED_SHA || '')) fail('CONTEXT_REQUIRED');
           if (typeof content !== 'string' || Buffer.byteLength(content) > 1048576) fail('SIZE_DENIED');
           let envelope;try { envelope = JSON.parse(content); } catch { fail('ENVELOPE_REQUIRED'); }
+          if (content !== JSON.stringify(envelope) + '\n') fail('CANONICAL_ENVELOPE_REQUIRED');
           const keys = ['version', 'algorithm', 'context', 'salt', 'iv', 'tag', 'ciphertext', 'payloadSha256'];
           if (!envelope || Object.keys(envelope).sort().join() !== keys.sort().join() || envelope.version !== 1 || envelope.algorithm !== 'aes-256-gcm+scrypt+gzip' || !/^[a-f0-9]{64}$/.test(envelope.payloadSha256 || '')) fail('SEALED_ENVELOPE_REQUIRED');
           const context = {workflowID: 'wolf-runner-loss-' + run, runID: run, sourceSha: env.WOLF_FACTORY_EXPECTED_SHA};
