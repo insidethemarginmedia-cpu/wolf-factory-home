@@ -48,7 +48,9 @@ test('admission rejects foreign actors, refs, missing credentials and unknown co
     {GITHUB_EVENT_NAME: 'pull_request_target'}, {WOLF_FACTORY_REPO_TOKEN: ''},
     {EUR_SPEND: '1'}, {COST_UNKNOWN: 'ALLOW'}, {PAID_FALLBACK: 'ALLOW'}, {TRIAL_CREDIT: 'ALLOW'},
   ]) {
-    await assert.rejects(resolve({...env, ...delta}, () => assert.fail('denied admission must not access the network')), /FACTORY_SOURCE_/);
+    let calls = 0;
+    await assert.rejects(resolve({...env, ...delta}, () => { calls++; throw Error('unexpected IO'); }), /FACTORY_SOURCE_/);
+    assert.equal(calls, 0);
   }
 });
 
@@ -67,7 +69,9 @@ test('admission rejects mismatched refs, tags, invalid SHAs, denied HTTP and mal
 
 test('A/B and runner-loss C cannot share an admission and race against the same source pin', async () => {
   const resolve = resolver();
-  await assert.rejects(resolve({...env, WOLF_EXECUTE_INTEGRATED: 'true', WOLF_VERIFY_RUNNER_LOSS: 'true'}, () => assert.fail('no IO')), /FACTORY_SOURCE_CONCURRENT_ACCEPTANCE_DENIED/);
+  let calls = 0;
+  await assert.rejects(resolve({...env, WOLF_EXECUTE_INTEGRATED: 'true', WOLF_VERIFY_RUNNER_LOSS: 'true'}, () => { calls++; throw Error('unexpected IO'); }), /FACTORY_SOURCE_CONCURRENT_ACCEPTANCE_DENIED/);
+  assert.equal(calls, 0);
 });
 
 test('network failure is sanitized and scheduled admission stays restricted to the existing main wakeup', async () => {
