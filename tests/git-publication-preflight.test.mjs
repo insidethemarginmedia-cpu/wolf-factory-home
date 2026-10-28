@@ -72,18 +72,65 @@ function withPublicationGuardFixture(source, action) {
     must(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
     const leasePath = path.join(tmp, 'wolf-cas-lease.json');
     const installed = installCompareAndSwapPrePushGuard({cwd, leaseFilePath: leasePath, expectedRemoteSha: admittedSha, missionId: 'OMEGA_TEST_0001'});
+    const claimsPath = path.join(tmp, '.continuity/tasks/claims');
+    fs.mkdirSync(claimsPath, {recursive: true});
+    for (const taskId of ['OMEGA_TEST_0001', 'OMEGA_TEST_0002']) fs.writeFileSync(path.join(claimsPath, taskId + '.json'), JSON.stringify({taskId, fencingToken: 1, expiresAt: Date.now() + 120000}));
+    env.WOLF_GIT_PUBLICATION_MISSION_ID = 'OMEGA_TEST_0001';
+    env.WOLF_FACTORY_RUNTIME_ROOT = tmp;
+    env.WOLF_FACTORY_ACCEPTANCE_MANIFEST = path.join(tmp, 'manifest.json');
+    fs.writeFileSync(env.WOLF_FACTORY_ACCEPTANCE_MANIFEST, JSON.stringify({missions: [{taskId: 'OMEGA_TEST_0001'}, {taskId: 'OMEGA_TEST_0002'}]}));
     if (source !== 'helper') {
       const workflow = fs.readFileSync(WORKFLOW_PATH, 'utf8');
       const expressions = [...workflow.matchAll(/^\s*const hook=(.+);$/gm)];
       const expression = expressions[source === 'integrated-factory' ? 0 : 1]?.[1];
       assert.ok(expression, 'both execution jobs must install the tested guard');
-      fs.writeFileSync(installed.hookPath, vm.runInNewContext(expression, {JSON, leasePath, process: {execPath: process.execPath}}), {mode: 0o700});
+      fs.writeFileSync(installed.hookPath, vm.runInNewContext(expression, {JSON, leasePath, claimsPath, process: {execPath: process.execPath}}), {mode: 0o700});
     }
     action({tmp, cwd, remote, git, must, env, admittedSha, leasePath});
   } finally {
     fs.rmSync(tmp, {recursive: true, force: true});
   }
 }
+
+test('active KCT claims fence the generated guard against wrong mission, stale token, expiry and missing authority', () => {
+  withPublicationGuardFixture('helper', ({tmp, cwd, remote, leasePath, admittedSha, env}) => {
+    const claimsPath = path.join(tmp, 'authoritative-claims');
+    fs.mkdirSync(claimsPath);
+    const missionId = 'OMEGA_A_9901';
+    const authorityPath = path.join(claimsPath, missionId + '.json');
+    const installed = installCompareAndSwapPrePushGuard({cwd, leaseFilePath: leasePath, expectedRemoteSha: admittedSha, missionId, kctAuthorityDirectory: claimsPath});
+    const valid = {taskId: missionId, fencingToken: 1, expiresAt: Date.now() + 60000};
+    const invoke = (claim, workerMission = missionId) => {
+      if (claim) fs.writeFileSync(authorityPath, JSON.stringify(claim));
+      else fs.rmSync(authorityPath, {force: true});
+      return spawnSync(process.execPath, [installed.hookPath, 'origin', remote], {cwd, env: {...env, WOLF_GIT_PUBLICATION_MISSION_ID: workerMission}, encoding: 'utf8', input: `HEAD ${admittedSha} refs/heads/${CANONICAL_BRANCH} ${admittedSha}\n`});
+    };
+    assert.equal(invoke(valid).status, 0);
+    for (const [claim, reason] of [[{...valid, fencingToken: 2}, /STALE_LEASE_FENCE_REJECTED/], [{...valid, taskId: 'OMEGA_B_9902'}, /LEASE_MISSION_IDENTITY_MISMATCH/], [{...valid, expiresAt: 1}, /KCT_LEASE_EXPIRED/], [null, /KCT_AUTHORITY_INACCESSIBLE/]]) {
+      const result = invoke(claim);
+      assert.equal(result.status, 1, 'active KCT authority must be checked before publication');
+      assert.match(result.stderr, reason);
+    }
+    assert.match(invoke(valid, 'OMEGA_B_9902').stderr, /LEASE_MISSION_IDENTITY_MISMATCH/);
+  });
+});
+
+test('both operational workflow hooks enforce the same active KCT authority as the P0 renderer', () => {
+  for (const source of ['integrated-factory', 'runner-loss-recover']) {
+    withPublicationGuardFixture(source, ({tmp, cwd, remote, leasePath, admittedSha, env}) => {
+      const claimsPath = path.join(tmp, 'runtime-claims');
+      fs.mkdirSync(claimsPath);
+      fs.writeFileSync(path.join(claimsPath, 'OMEGA_TEST_0001.json'), JSON.stringify({taskId: 'OMEGA_TEST_0001', fencingToken: 2, expiresAt: Date.now() + 60000}));
+      const expressions = [...fs.readFileSync(WORKFLOW_PATH, 'utf8').matchAll(/^\s*const hook=(.+);$/gm)];
+      const hook = vm.runInNewContext(expressions[source === 'integrated-factory' ? 0 : 1][1], {JSON, leasePath, claimsPath, process: {execPath: process.execPath}});
+      const hookPath = path.join(cwd, '.git/hooks/pre-push');
+      fs.writeFileSync(hookPath, hook, {mode: 0o700});
+      const result = spawnSync(process.execPath, [hookPath, 'origin', remote], {cwd, env: {...env, WOLF_GIT_PUBLICATION_MISSION_ID: 'OMEGA_TEST_0001'}, encoding: 'utf8', input: `HEAD ${admittedSha} refs/heads/${CANONICAL_BRANCH} ${admittedSha}\n`});
+      assert.equal(result.status, 1, 'the workflow must enforce current KCT authority, not only the sidecar');
+      assert.match(result.stderr, /STALE_LEASE_FENCE_REJECTED/);
+    });
+  }
+});
 
 function unknownPublicationFixture({tmp, cwd, must, admittedSha}) {
   const target = 'docs/factory-acceptance/omega-9801-a.py';
@@ -193,21 +240,23 @@ test('actual publication guards allow a mission code commit followed by its dura
         const boundary = workflow.match(new RegExp(marker + '=.*?node <<\'NODE\'\\n([\\s\\S]*?)\\n\\s*NODE'))?.[1];
         assert.ok(boundary, 'restart boundary must settle the verified checkpoint');
         fs.writeFileSync(path.join(tmp, 'kct-recovery.json'), '{"newFence":2}');
-        const result = spawnSync(process.execPath, ['--input-type=commonjs'], {cwd, input: boundary, encoding: 'utf8', env: {...process.env, RUNNER_TEMP: tmp, WOLF_FACTORY_RUNTIME_ROOT: tmp, WOLF_FACTORY_EXPECTED_SHA: admittedSha, [marker]: checkpointSha}});
+        const result = spawnSync(process.execPath, ['--input-type=commonjs'], {cwd, input: boundary, encoding: 'utf8', env: {...env, RUNNER_TEMP: tmp, WOLF_FACTORY_RUNTIME_ROOT: tmp, WOLF_FACTORY_EXPECTED_SHA: admittedSha, [marker]: checkpointSha}});
         assert.equal(result.status, 0, result.stderr);
       }
       const resumed = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
       assert.equal(resumed.expectedRemoteSha, checkpointSha);
-      assert.equal(resumed.leaseFence, 2);
+      assert.equal(resumed.leaseFence, source === 'integrated-factory' ? 1 : 2);
       assert.equal(resumed.pendingPublication, undefined);
-      assert.equal(resumed.admittedSha, admittedSha);
+      assert.equal(resumed.admittedSha, source === 'integrated-factory' ? checkpointSha : admittedSha);
       fs.writeFileSync(path.join(cwd, 'fixture.txt'), 'automatic next mission\n');
       must(['add', 'fixture.txt']);
       must(['commit', '-m', 'next mission code']);
       const staleWorker = git(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
       assert.notEqual(staleWorker.status, 0, 'the old process must not inherit a new fence at the same SHA');
-      assert.match(staleWorker.stderr, /STALE_LEASE_FENCE_REJECTED/);
-      env.WOLF_GIT_PUBLICATION_FENCE = '2';
+      assert.match(staleWorker.stderr, source === 'integrated-factory' ? /LEASE_MISSION_IDENTITY_MISMATCH/ : /STALE_LEASE_FENCE_REJECTED/);
+      env.WOLF_GIT_PUBLICATION_FENCE = String(resumed.leaseFence);
+      env.WOLF_GIT_PUBLICATION_MISSION_ID = resumed.missionId;
+      if (source === 'runner-loss-recover') fs.writeFileSync(path.join(tmp, '.continuity/tasks/claims', resumed.missionId + '.json'), JSON.stringify({taskId: resumed.missionId, fencingToken: 2, expiresAt: Date.now() + 120000}));
       must(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
       fs.writeFileSync(path.join(cwd, 'checkpoint.json'), '{"state":"DURABLE","mission":2}\n');
       must(['add', 'checkpoint.json']);

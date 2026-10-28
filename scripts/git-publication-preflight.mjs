@@ -633,9 +633,10 @@ export async function resolveAdmittedPrivateSource({
 // The pre-push hook records intent before the network effect. A later push may
 // reconcile only that exact candidate by immutable remote readback; it never
 // follows an arbitrary descendant or retries an unresolved publication.
-export function renderCompareAndSwapPrePushGuard({leaseFilePath, nodeExecutable = process.execPath, minLeaseFence = 1, expectedMissionId = null, kctAuthorityPath = null}) {
+export function renderCompareAndSwapPrePushGuard({leaseFilePath, nodeExecutable = process.execPath, minLeaseFence = 1, expectedMissionId = null, kctAuthorityPath = null, kctAuthorityDirectory = null}) {
   return `#!${nodeExecutable}
 const fs = require('node:fs');
+const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const leasePath = ${JSON.stringify(leaseFilePath)};
 const minimumFence = ${minLeaseFence};
@@ -643,6 +644,7 @@ const canonicalRepository = ${JSON.stringify(CANONICAL_REPOSITORY)};
 const canonicalBranch = ${JSON.stringify(CANONICAL_BRANCH)};
 const expectedMissionId = ${JSON.stringify(expectedMissionId)};
 const kctAuthorityPath = ${JSON.stringify(kctAuthorityPath)};
+const kctAuthorityDirectory = ${JSON.stringify(kctAuthorityDirectory)};
 const deny = reason => { throw Object.assign(new Error(reason), {wolfReason: reason}); };
 const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 const git = args => {
@@ -663,6 +665,15 @@ try {
   if (expectedMissionId) {
     if (!lease.missionId) deny('LEASE_OWNERSHIP_NOT_VALIDATED');
     if (lease.missionId !== expectedMissionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');
+  }
+  if (kctAuthorityDirectory) {
+    if (typeof lease.missionId !== 'string' || !/^[A-Za-z0-9_-]{1,70}$/.test(lease.missionId) || process.env.WOLF_GIT_PUBLICATION_MISSION_ID !== lease.missionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');
+    let claim;
+    try { claim = JSON.parse(fs.readFileSync(path.join(kctAuthorityDirectory, encodeURIComponent(lease.missionId) + '.json'), 'utf8')); }
+    catch { deny('KCT_AUTHORITY_INACCESSIBLE'); }
+    if (claim?.taskId !== lease.missionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');
+    if (!Number.isSafeInteger(claim.fencingToken) || claim.fencingToken < 1 || claim.fencingToken !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');
+    if (!Number.isFinite(claim.expiresAt) || claim.expiresAt <= Date.now()) deny('KCT_LEASE_EXPIRED');
   }
   // P0-A: Fence authority from external KCT/DBOS state - the same process cannot
   // self-authorize by overwriting a sidecar file. Cross-check against the
@@ -725,6 +736,7 @@ export function installCompareAndSwapPrePushGuard({
   leaseFence = 1,
   missionId = null,
   kctAuthorityPath = null,
+  kctAuthorityDirectory = null,
 } = {}) {
   if (targetBranch === 'main' || targetBranch !== CANONICAL_BRANCH) {
     throw Error('UNAUTHORIZED_TARGET_BRANCH');
@@ -765,7 +777,7 @@ export function installCompareAndSwapPrePushGuard({
   });
 
   const resolvedLeasePath = path.resolve(leaseFilePath);
-  const hookScript = renderCompareAndSwapPrePushGuard({leaseFilePath: resolvedLeasePath, minLeaseFence: leaseFence, expectedMissionId: missionId || null, kctAuthorityPath});
+  const hookScript = renderCompareAndSwapPrePushGuard({leaseFilePath: resolvedLeasePath, minLeaseFence: leaseFence, expectedMissionId: missionId || null, kctAuthorityPath, kctAuthorityDirectory});
   const hookPath = path.join(hooksDir, 'pre-push');
   fs.writeFileSync(hookPath, hookScript, {mode: 0o700});
   return {
