@@ -63,7 +63,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [feat/public-runtime-probe-20261022]
+    branches: [feat/public-runtime-probe-20261022, fix/omega-acceptance-ready-20261028]
     paths:
       - '.github/workflows/private-controller-preflight.yml'
       - 'scripts/private-controller-preflight.mjs'
@@ -76,13 +76,77 @@ on:
       - 'tests/boxxkite-service-diagnostic.test.mjs'
       - 'scripts/git-publication-preflight.mjs'
       - 'tests/git-publication-preflight.test.mjs'
+      - 'tests/factory-source-admission.test.mjs'
 permissions:
   contents: read
 concurrency:
   group: private-controller-preflight
   cancel-in-progress: false
 jobs:
+  factory-source-admission:
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && (inputs.night_shift == true || inputs.execute_integrated == true || inputs.verify_private_regression == true || inputs.verify_runner_loss == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.pin.outputs.source_sha }}
+    steps:
+    - name: Resolve authorized Factory HEAD once at admission
+      id: pin
+      env:
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        EUR_SPEND: '0'
+        COST_UNKNOWN: DENY
+        PAID_FALLBACK: DENY
+        TRIAL_CREDIT: DENY
+      run: |
+        node --input-type=module <<'NODE'
+        import fs from 'node:fs';
+        // FACTORY_SOURCE_ADMISSION_BEGIN
+        async function resolveFactorySource(env, fetchImpl = globalThis.fetch) {
+          const manual = env.GITHUB_EVENT_NAME === 'workflow_dispatch' && [
+            'refs/heads/feat/public-runtime-probe-20261022',
+            'refs/heads/fix/omega-acceptance-ready-20261028',
+          ].includes(env.GITHUB_REF);
+          const scheduled = env.GITHUB_EVENT_NAME === 'schedule' && env.GITHUB_REF === 'refs/heads/main';
+          if (env.GITHUB_REPOSITORY !== 'insidethemarginmedia-cpu/wolf-factory-home' ||
+              env.GITHUB_ACTOR !== 'insidethemarginmedia-cpu' || (!manual && !scheduled)) {
+            throw Error('FACTORY_SOURCE_SCOPE_DENIED');
+          }
+          if (env.EUR_SPEND !== '0' || ['COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT'].some(k => env[k] !== 'DENY')) {
+            throw Error('FACTORY_SOURCE_COST_DENIED');
+          }
+          const token = env.WOLF_FACTORY_REPO_TOKEN;
+          if (typeof token !== 'string' || !token.trim() || /[\r\n\0]/.test(token)) throw Error('FACTORY_SOURCE_CREDENTIAL_REQUIRED');
+          const repository = 'donraposo1-source/project-wolf';
+          const branch = 'feat/factory-real-worker-m1-20261006';
+          let response;
+          try {
+            response = await fetchImpl('https://api.github.com/repos/' + repository + '/git/ref/heads/' + branch, {
+              headers: {authorization: 'Bearer ' + token, accept: 'application/vnd.github+json'},
+              redirect: 'error', signal: AbortSignal.timeout(20000),
+            });
+          } catch { throw Error('FACTORY_SOURCE_NETWORK_FAILED'); }
+          if (!response.ok) throw Error('FACTORY_SOURCE_HTTP_DENIED');
+          let data;
+          try {
+            const raw = await response.text();
+            if (Buffer.byteLength(raw) > 8192) throw Error();
+            data = JSON.parse(raw);
+          } catch { throw Error('FACTORY_SOURCE_RESPONSE_INVALID'); }
+          if (data.ref !== 'refs/heads/' + branch || data.object?.type !== 'commit' || !/^[a-f0-9]{40}$/.test(data.object?.sha || '')) {
+            throw Error('FACTORY_SOURCE_REF_DENIED');
+          }
+          return Object.freeze({repository, branch, sha: data.object.sha});
+        }
+        // FACTORY_SOURCE_ADMISSION_END
+        const admission = await resolveFactorySource(process.env);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, 'source_sha=' + admission.sha + '\n');
+        console.log('WOLF_FACTORY_SOURCE_ADMITTED=' + JSON.stringify(admission));
+        NODE
   night-shift-admission:
+    needs: factory-source-admission
     if: inputs.night_shift == true && github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
       && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') || (github.event_name
       == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'))
@@ -93,7 +157,7 @@ jobs:
     outputs:
       ready: ${{ steps.reserve.outputs.ready == 'true' && steps.quota.outcome == 'success' }}
     env:
-      WOLF_FACTORY_EXPECTED_SHA: 58127da11aa1628a5f6e53376449574b7e2cc20e
+      WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
@@ -106,7 +170,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 58127da11aa1628a5f6e53376449574b7e2cc20e
+        ref: ${{ needs.factory-source-admission.outputs.source_sha }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
@@ -433,8 +497,8 @@ jobs:
           echo CEZAR_OPENCODE_LIFECYCLE_EXIT_CODE=0
 
   integrated-factory:
-    needs: [security-tests, night-shift-admission]
-    if: always() && needs.security-tests.result == 'success' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && (inputs.execute_integrated == true || inputs.verify_private_regression == true)) || (inputs.night_shift == true && needs.night-shift-admission.outputs.ready == 'true'))
+    needs: [security-tests, night-shift-admission, factory-source-admission]
+    if: always() && needs.factory-source-admission.result == 'success' && needs.security-tests.result == 'success' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028') && (inputs.execute_integrated == true || inputs.verify_private_regression == true)) || (inputs.night_shift == true && needs.night-shift-admission.outputs.ready == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -467,7 +531,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 58127da11aa1628a5f6e53376449574b7e2cc20e
+      WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -482,14 +546,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 58127da11aa1628a5f6e53376449574b7e2cc20e
+          ref: ${{ needs.factory-source-admission.outputs.source_sha }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '58127da11aa1628a5f6e53376449574b7e2cc20e'
+          test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -671,6 +735,11 @@ jobs:
           const rem=spawnSync('git',['remote','get-url','origin'],{encoding:'utf8',timeout:5000});
           const expectedRemote=transport==='ssh-deploy-key'?'git@github.com:'+repo+'.git':'https://github.com/'+repo+'.git';
           if(rem.status!==0||rem.stdout.trim()!==expectedRemote)throw Error('UNAUTHORIZED_GIT_REMOTE');
+          const pinned=process.env.WOLF_FACTORY_EXPECTED_SHA;
+          if(!/^[a-f0-9]{40}$/.test(pinned||''))throw Error('MISSION_SOURCE_PIN_REQUIRED');
+          const tip=spawnSync('git',['ls-remote','--exit-code','origin','refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+          if(tip.status!==0||tip.signal||tip.error)throw Error('REMOTE_COMMIT_UNVERIFIED');
+          if(tip.stdout.trim()!==pinned+'\trefs/heads/'+branch)throw Error('CONCURRENT_BRANCH_ADVANCED');
           const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
           const text=String(p.stderr||'');
           let safe=text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[REDACTED_KEY]');
@@ -770,9 +839,9 @@ jobs:
           '
 
   runner-loss-prepare:
-    needs: security-tests
-    if: always() && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
-      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'
+    needs: [security-tests, factory-source-admission]
+    if: always() && needs.factory-source-admission.result == 'success' && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
+      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028')
       && github.actor == 'insidethemarginmedia-cpu'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -798,7 +867,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-runner-loss-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-runner-loss-${{ github.run_id }}/manifest.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 58127da11aa1628a5f6e53376449574b7e2cc20e
+      WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -814,14 +883,14 @@ jobs:
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 58127da11aa1628a5f6e53376449574b7e2cc20e
+        ref: ${{ needs.factory-source-admission.outputs.source_sha }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
     - name: Assert immutable source and recovery fixture
       run: |
         set -euo pipefail
-        test "$(git rev-parse HEAD)" = '58127da11aa1628a5f6e53376449574b7e2cc20e'
+        test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
         test -f scripts/wolf-dbos-outer-e2e.mjs
         test -f scripts/wolf-factory-boxxkite-acceptance.mjs
         test -z "$(git status --porcelain)"
@@ -938,8 +1007,9 @@ jobs:
     needs:
     - security-tests
     - runner-loss-prepare
-    if: always() && needs.security-tests.result == 'success' && needs.runner-loss-prepare.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
-      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'
+    - factory-source-admission
+    if: always() && needs.factory-source-admission.result == 'success' && needs.security-tests.result == 'success' && needs.runner-loss-prepare.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
+      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028')
       && github.actor == 'insidethemarginmedia-cpu'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -963,7 +1033,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-runner-loss-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-runner-loss-${{ github.run_id }}/manifest.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 58127da11aa1628a5f6e53376449574b7e2cc20e
+      WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -979,14 +1049,14 @@ jobs:
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 58127da11aa1628a5f6e53376449574b7e2cc20e
+        ref: ${{ needs.factory-source-admission.outputs.source_sha }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
     - name: Assert immutable source and recovery fixture
       run: |
         set -euo pipefail
-        test "$(git rev-parse HEAD)" = '58127da11aa1628a5f6e53376449574b7e2cc20e'
+        test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
         test -f scripts/wolf-dbos-outer-e2e.mjs
         test -f scripts/wolf-factory-boxxkite-acceptance.mjs
         test -z "$(git status --porcelain)"
@@ -1144,6 +1214,11 @@ jobs:
         const rem=spawnSync('git',['remote','get-url','origin'],{encoding:'utf8',timeout:5000});
         const expectedRemote=transport==='ssh-deploy-key'?'git@github.com:'+repo+'.git':'https://github.com/'+repo+'.git';
         if(rem.status!==0||rem.stdout.trim()!==expectedRemote)throw Error('UNAUTHORIZED_GIT_REMOTE');
+        const pinned=process.env.WOLF_FACTORY_EXPECTED_SHA;
+        if(!/^[a-f0-9]{40}$/.test(pinned||''))throw Error('MISSION_SOURCE_PIN_REQUIRED');
+        const tip=spawnSync('git',['ls-remote','--exit-code','origin','refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+        if(tip.status!==0||tip.signal||tip.error)throw Error('REMOTE_COMMIT_UNVERIFIED');
+        if(tip.stdout.trim()!==pinned+'\trefs/heads/'+branch)throw Error('CONCURRENT_BRANCH_ADVANCED');
         const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
         const text=String(p.stderr||'');
         let safe=text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[REDACTED_KEY]');

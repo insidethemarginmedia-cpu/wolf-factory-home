@@ -358,6 +358,34 @@ test('real Git dry-run preflight authorizes fast-forward without mutating remote
   }
 });
 
+test('pinned admission rejects unexpected remote advancement even when a normal fast-forward push would succeed', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-pinned-cas-'));
+  try {
+    const bare = path.join(tmp, 'remote.git');
+    const work = path.join(tmp, 'work');
+    spawnSync('git', ['init', '--bare', bare]);
+    fs.mkdirSync(work);
+    const base = initCanonicalRepo(work);
+    spawnSync('git', ['remote', 'add', 'origin', bare], {cwd: work});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+    const options = {cwd: work, env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key', WOLF_FACTORY_EXPECTED_SHA: base}, allowLocalRemoteForTesting: true};
+    assert.equal(verifyAuthorizedGitPublication(options).reason, 'AUTHORIZED');
+    fs.writeFileSync(path.join(work, 'concurrent.txt'), 'unexpected remote advancement\n');
+    spawnSync('git', ['add', '.'], {cwd: work});
+    spawnSync('git', ['commit', '-m', 'concurrent writer'], {cwd: work});
+    spawnSync('git', ['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work});
+    const advanced = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: work, encoding: 'utf8'}).stdout.trim();
+    fs.writeFileSync(path.join(work, 'candidate.txt'), 'candidate descendant\n');
+    spawnSync('git', ['add', '.'], {cwd: work});
+    spawnSync('git', ['commit', '-m', 'candidate'], {cwd: work});
+    assert.equal(spawnSync('git', ['push', '--dry-run', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], {cwd: work}).status, 0);
+    assert.throws(() => verifyAuthorizedGitPublication(options), /REMOTE_COMMIT_SHA_MISMATCH/);
+    assert.equal(spawnSync('git', ['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], {cwd: bare, encoding: 'utf8'}).stdout.trim(), advanced);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
 test('workflow YAML inline publication preflight and SSH preparation blocks remain synchronized and syntax-valid', () => {
   const workflowRaw = fs.readFileSync(WORKFLOW_PATH, 'utf8');
   assert.equal(
@@ -588,12 +616,7 @@ test('workflow enforces use_publication_deploy_key for integrated publication an
   const expectedShaPins = [
     ...workflowRaw.matchAll(/WOLF_FACTORY_EXPECTED_SHA:\s*([a-f0-9]{40})/g),
   ].map(m => m[1]);
-  assert.deepEqual(expectedShaPins, [
-    latestPublishedPrivateSha,
-    'ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6',
-    latestPublishedPrivateSha,
-    latestPublishedPrivateSha,
-    latestPublishedPrivateSha,
-  ]);
+  // Historical read-only source diagnostic remains pinned; mission pins are admitted at runtime.
+  assert.deepEqual(expectedShaPins, ['ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6']);
+  assert.equal(latestPublishedPrivateSha, '58127da11aa1628a5f6e53376449574b7e2cc20e');
 });
-

@@ -208,6 +208,7 @@ export function verifyAuthorizedGitPublication({
   targetBranch = CANONICAL_BRANCH,
   allowLocalRemoteForTesting = false,
   journalPath = env.WOLF_PUBLICATION_JOURNAL_PATH,
+  expectedBaseSha = env.WOLF_FACTORY_EXPECTED_SHA,
 } = {}) {
   if (targetBranch === 'main' || targetBranch !== CANONICAL_BRANCH) {
     throw Error('UNAUTHORIZED_TARGET_BRANCH');
@@ -271,6 +272,13 @@ export function verifyAuthorizedGitPublication({
       : `https://github.com/${expectedRepository}.git`;
   if (remoteCheck.status !== 0 || (!allowLocalRemoteForTesting && remoteUrl !== expectedRemote)) {
     throw Error('UNAUTHORIZED_GIT_REMOTE');
+  }
+
+  if (expectedBaseSha !== undefined) {
+    verifyRemotePublishedCommit({
+      expectedSha: expectedBaseSha, cwd, env, spawnImpl,
+      expectedRepository, targetBranch, allowLocalRemoteForTesting,
+    });
   }
 
   const pushResult = spawnImpl(
