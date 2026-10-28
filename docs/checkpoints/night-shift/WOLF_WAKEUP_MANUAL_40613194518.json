@@ -8,8 +8,16 @@
     "kind": "FACTORY_SYNTHETIC_SELF_REPAIR",
     "costBoundary": "EUR0"
   },
-  "state": "CLAIMED",
+  "state": "COMPLETED",
   "ownerRun": "40613194518",
   "attemptBudget": 1,
-  "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  "externalEffectState": "VERIFIED",
+  "checkpoint": {
+    "state": "PERSISTED",
+    "commitSha": "58127da11aa1628a5f6e53376449574b7e2cc20e",
+    "checkpointId": "wolf-cp-2f859bf8538328f1eaae1c449013268084db59501ea66bfed6d51c2e23da388b",
+    "path": "docs/checkpoints/runtime/wolf-cp-2f859bf8538328f1eaae1c449013268084db59501ea66bfed6d51c2e23da388b.json",
+    "replayed": false
+  },
+  "nextReady": "NEXT_READY"
 }
