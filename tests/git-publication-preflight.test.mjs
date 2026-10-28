@@ -575,5 +575,25 @@ test('workflow enforces use_publication_deploy_key for integrated publication an
   assert.equal(j40606320022.state, 'SUSPENDED');
   assert.equal(j40606320022.externalEffectState, 'UNKNOWN_UNTIL_RECONCILED');
   assert.equal(j40606320022.automaticRetry, false);
+
+  const j40613194518 = JSON.parse(
+    fs.readFileSync(
+      path.join(rootDir, 'docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40613194518.json'),
+      'utf8',
+    ),
+  );
+  assert.equal(j40613194518.state, 'COMPLETED');
+  const latestPublishedPrivateSha = j40613194518.checkpoint.commitSha;
+  assert.match(latestPublishedPrivateSha, /^[a-f0-9]{40}$/);
+  const expectedShaPins = [
+    ...workflowRaw.matchAll(/WOLF_FACTORY_EXPECTED_SHA:\s*([a-f0-9]{40})/g),
+  ].map(m => m[1]);
+  assert.deepEqual(expectedShaPins, [
+    latestPublishedPrivateSha,
+    'ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6',
+    latestPublishedPrivateSha,
+    latestPublishedPrivateSha,
+    latestPublishedPrivateSha,
+  ]);
 });
 

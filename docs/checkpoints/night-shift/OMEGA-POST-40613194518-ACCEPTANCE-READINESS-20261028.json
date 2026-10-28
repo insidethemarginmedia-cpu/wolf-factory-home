@@ -1,0 +1,48 @@
+{
+  "schema": "WolfOmegaAcceptanceReadiness/v1",
+  "recordedDate": "2026-10-28",
+  "verdict": "MANUAL_WAKEUP_SELF_REPAIR_VERIFIED_SCHEDULE_AND_MULTI_MISSION_PENDING",
+  "publicRuntimeBaseHead": "a94588646b2d7d627b8e2103329b22ea3f29545d",
+  "publicMainHead": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+  "verifiedWakeupCheckpoint": {
+    "runId": 40613194518,
+    "runUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40613194518",
+    "integratedJobId": 122569548793,
+    "integratedJobUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40613194518/job/122569548793",
+    "journalCommitUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/commit/a94588646b2d7d627b8e2103329b22ea3f29545d",
+    "missionId": "WOLF_WAKEUP_MANUAL_40613194518",
+    "sourceShaBeforeRepair": "ee2d8ba15cd99d8788409c00c2fec3b1cd052370",
+    "publishedPrivateCommitSha": "58127da11aa1628a5f6e53376449574b7e2cc20e",
+    "checkpointId": "wolf-cp-2f859bf8538328f1eaae1c449013268084db59501ea66bfed6d51c2e23da388b",
+    "state": "COMPLETED",
+    "externalEffectState": "VERIFIED",
+    "nextReady": "NEXT_READY",
+    "replayed": false
+  },
+  "alignedWorkflowExpectation": {
+    "privateRepository": "donraposo1-source/project-wolf",
+    "privateBranch": "feat/factory-real-worker-m1-20261006",
+    "expectedShaAlignedTo": "58127da11aa1628a5f6e53376449574b7e2cc20e",
+    "jobsAligned": [
+      "night-shift-admission",
+      "service-access:private-groq-observer",
+      "integrated-factory",
+      "runner-loss-prepare",
+      "runner-loss-recover"
+    ],
+    "manualIntegratedDeployKeyDefault": true,
+    "remoteCommitShaVerificationEnabled": true
+  },
+  "economicControls": {
+    "EUR_SPEND": "0",
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  },
+  "remainingAcceptanceSequence": [
+    "Apply feature-branch patch onto insidethemarginmedia-cpu/wolf-factory-home:feat/public-runtime-probe-20261022 via draft PR and review.",
+    "Dispatch execute_integrated=true (use_publication_deploy_key=true) at aligned SHA 58127da11aa1628a5f6e53376449574b7e2cc20e to verify Mission A -> controller restart -> automatic Mission B -> NEXT_READY_DRAINED with WOLF_REMOTE_COMMIT_VERIFIED.",
+    "Advance WOLF_FACTORY_EXPECTED_SHA to the Mission B commit SHA and dispatch verify_runner_loss=true (use_publication_deploy_key=true) to verify fresh-runner DBOS recovery -> automatic Mission C -> duplicate-wakeup no-new-effects.",
+    "Only after feature-branch acceptance and separate explicit Founder authorization, update .github/workflows/night-shift-wakeup.yml on main and observe one unattended schedule wakeup."
+  ]
+}
