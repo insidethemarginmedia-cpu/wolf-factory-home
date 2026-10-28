@@ -79,6 +79,7 @@ on:
   push:
     branches: [feat/public-runtime-probe-20261022, fix/omega-acceptance-ready-20261028]
     paths:
+      - '.github/workflows/night-shift-wakeup.yml'
       - '.github/workflows/private-controller-preflight.yml'
       - 'scripts/private-controller-preflight.mjs'
       - 'scripts/private-source-authorization.mjs'

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const workflow = fs.readFileSync(new URL('../.github/workflows/private-controller-preflight.yml', import.meta.url), 'utf8');
+const caller = fs.readFileSync(new URL('../.github/workflows/night-shift-wakeup.yml', import.meta.url), 'utf8');
 const repository = 'insidethemarginmedia-cpu/wolf-factory-home';
 const pin = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const baseEnv = {GITHUB_REPOSITORY: repository, GITHUB_ACTOR: 'insidethemarginmedia-cpu', GITHUB_EVENT_NAME: 'schedule', GITHUB_REF: 'refs/heads/main', GITHUB_SHA: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', GITHUB_TOKEN: 'fixture-token', WOLF_PUBLIC_RUNTIME_SHA: pin, EUR_SPEND: '0', COST_UNKNOWN: 'DENY', PAID_FALLBACK: 'DENY', TRIAL_CREDIT: 'DENY'};
@@ -46,4 +47,50 @@ test('public pin validation precedes private admission and journal reservation; 
   assert.match(workflow, /security-tests:\n\s+needs: \[night-shift-admission, factory-source-admission\]/);
   assert.match(workflow, /night-shift-admission:\n\s+needs: factory-source-admission/);
   assert.equal(workflow.includes("'f13d1a3e0a2abb93890a0e36746f4eefb9c94f82'"), false);
+});
+
+function jobBlock(source, name) {
+  const block = source.match(new RegExp('^  ' + name + ':\\n([\\s\\S]*?)(?=^  [a-zA-Z0-9_-]+:|$(?![\\s\\S]))', 'm'))?.[1];
+  assert.ok(block, 'existing job must be present: ' + name);
+  return block;
+}
+
+function jobPermissions(source, name) {
+  const permissions = jobBlock(source, name).match(/^    permissions:\n((?:      [a-z-]+: (?:read|write|none)\n)+)/m)?.[1];
+  assert.ok(permissions, 'job permission boundary must be explicit: ' + name);
+  return Object.fromEntries([...permissions.matchAll(/^      ([a-z-]+): (read|write|none)$/gm)].map(match => match.slice(1)));
+}
+
+test('existing caller can grant the callee Actions metadata read without expanding its write boundary', () => {
+  const available = jobPermissions(caller, 'existing-factory');
+  const required = jobPermissions(workflow, 'factory-source-admission');
+  const rank = {none: 0, read: 1, write: 2};
+  for (const [scope, level] of Object.entries(required)) {
+    assert.ok((rank[available[scope]] ?? 0) >= rank[level], 'caller cannot grant required ' + scope + ':' + level);
+  }
+  assert.deepEqual(available, {contents: 'write', actions: 'read'});
+});
+
+test('scheduled caller pins identical immutable callee and runtime input, and caller edits receive exact-HEAD CI', () => {
+  const block = jobBlock(caller, 'existing-factory');
+  const callee = block.match(/^    uses: insidethemarginmedia-cpu\/wolf-factory-home\/\.github\/workflows\/private-controller-preflight.yml@([a-f0-9]{40})$/m)?.[1];
+  const input = block.match(/^      public_runtime_sha: ([a-f0-9]{40})$/m)?.[1];
+  assert.ok(callee, 'mutable callee refs are denied');
+  assert.equal(input, callee, 'runtime input must match the actual reusable workflow');
+  const triggerPaths = workflow.split('\npermissions:\n')[0];
+  assert.match(triggerPaths, /^      - '\.github\/workflows\/night-shift-wakeup.yml'$/m);
+});
+
+test('manual caller diagnostic on the PR branch admits source only and cannot reserve or execute a wakeup', () => {
+  const github = {repository, actor: 'insidethemarginmedia-cpu', event: {repository: {private: false}}, event_name: 'workflow_dispatch', ref: 'refs/heads/fix/omega-acceptance-ready-20261028'};
+  const inputs = {night_shift: true};
+  const needs = {'factory-source-admission': {result: 'success'}, 'security-tests': {result: 'skipped'}, 'night-shift-admission': {outputs: {ready: 'false'}}};
+  const enabled = name => {
+    const expression = jobBlock(workflow, name).match(/^    if: ([\s\S]*?)(?=\n    [a-zA-Z_-]+:)/m)?.[1].replace(/\n\s*/g, ' ').replaceAll('needs.factory-source-admission', 'needs["factory-source-admission"]').replaceAll('needs.security-tests', 'needs["security-tests"]').replaceAll('needs.night-shift-admission', 'needs["night-shift-admission"]');
+    assert.ok(expression, 'existing condition must remain explicit: ' + name);
+    return new Function('github', 'inputs', 'needs', 'always', 'return (' + expression + ');')(github, inputs, needs, () => true);
+  };
+  assert.equal(enabled('factory-source-admission'), true);
+  assert.equal(enabled('night-shift-admission'), false);
+  assert.equal(enabled('integrated-factory'), false);
 });
