@@ -216,6 +216,7 @@ export function verifyAuthorizedGitPublication({
   expectedBaseSha = env.WOLF_FACTORY_EXPECTED_SHA,
   expectedRemoteSha = undefined,
   missionId = env.WOLF_MISSION_ID || null,
+  leaseFence = Number(env.WOLF_GIT_PUBLICATION_FENCE || 1),
 } = {}) {
   if (targetBranch === 'main' || targetBranch !== CANONICAL_BRANCH) {
     throw Error('UNAUTHORIZED_TARGET_BRANCH');
@@ -333,7 +334,7 @@ export function verifyAuthorizedGitPublication({
     cwd,
     encoding: 'utf8',
     timeout: 30000,
-    env: {...env, GIT_TERMINAL_PROMPT: '0'},
+    env: {...env, GIT_TERMINAL_PROMPT: '0', WOLF_GIT_PUBLICATION_FENCE: String(leaseFence)},
   });
   const safeStderr = redactGitPublicationOutput(pushResult.stderr, env);
   const reason = classifyGitPublicationResult({
@@ -629,6 +630,70 @@ export async function resolveAdmittedPrivateSource({
   });
 }
 
+// The pre-push hook records intent before the network effect. A later push may
+// reconcile only that exact candidate by immutable remote readback; it never
+// follows an arbitrary descendant or retries an unresolved publication.
+export function renderCompareAndSwapPrePushGuard({leaseFilePath, nodeExecutable = process.execPath, minLeaseFence = 1}) {
+  return `#!${nodeExecutable}
+const fs = require('node:fs');
+const {spawnSync} = require('node:child_process');
+const leasePath = ${JSON.stringify(leaseFilePath)};
+const minimumFence = ${minLeaseFence};
+const canonicalRepository = ${JSON.stringify(CANONICAL_REPOSITORY)};
+const canonicalBranch = ${JSON.stringify(CANONICAL_BRANCH)};
+const deny = reason => { throw Object.assign(new Error(reason), {wolfReason: reason}); };
+const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
+const git = args => {
+  const result = spawnSync('git', args, {encoding: 'utf8', timeout: 30000, env: {...process.env, GIT_TERMINAL_PROMPT: '0'}});
+  if (result.status !== 0 || result.signal || result.error) deny('REMOTE_COMMIT_UNVERIFIED');
+  return String(result.stdout || '').trim();
+};
+let lock;
+try {
+  if (!fs.existsSync(leasePath)) deny('CAS_LEASE_MISSING');
+  try { lock = fs.openSync(leasePath + '.lock', 'wx', 0o600); }
+  catch { deny('PUBLICATION_LEASE_BUSY'); }
+  const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
+  if (lease.repository !== canonicalRepository || lease.branch !== canonicalBranch || !sha(lease.expectedRemoteSha) || !sha(lease.admittedSha)) deny('CAS_LEASE_STATE_MISMATCH');
+  const workerFence = Number(process.env.WOLF_GIT_PUBLICATION_FENCE);
+  if (!Number.isSafeInteger(lease.leaseFence) || lease.leaseFence < minimumFence || !Number.isSafeInteger(workerFence) || workerFence !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');
+  const lines = fs.readFileSync(0, 'utf8').trim().split(/\\r?\\n/).filter(Boolean);
+  if (lines.length > 1) deny('MULTIPLE_PUBLICATION_REFS_DENIED');
+  for (const line of lines) {
+    const [, localSha, remoteRef, remoteSha] = line.trim().split(/\\s+/);
+    const targetRef = 'refs/heads/' + canonicalBranch;
+    if (remoteRef !== targetRef || !sha(localSha)) deny('UNAUTHORIZED_TARGET_BRANCH');
+    const observed = git(['ls-remote', '--exit-code', process.argv[2] || 'origin', targetRef]).split(/\\s+/)[0];
+    const pending = lease.pendingPublication;
+    if (pending) {
+      if (!sha(pending.candidateSha) || pending.expectedRemoteSha !== lease.expectedRemoteSha) deny('CAS_LEASE_STATE_MISMATCH');
+      if (pending.leaseFence !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');
+      if (observed === lease.expectedRemoteSha) deny('PUBLICATION_OUTCOME_RECONCILIATION_REQUIRED');
+      if (observed !== pending.candidateSha) deny('CONCURRENT_BRANCH_ADVANCED');
+      // Exact readback of our own recorded intent is the only allowed advancement.
+      lease.expectedRemoteSha = observed;
+      delete lease.pendingPublication;
+    }
+    if (observed !== lease.expectedRemoteSha || remoteSha !== lease.expectedRemoteSha) deny('CONCURRENT_BRANCH_ADVANCED');
+    const ff = spawnSync('git', ['merge-base', '--is-ancestor', lease.expectedRemoteSha, localSha], {encoding: 'utf8', timeout: 5000});
+    if (ff.status !== 0 || ff.error || ff.signal) deny('CONCURRENT_BRANCH_ADVANCED');
+    if (localSha !== lease.expectedRemoteSha) lease.pendingPublication = {expectedRemoteSha: lease.expectedRemoteSha, candidateSha: localSha, leaseFence: lease.leaseFence};
+    const temporary = leasePath + '.tmp-' + process.pid;
+    fs.writeFileSync(temporary, JSON.stringify(lease, null, 2) + '\\n', {mode: 0o600});
+    fs.renameSync(temporary, leasePath);
+  }
+} catch (error) {
+  console.error(error.wolfReason || 'CAS_PUBLICATION_GUARD_DENIED');
+  process.exitCode = 1;
+} finally {
+  if (lock !== undefined) {
+    fs.closeSync(lock);
+    fs.rmSync(leasePath + '.lock', {force: true});
+  }
+}
+`;
+}
+
 export function installCompareAndSwapPrePushGuard({
   cwd = process.cwd(),
   leaseFilePath,
@@ -665,6 +730,7 @@ export function installCompareAndSwapPrePushGuard({
     repository: expectedRepository,
     branch: targetBranch,
     expectedRemoteSha,
+    admittedSha: expectedRemoteSha,
     leaseFence,
     missionId: missionId || null,
   };
@@ -673,51 +739,7 @@ export function installCompareAndSwapPrePushGuard({
   });
 
   const resolvedLeasePath = path.resolve(leaseFilePath);
-  const hookScript = `#!${process.execPath}
-import fs from 'node:fs';
-import {spawnSync} from 'node:child_process';
-
-const leasePath = ${JSON.stringify(resolvedLeasePath)};
-if (!fs.existsSync(leasePath)) {
-  console.error('CAS_LEASE_MISSING');
-  process.exit(1);
-}
-const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
-const targetRef = 'refs/heads/' + lease.branch;
-const stdinText = fs.readFileSync(0, 'utf8').trim();
-if (!stdinText) process.exit(0);
-
-for (const line of stdinText.split(/\\r?\\n/)) {
-  if (!line.trim()) continue;
-  const [localRef, localSha, remoteRef, remoteSha] = line.trim().split(/\\s+/);
-  if (remoteRef !== targetRef || /^0+$/.test(localSha)) {
-    console.error('UNAUTHORIZED_TARGET_BRANCH');
-    process.exit(1);
-  }
-  const lsRemote = spawnSync(
-    'git',
-    ['ls-remote', '--exit-code', process.argv[2] || 'origin', targetRef],
-    {encoding: 'utf8', timeout: 30000, env: {...process.env, GIT_TERMINAL_PROMPT: '0'}},
-  );
-  if (lsRemote.status !== 0 || lsRemote.signal || lsRemote.error) {
-    console.error('REMOTE_COMMIT_UNVERIFIED');
-    process.exit(1);
-  }
-  const observed = String(lsRemote.stdout || '').trim().split(/\\s+/)[0] || '';
-  if (observed !== lease.expectedRemoteSha || (remoteSha && !/^0+$/.test(remoteSha) && remoteSha !== lease.expectedRemoteSha)) {
-    console.error('CONCURRENT_BRANCH_ADVANCED');
-    process.exit(1);
-  }
-  const ff = spawnSync('git', ['merge-base', '--is-ancestor', lease.expectedRemoteSha, localSha], {
-    encoding: 'utf8',
-    timeout: 5000,
-  });
-  if (ff.status !== 0) {
-    console.error('CONCURRENT_BRANCH_ADVANCED');
-    process.exit(1);
-  }
-}
-`;
+  const hookScript = renderCompareAndSwapPrePushGuard({leaseFilePath: resolvedLeasePath, minLeaseFence: leaseFence});
   const hookPath = path.join(hooksDir, 'pre-push');
   fs.writeFileSync(hookPath, hookScript, {mode: 0o700});
   return {
@@ -747,6 +769,9 @@ export function advanceCompareAndSwapLease({
   ) {
     throw Error('INVALID_EXPECTED_REMOTE_SHA');
   }
+  if (!Number.isSafeInteger(minLeaseFence) || minLeaseFence < 1 || !Number.isSafeInteger(nextLeaseFence)) {
+    throw Error('INVALID_LEASE_FENCE');
+  }
   const current = JSON.parse(fs.readFileSync(leaseFilePath, 'utf8'));
   if (!Number.isSafeInteger(current.leaseFence) || current.leaseFence < minLeaseFence) {
     throw Error('STALE_LEASE_FENCE_REJECTED');
@@ -757,8 +782,12 @@ export function advanceCompareAndSwapLease({
   if (current.expectedRemoteSha !== previousExpectedSha) {
     throw Error('CAS_LEASE_STATE_MISMATCH');
   }
+  if (current.pendingPublication && (current.pendingPublication.candidateSha !== nextExpectedSha || current.pendingPublication.leaseFence !== current.leaseFence)) {
+    throw Error('PUBLICATION_OUTCOME_RECONCILIATION_REQUIRED');
+  }
+  const {pendingPublication, ...settled} = current;
   const updated = {
-    ...current,
+    ...settled,
     expectedRemoteSha: nextExpectedSha,
     leaseFence: nextLeaseFence,
     ...(missionId !== undefined ? {missionId} : {}),
@@ -769,7 +798,38 @@ export function advanceCompareAndSwapLease({
   return updated;
 }
 
-export function publishCompareAndSwapCommit({
+function writePublicationJournal(journalPath, entries) {
+  const temporary = journalPath + '.tmp-' + process.pid;
+  const fd = fs.openSync(temporary, 'wx', 0o600);
+  try {
+    fs.writeFileSync(fd, JSON.stringify(entries, null, 2) + '\n');
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(temporary, journalPath);
+  const directory = fs.openSync(path.dirname(journalPath), 'r');
+  try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
+}
+
+export function publishCompareAndSwapCommit(options = {}) {
+  if ((options.targetBranch ?? CANONICAL_BRANCH) !== CANONICAL_BRANCH) throw Error('UNAUTHORIZED_TARGET_BRANCH');
+  if ((options.expectedRepository ?? CANONICAL_REPOSITORY) !== CANONICAL_REPOSITORY) throw Error('UNAUTHORIZED_TARGET_REPOSITORY');
+  const journalPath = options.journalPath ?? (options.env ?? process.env).WOLF_PUBLICATION_JOURNAL_PATH;
+  if (typeof journalPath !== 'string' || !journalPath.trim()) throw Error('PUBLICATION_JOURNAL_REQUIRED');
+  if (!options.missionId && !options.checkpointId) throw Error('PUBLICATION_IDENTITY_REQUIRED');
+  fs.mkdirSync(path.dirname(journalPath), {recursive: true});
+  let lock;
+  try { lock = fs.openSync(journalPath + '.lock', 'wx', 0o600); }
+  catch { throw Error('PUBLICATION_JOURNAL_BUSY'); }
+  try { return publishCompareAndSwapCommitLocked({...options, journalPath}); }
+  finally {
+    fs.closeSync(lock);
+    fs.rmSync(journalPath + '.lock', {force: true});
+  }
+}
+
+function publishCompareAndSwapCommitLocked({
   cwd = process.cwd(),
   env = process.env,
   spawnImpl = spawnSync,
@@ -810,9 +870,7 @@ export function publishCompareAndSwapCommit({
     const unknownPending = journalEntries.find(
       entry =>
         entry &&
-        entry.missionId &&
-        missionId &&
-        entry.missionId === missionId &&
+        ((missionId && entry.missionId === missionId) || (checkpointId && entry.checkpointId === checkpointId)) &&
         entry.externalEffectState === 'UNKNOWN_UNTIL_RECONCILED',
     );
     if (unknownPending) {
@@ -911,6 +969,12 @@ export function publishCompareAndSwapCommit({
     throw Error('UNAUTHORIZED_GIT_REMOTE');
   }
 
+  writePublicationJournal(journalPath, [...journalEntries, {
+    published: false, externalEffectState: 'UNKNOWN_UNTIL_RECONCILED',
+    repository: expectedRepository, branch: targetBranch,
+    baseSha: expectedRemoteSha, headSha, missionId, checkpointId, leaseFence,
+  }]);
+
   const pushResult = spawnImpl(
     'git',
     [
@@ -923,7 +987,7 @@ export function publishCompareAndSwapCommit({
       cwd,
       encoding: 'utf8',
       timeout: 30000,
-      env: {...env, GIT_TERMINAL_PROMPT: '0'},
+      env: {...env, GIT_TERMINAL_PROMPT: '0', WOLF_GIT_PUBLICATION_FENCE: String(leaseFence)},
     },
   );
   const safeStderr = redactGitPublicationOutput(pushResult.stderr, env);
@@ -972,10 +1036,7 @@ export function publishCompareAndSwapCommit({
       checkpointId: checkpointId || null,
       leaseFence,
     };
-    fs.writeFileSync(
-      journalPath,
-      JSON.stringify([...journalEntries, nextRecord], null, 2) + '\n',
-    );
+    writePublicationJournal(journalPath, [...journalEntries, nextRecord]);
   }
 
   return Object.freeze({

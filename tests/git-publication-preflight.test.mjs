@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import vm from 'node:vm';
 import {
   CANONICAL_BRANCH,
   CANONICAL_REPOSITORY,
@@ -50,6 +51,166 @@ function initCanonicalRepo(dir, branch = CANONICAL_BRANCH) {
   spawnSync('git', ['commit', '-m', 'fixture'], {cwd: dir});
   return spawnSync('git', ['rev-parse', 'HEAD'], {cwd: dir, encoding: 'utf8'}).stdout.trim();
 }
+
+function withPublicationGuardFixture(source, action) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-checkpoint-cas-'));
+  try {
+    const remote = path.join(tmp, 'remote.git');
+    const cwd = path.join(tmp, 'controller');
+    fs.mkdirSync(cwd);
+    const env = {...process.env, WOLF_GIT_PUBLICATION_FENCE: '1', PATH: path.dirname(process.execPath) + path.delimiter + process.env.PATH};
+    const git = (args, directory = cwd) => spawnSync('git', args, {cwd: directory, env, encoding: 'utf8'});
+    const must = (args, directory) => {
+      const result = git(args, directory);
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    must(['init', '--bare', remote]);
+    const admittedSha = initCanonicalRepo(cwd);
+    must(['remote', 'add', 'origin', remote]);
+    must(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+    const leasePath = path.join(tmp, 'wolf-cas-lease.json');
+    const installed = installCompareAndSwapPrePushGuard({cwd, leaseFilePath: leasePath, expectedRemoteSha: admittedSha});
+    if (source !== 'helper') {
+      const workflow = fs.readFileSync(WORKFLOW_PATH, 'utf8');
+      const expressions = [...workflow.matchAll(/^\s*const hook=(.+);$/gm)];
+      const expression = expressions[source === 'integrated-factory' ? 0 : 1]?.[1];
+      assert.ok(expression, 'both execution jobs must install the tested guard');
+      fs.writeFileSync(installed.hookPath, vm.runInNewContext(expression, {JSON, leasePath, process: {execPath: process.execPath}}), {mode: 0o700});
+    }
+    action({tmp, cwd, remote, git, must, env, admittedSha, leasePath});
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+}
+
+test('actual publication guards allow a mission code commit followed by its durable checkpoint without following unrelated remote advancement', () => {
+  for (const source of ['helper', 'integrated-factory', 'runner-loss-recover']) {
+    withPublicationGuardFixture(source, ({tmp, cwd, remote, git, must, env, admittedSha, leasePath}) => {
+      const worker = path.join(tmp, 'worker');
+      must(['worktree', 'add', '--detach', worker, admittedSha]);
+      fs.writeFileSync(path.join(worker, 'fixture.txt'), 'verified synthetic code\n');
+      must(['add', 'fixture.txt'], worker);
+      must(['commit', '-m', 'synthetic code'], worker);
+      const codeSha = must(['rev-parse', 'HEAD'], worker);
+      must(['push', 'origin', `${codeSha}:refs/heads/${CANONICAL_BRANCH}`], worker);
+      must(['merge', '--ff-only', codeSha]);
+      fs.writeFileSync(path.join(cwd, 'checkpoint.json'), '{"state":"DURABLE"}\n');
+      must(['add', 'checkpoint.json']);
+      must(['commit', '-m', 'durable checkpoint']);
+      const checkpointSha = must(['rev-parse', 'HEAD']);
+      // This is the second push made by the existing private publication adapter.
+      must(['push', 'origin', `${checkpointSha}:refs/heads/${CANONICAL_BRANCH}`]);
+      assert.equal(must(['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], remote), checkpointSha);
+      const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
+      assert.equal(lease.expectedRemoteSha, codeSha);
+      assert.equal(lease.pendingPublication.candidateSha, checkpointSha);
+      assert.equal(lease.admittedSha, admittedSha, 'mission source remains immutable');
+
+      // Exercise the real workflow's restart boundary in a fresh Node process.
+      if (source === 'helper') {
+        advanceCompareAndSwapLease({leaseFilePath: leasePath, previousExpectedSha: codeSha, nextExpectedSha: checkpointSha, minLeaseFence: 1, nextLeaseFence: 2});
+      } else {
+        const workflow = fs.readFileSync(WORKFLOW_PATH, 'utf8');
+        const marker = source === 'integrated-factory' ? 'MISSION_A_SHA' : 'FIRST_HEAD';
+        const boundary = workflow.match(new RegExp(marker + '=.*?node <<\'NODE\'\\n([\\s\\S]*?)\\n\\s*NODE'))?.[1];
+        assert.ok(boundary, 'restart boundary must settle the verified checkpoint');
+        fs.writeFileSync(path.join(tmp, 'kct-recovery.json'), '{"newFence":2}');
+        const result = spawnSync(process.execPath, ['--input-type=commonjs'], {cwd, input: boundary, encoding: 'utf8', env: {...process.env, RUNNER_TEMP: tmp, WOLF_FACTORY_RUNTIME_ROOT: tmp, WOLF_FACTORY_EXPECTED_SHA: admittedSha, [marker]: checkpointSha}});
+        assert.equal(result.status, 0, result.stderr);
+      }
+      const resumed = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
+      assert.equal(resumed.expectedRemoteSha, checkpointSha);
+      assert.equal(resumed.leaseFence, 2);
+      assert.equal(resumed.pendingPublication, undefined);
+      assert.equal(resumed.admittedSha, admittedSha);
+      fs.writeFileSync(path.join(cwd, 'fixture.txt'), 'automatic next mission\n');
+      must(['add', 'fixture.txt']);
+      must(['commit', '-m', 'next mission code']);
+      const staleWorker = git(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+      assert.notEqual(staleWorker.status, 0, 'the old process must not inherit a new fence at the same SHA');
+      assert.match(staleWorker.stderr, /STALE_LEASE_FENCE_REJECTED/);
+      env.WOLF_GIT_PUBLICATION_FENCE = '2';
+      must(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+      fs.writeFileSync(path.join(cwd, 'checkpoint.json'), '{"state":"DURABLE","mission":2}\n');
+      must(['add', 'checkpoint.json']);
+      must(['commit', '-m', 'next mission checkpoint']);
+      must(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+
+      // A different writer advances even to a descendant: it must never become the lease.
+      const outsider = path.join(tmp, 'outsider');
+      must(['clone', '--branch', CANONICAL_BRANCH, remote, outsider]);
+      must(['config', 'user.name', 'Other worker'], outsider);
+      must(['config', 'user.email', 'other@example.invalid'], outsider);
+      fs.writeFileSync(path.join(outsider, 'other.txt'), 'concurrent\n');
+      must(['add', 'other.txt'], outsider);
+      must(['commit', '-m', 'concurrent advancement'], outsider);
+      must(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`], outsider);
+      const before = fs.readFileSync(leasePath, 'utf8');
+      fs.writeFileSync(path.join(cwd, 'fixture.txt'), 'next mission\n');
+      must(['add', 'fixture.txt']);
+      must(['commit', '-m', 'next mission']);
+      const rejected = git(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+      assert.notEqual(rejected.status, 0);
+      assert.match(rejected.stderr, /CONCURRENT_BRANCH_ADVANCED/);
+      assert.equal(fs.readFileSync(leasePath, 'utf8'), before);
+    });
+  }
+});
+
+test('publication helper persists uncertainty before push and blocks replay when remote readback fails', () => {
+  withPublicationGuardFixture('helper', ({tmp, cwd, remote, must, admittedSha}) => {
+    fs.rmSync(path.join(cwd, '.git/hooks/pre-push'));
+    const target = 'docs/factory-acceptance/omega-9001-a.py';
+    fs.mkdirSync(path.dirname(path.join(cwd, target)), {recursive: true});
+    fs.writeFileSync(path.join(cwd, target), 'def add(a,b): return a+b\n');
+    must(['add', target]);
+    must(['commit', '-m', 'synthetic helper uncertainty fixture']);
+    const journalPath = path.join(tmp, 'publication.json');
+    let pushes = 0;
+    const options = {cwd, env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'}, expectedRemoteSha: admittedSha, missionId: 'OMEGA_A_9001', checkpointId: 'wolf-cp-uncertain', leaseFence: 1, leaseState: {activeFence: 1}, journalPath, allowLocalRemoteForTesting: true};
+    assert.throws(() => publishCompareAndSwapCommit({...options, spawnImpl: (command, args, settings) => {
+      if (args[0] === 'push') {
+        pushes++;
+        const intent = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+        assert.equal(intent.at(-1).externalEffectState, 'UNKNOWN_UNTIL_RECONCILED');
+      }
+      if (args[0] === 'ls-remote' && pushes) return {status: 1, stderr: 'synthetic connection loss'};
+      return spawnSync(command, args, settings);
+    }}), /REMOTE_COMMIT_UNVERIFIED/);
+    assert.equal(pushes, 1);
+    assert.equal(must(['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], remote), must(['rev-parse', 'HEAD']));
+    const uncertain = fs.readFileSync(journalPath, 'utf8');
+    assert.throws(() => publishCompareAndSwapCommit({...options, spawnImpl: () => { throw Error('REPLAY_MUST_NOT_PERFORM_IO'); }}), /UNKNOWN_EXTERNAL_EFFECT_REPLAY_DENIED/);
+    assert.equal(fs.readFileSync(journalPath, 'utf8'), uncertain);
+  });
+});
+
+test('uncertain publication and stale fencing do not advance the lease or retry external effects', () => {
+  for (const source of ['helper', 'integrated-factory', 'runner-loss-recover']) {
+    withPublicationGuardFixture(source, ({cwd, remote, git, must, admittedSha, leasePath}) => {
+      const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));
+      fs.writeFileSync(leasePath, JSON.stringify({...lease, leaseFence: 0}));
+      fs.writeFileSync(path.join(cwd, 'fixture.txt'), 'verified change\n');
+      must(['add', 'fixture.txt']);
+      must(['commit', '-m', 'verified change']);
+      let rejected = git(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+      assert.notEqual(rejected.status, 0);
+      assert.match(rejected.stderr, /STALE_LEASE_FENCE_REJECTED/);
+      fs.writeFileSync(leasePath, JSON.stringify(lease));
+      fs.writeFileSync(path.join(remote, 'hooks/pre-receive'), '#!/bin/sh\nexit 1\n', {mode: 0o700});
+      rejected = git(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+      assert.notEqual(rejected.status, 0);
+      const uncertain = fs.readFileSync(leasePath, 'utf8');
+      fs.rmSync(path.join(remote, 'hooks/pre-receive'));
+      rejected = git(['push', 'origin', `HEAD:refs/heads/${CANONICAL_BRANCH}`]);
+      assert.notEqual(rejected.status, 0);
+      assert.match(rejected.stderr, /PUBLICATION_OUTCOME_RECONCILIATION_REQUIRED/);
+      assert.equal(fs.readFileSync(leasePath, 'utf8'), uncertain);
+      assert.equal(must(['rev-parse', `refs/heads/${CANONICAL_BRANCH}`], remote), admittedSha);
+    });
+  }
+});
 
 test('read-only credentials and missing auth are rejected safely as WRITE_ACCESS_DENIED', () => {
   const readOnlyCases = [
@@ -928,6 +1089,7 @@ test('two sequential synthetic commits succeed without manual SHA updates while 
 
     const preflight2 = verifyAuthorizedGitPublication({
       cwd: run2Dir,
+      leaseFence: 2,
       env: {WOLF_FACTORY_GIT_TRANSPORT: 'ssh-deploy-key'},
       expectedRemoteSha: admission2.admittedSha,
       missionId: admission2.missionId,
