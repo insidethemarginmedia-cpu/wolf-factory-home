@@ -8,8 +8,10 @@
     "kind": "FACTORY_SYNTHETIC_SELF_REPAIR",
     "costBoundary": "EUR0"
   },
-  "state": "CLAIMED",
+  "state": "SUSPENDED",
   "ownerRun": "40606320022",
   "attemptBudget": 1,
-  "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  "externalEffectState": "UNKNOWN_UNTIL_RECONCILED",
+  "reason": "BOUNDED_ATTEMPT_FAILED_OR_QUOTA_UNKNOWN",
+  "automaticRetry": false
 }
