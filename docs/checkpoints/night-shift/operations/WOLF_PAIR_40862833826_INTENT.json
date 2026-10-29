@@ -1,7 +1,7 @@
 {
   "schema": "WolfFencedGitReceipt/v1",
   "operationId": "WOLF_PAIR_40862833826_INTENT",
-  "phase": "INTENT",
+  "phase": "COMMITTED",
   "expectedRevision": "80748a23e4cb57c6d16f5402b058df2efda587b5",
   "journalRevision": "5c10913796ee2957d2b12319148ec9f81dd612f7",
   "recordDigest": "1c38d2aa1302782800abbb7f8f101b5379a06895fddc5666b26f2f89d52b5ee7",
@@ -9,5 +9,6 @@
   "fencingToken": 1,
   "authorityTaskId": "OMEGA_PAIR_40862833826_runner_loss_recover",
   "owner": "wolf-cross-job:40862833826:runner-loss-recover",
-  "authorityDigest": "59643683627f5c769019d6092ac3f69d83dcdcd9ea562d46b8a9459eb4bb85d9"
+  "authorityDigest": "59643683627f5c769019d6092ac3f69d83dcdcd9ea562d46b8a9459eb4bb85d9",
+  "intentCommit": "5d0fc0c0251456c4ecfc85cd0e0a128e3ace18ae"
 }
