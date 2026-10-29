@@ -94,3 +94,98 @@ test('manual caller diagnostic on the PR branch admits source only and cannot re
   assert.equal(enabled('night-shift-admission'), false);
   assert.equal(enabled('integrated-factory'), false);
 });
+
+const scheduledContext = {
+  github: {repository, actor: 'insidethemarginmedia-cpu', event: {repository: {private: false}}, event_name: 'schedule', ref: 'refs/heads/main'},
+  inputs: {night_shift: true},
+  needs: {
+    'factory-source-admission': {result: 'success'},
+    'security-tests': {result: 'success'},
+    'night-shift-admission': {result: 'success', outputs: {ready: 'true'}},
+    'runner-loss-prepare': {result: 'success'},
+  },
+  env: {OPENROUTER_API_KEY: ''},
+};
+function evaluate(expression, context = scheduledContext) {
+  const executable = expression.replace(/^>-?\n\s*/, '').replace(/\n\s*/g, ' ').replace(/needs\.([a-z][a-z0-9-]*)/g, 'needs["$1"]');
+  return Boolean(new Function('github', 'inputs', 'needs', 'env', 'always', 'return (' + executable + ');')(
+    context.github, context.inputs, context.needs, context.env, () => true));
+}
+function eligible(name, context = scheduledContext) {
+  const expression = jobBlock(workflow, name).match(/^    if: ([\s\S]*?)(?=\n    [a-zA-Z_-]+:)/m)?.[1];
+  assert.ok(expression, 'explicit job boundary required: ' + name);
+  return evaluate(expression, context);
+}
+function stepCondition(name) {
+  const service = jobBlock(workflow, 'service-access');
+  const start = service.indexOf('      - name: ' + name + '\n');
+  assert.notEqual(start, -1, 'existing service step required: ' + name);
+  const end = service.indexOf('\n      - ', start + 1);
+  const block = service.slice(start, end === -1 ? undefined : end);
+  const expression = block.match(/^        if: (.+)$/m)?.[1];
+  assert.ok(expression, 'optional provider step requires an explicit boundary: ' + name);
+  return expression;
+}
+
+test('admitted main schedule reaches operational Factory and read-only service checks', () => {
+  for (const name of ['factory-source-admission', 'night-shift-admission', 'security-tests', 'integrated-factory', 'service-access']) {
+    assert.equal(eligible(name), true, name + ' must accept an admitted scheduled wakeup');
+  }
+  assert.match(jobBlock(workflow, 'integrated-factory'), /needs: \[security-tests, night-shift-admission, factory-source-admission\]/);
+  assert.match(jobBlock(workflow, 'service-access'), /needs: \[security-tests, factory-source-admission, night-shift-admission\]/);
+  assert.match(jobBlock(workflow, 'service-access'), /ref: \$\{\{ inputs\.night_shift == true && needs\.factory-source-admission\.outputs\.public_runtime_sha \|\| github\.sha \}\}/);
+});
+
+test('suspended or failed admission cannot activate scheduled service checks or mission execution', () => {
+  for (const admission of [{result: 'success', outputs: {ready: 'false'}}, {result: 'failure', outputs: {}}, {result: 'skipped', outputs: {}}]) {
+    const context = {...scheduledContext, needs: {...scheduledContext.needs, 'night-shift-admission': admission}};
+    assert.equal(eligible('service-access', context), false);
+    assert.equal(eligible('integrated-factory', context), false);
+  }
+});
+
+test('schedule cannot enable DBOS fixtures, OpenCode qualification or runner-loss diagnostics even with diagnostic flags', () => {
+  const context = {...scheduledContext, inputs: {...scheduledContext.inputs, verify_dbos_runtime: true, qualify_opencode: true, verify_runner_loss: true, use_publication_deploy_key: true}};
+  for (const name of ['dbos-runtime', 'opencode-runtime', 'runner-loss-prepare', 'runner-loss-recover']) {
+    assert.equal(eligible(name, context), false, name + ' must remain explicitly manual');
+  }
+});
+
+test('operational and service jobs reject foreign repositories, actors, refs and untrusted triggers', () => {
+  for (const delta of [{repository: 'outsider/fork'}, {actor: 'outsider'}, {ref: 'refs/heads/other'}, {event_name: 'pull_request_target'}]) {
+    const context = {...scheduledContext, github: {...scheduledContext.github, ...delta}};
+    for (const name of ['service-access', 'integrated-factory']) assert.equal(eligible(name, context), false, JSON.stringify({name, delta}));
+  }
+});
+
+test('scheduled checks and execution fail closed when source or security admission fails', () => {
+  for (const dependency of ['factory-source-admission', 'security-tests']) {
+    for (const result of ['failure', 'skipped', 'cancelled']) {
+      const context = {...scheduledContext, needs: {...scheduledContext.needs, [dependency]: {result}}};
+      for (const name of ['service-access', 'integrated-factory']) assert.equal(eligible(name, context), false);
+    }
+  }
+});
+
+test('optional OpenRouter does not gate a qualified scheduled Groq path', () => {
+  const call = workflow.split('  workflow_dispatch:')[0];
+  assert.match(call, /      OPENROUTER_API_KEY:\n        required: false/);
+  for (const name of ['Verify OpenRouter authentication independently (no inference)', 'Read current free request allowance without inference', 'Verify service access without inference or private checkout']) {
+    const condition = stepCondition(name);
+    assert.equal(evaluate(condition), false);
+    assert.equal(evaluate(condition, {...scheduledContext, env: {OPENROUTER_API_KEY: 'synthetic-present'}}), false);
+    assert.equal(evaluate(condition, {...scheduledContext, github: {...scheduledContext.github, event_name: 'workflow_dispatch'}, inputs: {}, env: {OPENROUTER_API_KEY: ''}}), false);
+  }
+  assert.match(jobBlock(workflow, 'integrated-factory'), /for name in WOLF_FACTORY_REPO_TOKEN GROQ_API_KEY BOXXKITE_API_KEY; do/);
+  assert.match(jobBlock(workflow, 'integrated-factory'), /continue-on-error: true # Ollama is advisory/);
+});
+
+test('existing manual diagnostics remain available on their approved refs without scheduling them', () => {
+  const feature = {...scheduledContext, github: {...scheduledContext.github, event_name: 'workflow_dispatch', ref: 'refs/heads/feat/public-runtime-probe-20261022'}, inputs: {verify_dbos_runtime: true, qualify_opencode: true, verify_runner_loss: true, use_publication_deploy_key: true}};
+  for (const name of ['dbos-runtime', 'opencode-runtime', 'service-access', 'runner-loss-prepare', 'runner-loss-recover']) assert.equal(eligible(name, feature), true, name);
+  const reviewed = {...feature, github: {...feature.github, ref: 'refs/heads/fix/omega-acceptance-ready-20261028'}, inputs: {verify_private_source: true}};
+  assert.equal(eligible('service-access', reviewed), true);
+  assert.equal(eligible('night-shift-admission', reviewed), false);
+  assert.equal(eligible('integrated-factory', reviewed), false);
+  for (const name of ['runner-loss-prepare', 'runner-loss-recover']) assert.equal(eligible(name, reviewed), false);
+});

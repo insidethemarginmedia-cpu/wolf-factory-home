@@ -17,7 +17,7 @@ on:
       WOLF_FACTORY_DEPLOY_KEY:
         required: true
       OPENROUTER_API_KEY:
-        required: true
+        required: false
       GROQ_API_KEY:
         required: true
       BOXXKITE_API_KEY:
@@ -369,16 +369,27 @@ jobs:
           echo PRIVATE_DBOS_RUNNER_RECOVERY=PASS
 
   service-access:
-    needs: [security-tests, factory-source-admission]
-    if: always() && needs.security-tests.result == 'success' && (inputs.verify_private_regression != true || needs.factory-source-admission.result == 'success') && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
+    needs: [security-tests, factory-source-admission, night-shift-admission]
+    if: >-
+      always() && needs.security-tests.result == 'success' &&
+      (inputs.verify_private_regression != true || needs.factory-source-admission.result == 'success') &&
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' &&
+      ((github.ref == 'refs/heads/feat/public-runtime-probe-20261022') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && inputs.verify_private_source == true) ||
+      (github.event_name == 'schedule' && github.ref == 'refs/heads/main' && inputs.night_shift == true &&
+      needs.factory-source-admission.result == 'success' && needs.night-shift-admission.outputs.ready == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
           fetch-depth: 1
+          ref: ${{ inputs.night_shift == true && needs.factory-source-admission.outputs.public_runtime_sha || github.sha }}
       - name: Verify OpenRouter authentication independently (no inference)
+        if: inputs.night_shift != true && env.OPENROUTER_API_KEY != ''
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: node scripts/private-controller-preflight.mjs --openrouter-auth-only
@@ -387,7 +398,7 @@ jobs:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: node scripts/private-controller-preflight.mjs --github-auth-only
       - name: Read current free request allowance without inference
-        if: github.event_name == 'workflow_dispatch' && inputs.execute_integrated != true && inputs.verify_private_regression != true
+        if: github.event_name == 'workflow_dispatch' && inputs.night_shift != true && env.OPENROUTER_API_KEY != '' && inputs.execute_integrated != true && inputs.verify_private_regression != true
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: 'node --input-type=module <<''NODE''
@@ -428,6 +439,7 @@ jobs:
           if(!receive.ok)process.exitCode=78;
           NODE
       - name: Verify service access without inference or private checkout
+        if: inputs.night_shift != true && env.OPENROUTER_API_KEY != ''
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
@@ -555,7 +567,7 @@ jobs:
 
   integrated-factory:
     needs: [security-tests, night-shift-admission, factory-source-admission]
-    if: always() && needs.factory-source-admission.result == 'success' && needs.security-tests.result == 'success' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028') && (inputs.execute_integrated == true || inputs.verify_private_regression == true)) || (inputs.night_shift == true && needs.night-shift-admission.outputs.ready == 'true'))
+    if: always() && needs.factory-source-admission.result == 'success' && needs.security-tests.result == 'success' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028') && (inputs.execute_integrated == true || inputs.verify_private_regression == true)) || (inputs.night_shift == true && needs.night-shift-admission.outputs.ready == 'true' && ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'))))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
