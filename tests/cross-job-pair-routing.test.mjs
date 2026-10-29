@@ -29,3 +29,7 @@ test('fresh B selects its existing SSH transport before fetching the advanced pr
  const remote=select.indexOf('git remote set-url origin git@github.com:donraposo1-source/project-wolf.git'),fetch=select.indexOf('git fetch --unshallow --no-tags origin refs/heads/feat/factory-real-worker-m1-20261006');
  assert.ok(remote>=0&&fetch>remote,'the frozen runner has no persisted HTTPS credential');assert.ok(select.includes('git merge --ff-only --no-edit "$WOLF_FACTORY_EXPECTED_SHA"'));
 });
+test('post-recovery regression installs the existing Mastra lockfile dependencies in the fresh B runner',()=>{
+ const post=job('runner-loss-recover').split('    - name: Verify tests and production build after recovered publication\n')[1];assert.ok(post);
+ const install=post.indexOf('npm ci --ignore-scripts --no-audit --no-fund --prefix infra/worker-router/mastra-runtime');assert.ok(install>=0&&install<post.indexOf('npm test'));
+});

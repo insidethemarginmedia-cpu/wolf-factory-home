@@ -1592,6 +1592,9 @@ jobs:
       shell: bash
       run: |-
         set -euo pipefail
+        if test "$WOLF_CROSS_JOB_TEST" = 1; then
+          npm ci --ignore-scripts --no-audit --no-fund --prefix infra/worker-router/mastra-runtime
+        fi
         npm test
         npm run build
 

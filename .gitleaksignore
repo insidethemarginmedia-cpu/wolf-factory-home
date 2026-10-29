@@ -1,0 +1,9 @@
+# Exact immutable non-secret findings only; no rule, path or pattern allowlists.
+# Proof: docs/checkpoints/omega/GITLEAKS-IMMUTABLE-NONSECRET-20261029.json
+3baeff03826e5a63b406e95a09ceca98cd8f0683:docs/checkpoints/runner-loss/40864221496-final.json:generic-api-key:48
+e656688a5fbe904b3d46724f3409f464239eec22:docs/checkpoints/runner-loss/40864221496-b-intent.json:generic-api-key:7
+b2992dd745fb6f79e408295329d64c4b222ab961:docs/checkpoints/omega/CROSS-JOB-40862833826.json:generic-api-key:10
+65ebd77bc8d3cf200415ff52d73010bb84d7ad17:docs/checkpoints/runner-loss/40862833826-b-intent.json:generic-api-key:7
+8ac6b494d09b3c5a2dc771f731638e6a434a5803:.github/workflows/private-controller-preflight.yml:private-key:611
+8ac6b494d09b3c5a2dc771f731638e6a434a5803:scripts/git-publication-preflight.mjs:private-key:28
+8ac6b494d09b3c5a2dc771f731638e6a434a5803:.github/workflows/private-controller-preflight.yml:private-key:1105
