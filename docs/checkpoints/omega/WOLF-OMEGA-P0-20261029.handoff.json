@@ -1,0 +1,211 @@
+{
+  "schema": "WolfOmegaP0Handoff/v1",
+  "state": "BLOCKED",
+  "scope": "ENGINEERING_VERIFIED_UNATTENDED_ACTIVATION_NOT_AUTHORIZED",
+  "initialHeads": {
+    "publicPr": "a335ea6b6b7e604a262542649c14217d9ee94b16",
+    "privateFactory": "2689011d275ed7df5b83621338808c7d62356dc2",
+    "main": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+    "operational": "a94588646b2d7d627b8e2103329b22ea3f29545d"
+  },
+  "verifiedCodeHeads": {
+    "public": "def7570a4ac25241c2bf7bf70a5529ab24d292df",
+    "private": "57e619e4529878bd53c8ebd687f8d0d301dd9066"
+  },
+  "publisher": {
+    "state": "VERIFIED",
+    "scope": "ISOLATED_TERMINAL_JOURNALS_AND_REAL_GIT_TRANSPORT",
+    "rootCause": "The terminal contract had injected intent/CAS/authority ports but no authoritative transport binding. The new adapter binds KCT ownership, a pinned decision, immutable evidence reads, non-force Git publication and independent confirmation.",
+    "durablePhases": [
+      "INTENT",
+      "COMMITTED",
+      "CONFIRMED"
+    ],
+    "stableDecisionId": "V1_CLOSE_20261029",
+    "stableAuthorityTaskId": "V1_TERMINAL_V1_CLOSE_20261029",
+    "liveV1Transition": "BLOCKED"
+  },
+  "crossJob": {
+    "state": "VERIFIED",
+    "scope": "MANUAL_SYNTHETIC_ONLY",
+    "runId": "40864221496",
+    "jobA": "123414904040",
+    "jobB": "123416391467",
+    "result": "NEXT_READY_DRAINED",
+    "finalCommit": "1362b7c7205140781c383a14fbb7eda1757ee64d",
+    "originalProcessTerminated": true,
+    "distinctBoots": true,
+    "originalDatabaseAndRootDestroyed": true,
+    "duplicateAfterSecondRootDestruction": "ALREADY_COMPLETED",
+    "duplicateExternalExecutionAuthorized": false,
+    "checkpointA": {
+      "state": "PERSISTED",
+      "commitSha": "e705d555dece9f6743d7fedf3a0c07b504b2083e",
+      "checkpointId": "wolf-cp-a1e678c02e49bf8832824b9f0f956912b5833f6e8a1695a59ca7c98ae8c9be5f",
+      "path": "docs/checkpoints/runtime/wolf-cp-a1e678c02e49bf8832824b9f0f956912b5833f6e8a1695a59ca7c98ae8c9be5f.json",
+      "replayed": false,
+      "missionId": "OMEGA_A_40864221496"
+    },
+    "checkpointB": {
+      "state": "PERSISTED",
+      "commitSha": "17b62f60855b1798d16ede1ffec55021b6cac648",
+      "checkpointId": "wolf-cp-d95ab57a943deb6a850e1829d9b37582685da4ba9bc882bb3cb513929a2e4583",
+      "path": "docs/checkpoints/runtime/wolf-cp-d95ab57a943deb6a850e1829d9b37582685da4ba9bc882bb3cb513929a2e4583.json",
+      "replayed": false,
+      "missionId": "OMEGA_B_40864221496"
+    },
+    "independentReceiptId": "wolf-cross-job-independent-1ee81396c67706f97a1ff0ad4bdee0234ba2c1aed31480a0c343475a8dfec4a9",
+    "rootCause": "The previous single-mission admission used a process-local WeakMap capability. Paired admission now uses authenticated job context, durable verified NEXT_READY, a globally CAS-published B intent and a fresh KCT claim; no serialized flag grants authority.",
+    "workflowConclusion": "failure",
+    "postExecutionFailure": "Missing existing Mastra subpackage dependencies in the fresh B runner",
+    "postExecutionRepair": "Published dependency installation before regression; subsequent regression-only exact-source run passed without replaying accepted missions."
+  },
+  "validation": {
+    "state": "VERIFIED",
+    "focusedTests": 65,
+    "publicTests": 116,
+    "privateTests": 1242,
+    "privateSafetyTests": 42,
+    "groqClassifierTests": 23,
+    "privateBuild": "VERIFIED",
+    "publicPushRun": "40866399411",
+    "exactSourceRegressionRun": "40866424497",
+    "regressionJob": "123422400106",
+    "admittedPrivateSha": "57e619e4529878bd53c8ebd687f8d0d301dd9066",
+    "yaml": "VERIFIED",
+    "syntaxFiles": 20,
+    "privatePublishedBlobs": 20,
+    "gitleaks": {
+      "state": "VERIFIED",
+      "defaultRulesChanged": false,
+      "entropyThresholdsChanged": false,
+      "pathOrRuleAllowlistAdded": false,
+      "exactNonSecretImmutableFingerprints": 7,
+      "newCommitCanaryFindings": 2,
+      "newCommitCanaryBlocked": true,
+      "actualCredentialRotation": false
+    }
+  },
+  "liveV1": {
+    "state": "SUSPENDED",
+    "classification": "BLOCKED",
+    "expectedBranchRevision": "a94588646b2d7d627b8e2103329b22ea3f29545d",
+    "journalBlob": "5c10913796ee2957d2b12319148ec9f81dd612f7",
+    "identityDigest": "dd22b8819f56e41687b6517666554ff9294b912ee40cd347ca94936ee42f699a",
+    "ownerRun": "40271788791",
+    "runAttempt": 1,
+    "recordedFencingToken": null,
+    "missionSourceSha": "2c1c05ba23867755093dc2605702f60d50a12aa3",
+    "automaticRetry": false,
+    "reconciliationReceipt": "wolf-v1-reconcile-3e69cb183bd44ee3da100c4ca6a9f052952e4a36d2e18bd0d3288aeeebc0b833",
+    "evidenceDigest": "312a2a96edc8cec3ff491e718a5d4a58330e50b760de1eef5aea609e033e9192",
+    "unknownMissionEffects": [],
+    "journalMutated": false,
+    "leaseReleased": false,
+    "replayed": false
+  },
+  "gates": {
+    "A": {
+      "state": "BLOCKED",
+      "separateFounderApprovalRequired": true,
+      "action": "Publish CLOSED_PRE_EXECUTION_FAILURE failure disposition as the existing contract's sidecar; preserve original V1 bytes and lease.",
+      "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+      "branch": "feat/public-runtime-probe-20261022",
+      "expectedRevision": "a94588646b2d7d627b8e2103329b22ea3f29545d",
+      "expectedJournalBlob": "5c10913796ee2957d2b12319148ec9f81dd612f7",
+      "recordPath": "docs/checkpoints/night-shift/dispositions/WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1.json",
+      "expectedOutcome": "FAILURE",
+      "checkpoint": null,
+      "missionReplayed": false,
+      "leaseReleased": false,
+      "authority": {
+        "decisionId": "V1_CLOSE_20261029",
+        "taskId": "V1_TERMINAL_V1_CLOSE_20261029",
+        "newGovernanceFence": 1,
+        "originalV1Fence": null,
+        "owner": "wolf-governance:<approved-dispatch-run-id>:night-shift-admission",
+        "maxLeaseMs": 900000,
+        "immutableApprovalReference": null,
+        "implementationSha": "57e619e4529878bd53c8ebd687f8d0d301dd9066"
+      },
+      "preconditions": [
+        "Re-read exact branch revision and journal blob",
+        "Pinned private Founder decision with exact scope, executor ref/HEAD and evidence digest",
+        "Authenticated current GitHub run and KCT task owner",
+        "Independently verified no unknown V1 mission effect"
+      ],
+      "safeFailure": "Persist INTENT/COMMITTED before uncertainty; deny replay and further mutation. Reconcile only the exact recorded Git effect under valid authority. No destructive rollback, journal reset or lease release."
+    },
+    "B": {
+      "state": "BLOCKED",
+      "separateFounderApprovalRequired": true,
+      "action": "Authorize one bounded actual scheduled A/B acceptance scope; the manual test receipt does not grant scheduled authority.",
+      "maxMissions": 2,
+      "maxScheduledRuns": 1,
+      "missionIdentityRule": "OMEGA_A_<authorized-GitHub-run-id> and OMEGA_B_<same-id>; immutable before effects",
+      "targets": [
+        "docs/factory-acceptance/omega-<authorized-run-id>-a.py",
+        "docs/factory-acceptance/omega-<authorized-run-id>-b.py"
+      ],
+      "provider": "Groq Free openai/gpt-oss-120b",
+      "worker": "Existing CEZAR/OpenCode and Boxxkite",
+      "jobBoundaries": [
+        "A: KCT, worker, independent verification, checkpoint, NEXT_READY, destroy process/database/root",
+        "B: fresh job, recover durable state, fresh authority, fenced B intent, one execution, verifier, checkpoint, final receipt",
+        "Duplicate: fresh process with root absent and database stopped; deny new effects"
+      ],
+      "externalEffectLimits": {
+        "sandboxes": 2,
+        "size": "small",
+        "lifetimeMinutes": 15,
+        "gitTargets": "Existing engineering branches only",
+        "paidFallback": false,
+        "privateCodeToModel": false
+      },
+      "stopConditions": [
+        "Missing or invalid authority or credential",
+        "Stale revision/fence or ownership conflict",
+        "Unreconciled external effect",
+        "Price unknown, paid fallback or trial credit",
+        "Failed independent verification"
+      ],
+      "scheduledAdmissionAuthority": null,
+      "scheduledActivation": "BLOCKED; dispatch-only authority must not be reused for a schedule"
+    },
+    "C": {
+      "state": "BLOCKED",
+      "separateFounderApprovalRequired": true,
+      "action": "Promote only the reviewed routing candidate after A and B; no whole-PR merge.",
+      "targetMainRevision": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+      "files": [
+        ".github/workflows/night-shift-wakeup.yml"
+      ],
+      "added": 3,
+      "removed": 1,
+      "controllerSha": "def7570a4ac25241c2bf7bf70a5529ab24d292df",
+      "requiredChecks": [
+        "Exact main CAS",
+        "116 public tests and exact-source private regression/build",
+        "Gitleaks default protections with immutable non-secret review and new-commit canary",
+        "Verified V1 disposition",
+        "Separately approved durable scheduled paired admission"
+      ],
+      "routingPatchAloneGrantsMissionAuthority": false,
+      "mainChanged": false,
+      "schedulerChanged": false
+    }
+  },
+  "economicPolicy": {
+    "EUR_SPEND": "0",
+    "COST_UNKNOWN": "DENY",
+    "UNKNOWN_RESOURCE_PRICING": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  },
+  "unattendedAcceptance": {
+    "state": "BLOCKED",
+    "actualSchedule": "NOT_VERIFIED",
+    "fullyAutonomous": "NOT_VERIFIED",
+    "reason": "V1 disposition, two-mission scheduled authority and live scheduler promotion require three separate Founder decisions. The routing-only patch must not be mistaken for scheduled A/B admission."
+  }
+}
