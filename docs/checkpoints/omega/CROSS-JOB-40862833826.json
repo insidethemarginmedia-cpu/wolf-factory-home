@@ -1,0 +1,17 @@
+{
+  "schema": "WolfBoundedCrossJobAttempt/v1",
+  "state": "BLOCKED",
+  "event": "workflow_dispatch",
+  "runId": "40862833826",
+  "publicRuntimeSha": "68c93fb1c8217aea38a727626f9373a357c75154",
+  "privateSourceSha": "e9a4c17ae1d1c58f1984a4396d05172805eff13d",
+  "validation": {"privateTests": 1241, "privateFailures": 0, "safetyTests": 42, "groqTests": 23, "build": "VERIFIED"},
+  "jobA": {"id": "123410245122", "state": "VERIFIED", "nextReadyCommit": "80748a23e4cb57c6d16f5402b058df2efda587b5", "recordDigest": "05764576c424358fccc2d30cbd60745d4dfc825e792995cf2712b7e720303a4e", "originalWorkerTerminated": true, "databaseStopped": true, "runtimeRootDestroyed": true},
+  "jobB": {"id": "123411469991", "state": "BLOCKED", "freshRunnerRestore": "VERIFIED", "sourceBootId": "8e7e8455-eba7-4b24-83e2-39e578d91ba1", "recoveryBootId": "5e3ee5d1-4add-4253-aef8-11e63c4f6658", "intentCommit": "8ff41c2a9468df2ff48b7fa7d202394afcd25d39", "executionKey": "565c96bf14d423fb8cdf10152bd067f7ca9cf3b4642b0ef8f20f3cacb4256ff0", "failureStep": "Select existing authorized branch and Git publication transport", "failure": "Git HTTPS fetch attempted before selecting the already prepared SSH remote", "workerStepConclusion": "skipped", "missionEffects": "CONFIRMED_NOT_EXECUTED", "replayAuthorized": false},
+  "privateBranchCheckpointAfterA": "5fdab9c474f405d6f422dcee06793491afe813b1",
+  "originalIntentUnmodified": true,
+  "v1Mutated": false,
+  "schedulerMutated": false,
+  "unattendedAutonomy": "NOT_VERIFIED",
+  "repair": "Select the existing SSH remote before the read-only fetch; preserve the pending B intent and the completed A evidence."
+}

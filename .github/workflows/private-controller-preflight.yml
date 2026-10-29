@@ -1468,12 +1468,12 @@ jobs:
       run: |-
         set -euo pipefail
         git switch -c feat/factory-real-worker-m1-20261006
+        git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
         if test "$WOLF_CROSS_JOB_TEST" = 1; then
           git fetch --unshallow --no-tags origin refs/heads/feat/factory-real-worker-m1-20261006
           test "$(git rev-parse FETCH_HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
           git merge --ff-only --no-edit "$WOLF_FACTORY_EXPECTED_SHA"
         fi
-        git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
     - name: Verify authorized branch publication with no ref update
       env:
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}

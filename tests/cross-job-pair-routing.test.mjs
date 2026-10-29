@@ -24,3 +24,8 @@ test('Job A publishes durable NEXT_READY and Job B restores before automatic con
  assert.match(b,/needs\.integrated-factory\.outputs\.snapshot_sha/);assert.match(b,/wolf-cross-job-pair\.mjs restore/);assert.match(b,/wolf-cross-job-pair\.mjs complete/);assert.match(b,/wolf-cross-job-pair\.mjs duplicate/);
  assert.match(b,/actions: read/);assert.match(b,/contents: write/);
 });
+test('fresh B selects its existing SSH transport before fetching the advanced private checkpoint',()=>{
+ const b=job('runner-loss-recover'),select=b.split('    - name: Select existing authorized branch and Git publication transport\n')[1]?.split('    - name:')[0];assert.ok(select);
+ const remote=select.indexOf('git remote set-url origin git@github.com:donraposo1-source/project-wolf.git'),fetch=select.indexOf('git fetch --unshallow --no-tags origin refs/heads/feat/factory-real-worker-m1-20261006');
+ assert.ok(remote>=0&&fetch>remote,'the frozen runner has no persisted HTTPS credential');assert.ok(select.includes('git merge --ff-only --no-edit "$WOLF_FACTORY_EXPECTED_SHA"'));
+});
