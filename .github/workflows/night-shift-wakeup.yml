@@ -14,9 +14,9 @@ jobs:
     permissions:
       contents: write
       actions: read
-    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@961f7e75e1a0aa3a5191641edd7613d6dde6c729
+    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@7001be578b9ac8baedfc7cb10bc7f28d0a09c125
     with:
-      public_runtime_sha: 961f7e75e1a0aa3a5191641edd7613d6dde6c729
+      public_runtime_sha: 7001be578b9ac8baedfc7cb10bc7f28d0a09c125
       night_shift: true
     secrets:
       WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
