@@ -189,3 +189,9 @@ test('existing manual diagnostics remain available on their approved refs withou
   assert.equal(eligible('integrated-factory', reviewed), false);
   for (const name of ['runner-loss-prepare', 'runner-loss-recover']) assert.equal(eligible(name, reviewed), false);
 });
+
+test('explicit V1 reconciliation dispatch cannot reserve or execute a mission or a failure-injection diagnostic', () => {
+  const context = {...scheduledContext, github: {...scheduledContext.github, event_name: 'workflow_dispatch', ref: 'refs/heads/fix/omega-acceptance-ready-20261028'}, inputs: {reconcile_v1: true}};
+  assert.equal(eligible('factory-source-admission', context), true);
+  for (const name of ['night-shift-admission','integrated-factory','runner-loss-prepare','runner-loss-recover','dbos-runtime','opencode-runtime','service-access']) assert.equal(eligible(name, context), false, name);
+});

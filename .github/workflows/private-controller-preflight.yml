@@ -60,6 +60,14 @@ on:
         description: Run private regression and build only; no inference, sandbox or publication
         type: boolean
         default: false
+      reconcile_v1:
+        description: Independently read and reconcile historical V1 receipts without any journal mutation
+        type: boolean
+        default: false
+      v1_expected_revision:
+        description: Exact operational branch SHA required by the read-only V1 verifier
+        type: string
+        default: ''
       verify_runner_loss:
         description: Recover the existing Factory on a fresh runner and execute Mission C
         type: boolean
@@ -93,6 +101,8 @@ on:
       - 'tests/git-publication-preflight.test.mjs'
       - 'tests/factory-source-admission.test.mjs'
       - 'tests/public-runtime-pin.test.mjs'
+      - 'tests/scheduler-promotion-candidate.test.mjs'
+      - 'docs/checkpoints/omega/MAIN-SCHEDULER-PROMOTION-*'
       - 'tests/runner-checkpoint-publication.test.mjs'
 permissions:
   contents: read
@@ -101,7 +111,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   factory-source-admission:
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && (inputs.night_shift == true || inputs.execute_integrated == true || inputs.verify_private_regression == true || inputs.verify_runner_loss == true)
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && (inputs.night_shift == true || inputs.execute_integrated == true || inputs.verify_private_regression == true || inputs.verify_runner_loss == true || inputs.reconcile_v1 == true)
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -202,6 +212,27 @@ jobs:
         fs.appendFileSync(process.env.GITHUB_OUTPUT, 'source_sha=' + admission.sha + '\n');
         console.log('WOLF_FACTORY_SOURCE_ADMITTED=' + JSON.stringify(admission));
         NODE
+    - name: Checkout immutable private V1 verifier for an explicitly selected read-only reconciliation
+      if: inputs.reconcile_v1 == true && github.event_name == 'workflow_dispatch'
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: donraposo1-source/project-wolf
+        ref: ${{ steps.pin.outputs.source_sha }}
+        token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        path: private-v1-verifier
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Verify original V1 Git effects and execution exclusion without mutation
+      if: inputs.reconcile_v1 == true && github.event_name == 'workflow_dispatch'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        WOLF_V1_EXPECTED_REVISION: ${{ inputs.v1_expected_revision }}
+        EUR_SPEND: '0'
+        COST_UNKNOWN: DENY
+        PAID_FALLBACK: DENY
+        TRIAL_CREDIT: DENY
+      run: node private-v1-verifier/scripts/wolf-night-shift-wakeup.mjs reconcile
   night-shift-admission:
     needs: factory-source-admission
     if: inputs.night_shift == true && github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
