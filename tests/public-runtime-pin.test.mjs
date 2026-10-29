@@ -109,7 +109,7 @@ const scheduledContext = {
 function evaluate(expression, context = scheduledContext) {
   const executable = expression.replace(/^>-?\n\s*/, '').replace(/\n\s*/g, ' ').replace(/needs\.([a-z][a-z0-9-]*)/g, 'needs["$1"]');
   return Boolean(new Function('github', 'inputs', 'needs', 'env', 'always', 'return (' + executable + ');')(
-    context.github, context.inputs, context.needs, context.env, () => true));
+    context.github, new Proxy(context.inputs,{get:(values,key)=>values[key]??''}), context.needs, context.env, () => true));
 }
 function eligible(name, context = scheduledContext) {
   const expression = jobBlock(workflow, name).match(/^    if: ([\s\S]*?)(?=\n    [a-zA-Z_-]+:)/m)?.[1];
@@ -194,4 +194,11 @@ test('explicit V1 reconciliation dispatch cannot reserve or execute a mission or
   const context = {...scheduledContext, github: {...scheduledContext.github, event_name: 'workflow_dispatch', ref: 'refs/heads/fix/omega-acceptance-ready-20261028'}, inputs: {reconcile_v1: true}};
   assert.equal(eligible('factory-source-admission', context), true);
   for (const name of ['night-shift-admission','integrated-factory','runner-loss-prepare','runner-loss-recover','dbos-runtime','opencode-runtime','service-access']) assert.equal(eligible(name, context), false, name);
+});
+test('terminal publication is an explicit manual request and cannot reserve or execute a mission',()=>{
+ const context={...scheduledContext,github:{...scheduledContext.github,event_name:'workflow_dispatch',ref:'refs/heads/fix/omega-acceptance-ready-20261028'},inputs:{v1_terminal_request:'immutable approval request'},needs:{...scheduledContext.needs,'night-shift-admission':{outputs:{ready:'false'}}}};
+ assert.equal(eligible('factory-source-admission',context),true);assert.equal(eligible('night-shift-admission',context),true);
+ for(const name of ['integrated-factory','runner-loss-prepare','runner-loss-recover'])assert.equal(eligible(name,context),false);
+ const block=jobBlock(workflow,'night-shift-admission');assert.match(block,/Reserve one durable wakeup without external mission effects\n      if: inputs.v1_terminal_request == ''/);assert.match(block,/publish-terminal-disposition/);
+ for(const change of [{github:{event_name:'schedule',ref:'refs/heads/main'}},{github:{actor:'other'}},{inputs:{verify_cross_job_ab:true}},{inputs:{night_shift:true}},{inputs:{execute_integrated:true}},{inputs:{verify_runner_loss:true}}])assert.equal(eligible('night-shift-admission',{...context,github:{...context.github,...change.github},inputs:{...context.inputs,...change.inputs}}),false);
 });

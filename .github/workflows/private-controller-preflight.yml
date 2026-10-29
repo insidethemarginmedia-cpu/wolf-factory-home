@@ -68,6 +68,10 @@ on:
         description: Exact operational branch SHA required by the read-only V1 verifier
         type: string
         default: ''
+      v1_terminal_request:
+        description: Separately approved immutable gate-A request JSON; empty keeps V1 untouched
+        type: string
+        default: ''
       verify_runner_loss:
         description: Recover the existing Factory on a fresh runner and execute Mission C
         type: boolean
@@ -116,7 +120,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   factory-source-admission:
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && (inputs.night_shift == true || inputs.execute_integrated == true || inputs.verify_private_regression == true || inputs.verify_runner_loss == true || inputs.reconcile_v1 == true || inputs.verify_cross_job_ab == true)
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && (inputs.night_shift == true || inputs.execute_integrated == true || inputs.verify_private_regression == true || inputs.verify_runner_loss == true || inputs.reconcile_v1 == true || inputs.verify_cross_job_ab == true || inputs.v1_terminal_request != '')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -136,6 +140,7 @@ jobs:
         WOLF_EXECUTE_INTEGRATED: ${{ inputs.execute_integrated }}
         WOLF_VERIFY_RUNNER_LOSS: ${{ inputs.verify_runner_loss }}
         WOLF_VERIFY_CROSS_JOB: ${{ inputs.verify_cross_job_ab }}
+        WOLF_V1_TERMINAL_REQUEST: ${{ inputs.v1_terminal_request }}
         EUR_SPEND: '0'
         COST_UNKNOWN: DENY
         PAID_FALLBACK: DENY
@@ -186,6 +191,7 @@ jobs:
             throw Error('FACTORY_SOURCE_COST_DENIED');
           }
           if (env.WOLF_VERIFY_CROSS_JOB === 'true' && (!manual || env.GITHUB_REF !== 'refs/heads/fix/omega-acceptance-ready-20261028' || env.WOLF_NIGHT_SHIFT === 'true' || env.WOLF_EXECUTE_INTEGRATED === 'true' || env.WOLF_VERIFY_RUNNER_LOSS === 'true')) throw Error('FACTORY_SOURCE_CROSS_JOB_SCOPE_DENIED');
+          if (env.WOLF_V1_TERMINAL_REQUEST && (!manual || env.WOLF_NIGHT_SHIFT === 'true' || env.WOLF_EXECUTE_INTEGRATED === 'true' || env.WOLF_VERIFY_RUNNER_LOSS === 'true' || env.WOLF_VERIFY_CROSS_JOB === 'true')) throw Error('FACTORY_SOURCE_TERMINAL_SCOPE_DENIED');
           if (env.WOLF_EXECUTE_INTEGRATED === 'true' && env.WOLF_VERIFY_RUNNER_LOSS === 'true') {
             throw Error('FACTORY_SOURCE_CONCURRENT_ACCEPTANCE_DENIED');
           }
@@ -242,20 +248,19 @@ jobs:
       run: node private-v1-verifier/scripts/wolf-night-shift-wakeup.mjs reconcile
   night-shift-admission:
     needs: factory-source-admission
-    if: inputs.night_shift == true && github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
-      && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') || (github.event_name
-      == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'))
+    if: github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((inputs.night_shift == true && inputs.v1_terminal_request == '' && ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'))) || (inputs.v1_terminal_request != '' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && inputs.night_shift != true && inputs.verify_cross_job_ab != true && inputs.execute_integrated != true && inputs.verify_runner_loss != true))
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
       contents: write
+      actions: read
     outputs:
       ready: ${{ steps.reserve.outputs.ready == 'true' && steps.quota.outcome == 'success' }}
     env:
       WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
       GROQ_FREE_PLAN_CONFIRMED: 'true'
-      WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
+      WOLF_FACTORY_RUNTIME_ROOT: ${{ inputs.v1_terminal_request != '' && format('/tmp/wolf-v1-disposition-{0}', github.run_id) || format('/tmp/wolf-integrated-{0}', github.run_id) }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       EUR_SPEND: '0'
       COST_UNKNOWN: DENY
@@ -270,10 +275,26 @@ jobs:
         persist-credentials: false
         fetch-depth: 1
     - name: Reserve one durable wakeup without external mission effects
+      if: inputs.v1_terminal_request == ''
       id: reserve
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: node scripts/wolf-night-shift-wakeup.mjs prepare
+    - name: Publish only a separately approved V1 terminal disposition
+      if: inputs.v1_terminal_request != ''
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        WOLF_TERMINAL_REQUEST_JSON: ${{ inputs.v1_terminal_request }}
+        WOLF_V1_DISPOSITION_REQUEST: ${{ runner.temp }}/wolf-v1-request.json
+      run: |
+        node --input-type=module <<'NODE'
+        import fs from 'node:fs';
+        const raw=process.env.WOLF_TERMINAL_REQUEST_JSON;
+        if(typeof raw!=='string'||Buffer.byteLength(raw)>16384)throw Error('TERMINAL_REQUEST_LIMIT');
+        fs.writeFileSync(process.env.WOLF_V1_DISPOSITION_REQUEST,JSON.stringify(JSON.parse(raw)),{flag:'wx',mode:0o600});
+        NODE
+        node scripts/wolf-night-shift-wakeup.mjs publish-terminal-disposition
     - name: Admit one bounded direct Groq Free attempt without OpenRouter quota dependency
       id: quota
       if: steps.reserve.outputs.ready == 'true'
