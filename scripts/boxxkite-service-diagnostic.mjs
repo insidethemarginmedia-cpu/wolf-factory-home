@@ -2,18 +2,8 @@ import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {readPrivateSourceJson} from './private-source-response.mjs';
 const repository='donraposo1-source/project-wolf',branch='feat/factory-real-worker-m1-20261006';
-async function readBoundedResponse(response,maxBytes,errorCode){
- const declared=response.headers?.get?.('content-length');
- if(declared!==null&&declared!==undefined&&(/^\d+$/.test(declared)===false||Number(declared)>maxBytes))throw Error(errorCode);
- if(!response.body||typeof response.body.getReader!=='function')throw Error(errorCode);
- const reader=response.body.getReader();let size=0;const chunks=[];
- try{for(;;){const {done,value}=await reader.read();if(done)break;if(!(value instanceof Uint8Array))throw Error(errorCode);size+=value.byteLength;if(size>maxBytes)throw Error(errorCode);chunks.push(value);}}
- catch{await reader.cancel().catch(()=>{});throw Error(errorCode)}
- finally{reader.releaseLock()}
- return Buffer.concat(chunks,size).toString('utf8');
-}
-
 // Observation only: neither an empty listing nor a matching label permits replay.
 export async function reconcileBoxxkiteCreate({label,env=process.env,fetchImpl=globalThis.fetch}={}){
  if(typeof label!=='string'||!/^OMEGA_[ABC]_[0-9]{1,20}$/.test(label))throw Error('RECONCILE_SCOPE_DENIED');
@@ -22,7 +12,7 @@ export async function reconcileBoxxkiteCreate({label,env=process.env,fetchImpl=g
  try{response=await fetchImpl('https://api.boxxkite.com/v1/sandboxes?active_only=false',{method:'GET',headers:{authorization:'Bearer '+env.BOXXKITE_API_KEY},redirect:'error',signal:AbortSignal.timeout(20000)});}catch{throw Error('RECONCILE_READ_UNAVAILABLE');}
  if(!response.ok)throw Error('RECONCILE_HTTP_DENIED');
  let entries;
- try{const raw=await readBoundedResponse(response,1048576,'RECONCILE_RESPONSE_INVALID');entries=JSON.parse(raw);}catch{throw Error('RECONCILE_RESPONSE_INVALID');}
+ try{entries=await readPrivateSourceJson(response,{maxBytes:1048576});}catch{throw Error('RECONCILE_RESPONSE_INVALID');}
  if(!Array.isArray(entries)||entries.length>1000)throw Error('RECONCILE_RESPONSE_INVALID');
  const matches=entries.filter(x=>x?.label===label).map(x=>{
   if(typeof x.id!=='string'||!/^[A-Za-z0-9_.:-]{1,128}$/.test(x.id)||!['active','running','ready','creating','pending','destroyed','expired','failed','stopped'].includes(x.status))throw Error('RECONCILE_RESPONSE_INVALID');
@@ -41,8 +31,8 @@ export async function diagnoseBoxxkiteService({env=process.env,fetchImpl=globalT
    async function get(route){
     const response=await fetchImpl('https://api.github.com/repos/'+repository+route,{method:'GET',headers:{authorization:'Bearer '+env.WOLF_FACTORY_REPO_TOKEN,'user-agent':'WolfFactoryServiceDiagnostic'},redirect:'error',signal:AbortSignal.timeout(20000)});
     if(!response.ok)throw Error('PRIVATE_SOURCE_ACCESS_DENIED');
-    const raw=await readBoundedResponse(response,131072,'PRIVATE_SOURCE_RESPONSE_DENIED');
-    try{return JSON.parse(raw)}catch{throw Error('PRIVATE_SOURCE_RESPONSE_DENIED')}
+    try{return await readPrivateSourceJson(response,{maxBytes:131072});}
+    catch{throw Error('PRIVATE_SOURCE_RESPONSE_DENIED');}
    }
    const ref=await get('/git/ref/heads/'+branch),sha=ref.object?.sha;
    if(ref.ref!=='refs/heads/'+branch||!/^[a-f0-9]{40}$/.test(sha||''))throw Error('PRIVATE_SOURCE_RESPONSE_DENIED');

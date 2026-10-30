@@ -109,6 +109,8 @@ on:
       - 'tests/existing-worker-qualification.test.mjs'
       - 'scripts/boxxkite-service-diagnostic.mjs'
       - 'tests/boxxkite-service-diagnostic.test.mjs'
+      - 'scripts/private-source-response.mjs'
+      - 'tests/private-source-response.test.mjs'
       - 'scripts/git-publication-preflight.mjs'
       - 'tests/git-publication-preflight.test.mjs'
       - 'tests/factory-source-admission.test.mjs'

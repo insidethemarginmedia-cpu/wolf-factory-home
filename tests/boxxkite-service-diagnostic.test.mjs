@@ -60,3 +60,11 @@ for(const [name,limit] of [['reconciliation',1048576],['private source',131072]]
   assert.equal(cancelled,true);
  });
 }
+
+test('remote transport loader enforces a streaming byte limit before parsing or import',async()=>{
+ let textCalls=0,reads=0,cancelled=0;
+ const response={ok:true,text:async()=>{textCalls++;return '{}';},body:{getReader:()=>({read:async()=>{reads++;return {done:false,value:new Uint8Array(131073)};},cancel:()=>{cancelled++;}})}};
+ await assert.rejects(diagnoseBoxxkiteService({env:{WOLF_FACTORY_REPO_TOKEN:'fixture',BOXXKITE_API_KEY:'fixture'},fetchImpl:async()=>response}),{message:'PRIVATE_SOURCE_RESPONSE_DENIED'});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(textCalls,0);assert.equal(reads,1);assert.equal(cancelled,1);
+});

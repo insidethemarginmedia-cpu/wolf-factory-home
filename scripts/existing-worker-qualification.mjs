@@ -2,6 +2,7 @@ import {mkdtemp,writeFile,mkdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {readPrivateSourceJson} from './private-source-response.mjs';
 import {verifyPrivateControllerAccess,verifyOpenRouterAuthentication} from './private-controller-preflight.mjs';
 const repo='donraposo1-source/project-wolf';
 const branch='feat/factory-real-worker-m1-20261006';
@@ -17,8 +18,8 @@ export async function qualifyExistingWorker({env=process.env,fetchImpl=globalThi
    async function get(url){
     const response=await fetchImpl(url,{method:'GET',headers:{authorization:'Bearer '+env.WOLF_FACTORY_REPO_TOKEN,'user-agent':'WolfFactoryQualification',accept:'application/vnd.github+json'},redirect:'error',signal:AbortSignal.timeout(20000)});
     if(!response.ok)throw Error('PRIVATE_SOURCE_ACCESS_DENIED');
-    const raw=await response.text();if(Buffer.byteLength(raw)>1048576)throw Error('PRIVATE_SOURCE_SIZE_DENIED');
-    try{return JSON.parse(raw);}catch{throw Error('PRIVATE_SOURCE_RESPONSE_INVALID');}
+    try{return await readPrivateSourceJson(response,{maxBytes:1048576});}
+    catch(error){throw Error(error?.message==='PRIVATE_SOURCE_RESPONSE_TOO_LARGE'?'PRIVATE_SOURCE_SIZE_DENIED':'PRIVATE_SOURCE_RESPONSE_INVALID');}
    }
    const ref=await get('https://api.github.com/repos/'+repo+'/git/ref/heads/'+branch);
    const sha=ref.object?.sha;if(ref.ref!=='refs/heads/'+branch||!/^[a-f0-9]{40}$/.test(sha||''))throw Error('PRIVATE_SOURCE_REF_INVALID');
