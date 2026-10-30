@@ -44,6 +44,10 @@ on:
         description: Verify private source authorization only, without fetching source
         type: boolean
         default: false
+      reconcile_boxxkite_label:
+        description: Read-only exact-label lookup after an unknown sandbox create; never retries
+        type: string
+        default: ''
       verify_private_checkout:
         description: Read-only private checkout at pinned source SHA, no inference or publication
         type: boolean
@@ -434,7 +438,7 @@ jobs:
       (inputs.verify_private_regression != true || needs.factory-source-admission.result == 'success') &&
       github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' &&
       ((github.ref == 'refs/heads/feat/public-runtime-probe-20261022') ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && inputs.verify_private_source == true) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && (inputs.verify_private_source == true || inputs.reconcile_boxxkite_label != '')) ||
       (github.event_name == 'schedule' && github.ref == 'refs/heads/main' && inputs.night_shift == true &&
       needs.factory-source-admission.result == 'success' && needs.night-shift-admission.outputs.ready == 'true'))
     runs-on: ubuntu-latest
@@ -447,6 +451,12 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
           ref: ${{ inputs.night_shift == true && needs.factory-source-admission.outputs.public_runtime_sha || github.sha }}
+      - name: Observe an unknown Boxxkite create with the existing controller credential
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && inputs.reconcile_boxxkite_label != ''
+        env:
+          BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
+          WOLF_BOXXKITE_RECONCILE_LABEL: ${{ inputs.reconcile_boxxkite_label }}
+        run: node scripts/boxxkite-service-diagnostic.mjs --reconcile-create
       - name: Verify OpenRouter authentication independently (no inference)
         if: inputs.night_shift != true && env.OPENROUTER_API_KEY != ''
         env:
