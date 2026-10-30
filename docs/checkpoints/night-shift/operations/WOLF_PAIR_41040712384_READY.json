@@ -1,0 +1,13 @@
+{
+  "schema": "WolfFencedGitReceipt/v1",
+  "operationId": "WOLF_PAIR_41040712384_READY",
+  "phase": "INTENT",
+  "expectedRevision": "0e470ba861154ca3b438e84885fc1921a8da690b",
+  "journalRevision": "5c10913796ee2957d2b12319148ec9f81dd612f7",
+  "recordDigest": "10e18cee50d26341f7fc917d95a6bc37326dd6bfad2dc5f35a2526d10915d8b7",
+  "recordPath": "docs/checkpoints/runner-loss/41040712384.json",
+  "fencingToken": 1,
+  "authorityTaskId": "OMEGA_PAIR_41040712384_integrated_factory",
+  "owner": "wolf-cross-job:41040712384:integrated-factory",
+  "authorityDigest": "042f297b164341aab456f86721157c0ab0cd37e1484284a028b879e846016912"
+}
