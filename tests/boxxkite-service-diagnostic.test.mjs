@@ -50,3 +50,13 @@ test('HTTP errors and malformed listings never become a confirmed outcome',async
   await assert.rejects(reconcileBoxxkiteCreate({label:'OMEGA_B_41040712384',env:{BOXXKITE_API_KEY:'fixture'},fetchImpl:async()=>response}),/RECONCILE_/);
  }
 });
+
+for(const [name,limit] of [['reconciliation',1048576],['private source',131072]]){
+ test(name+' response stops reading beyond configured limit',async()=>{
+  let cancelled=false;const body=new ReadableStream({pull(controller){controller.enqueue(new Uint8Array(limit+1));},cancel(){cancelled=true;}});
+  const response=new Response(body);
+  if(name==='reconciliation'){await assert.rejects(reconcileBoxxkiteCreate({label:'OMEGA_B_41040712384',env:{BOXXKITE_API_KEY:'fixture'},fetchImpl:async()=>response}),/RECONCILE_RESPONSE_INVALID/);}
+  else{await assert.rejects(diagnoseBoxxkiteService({env:{WOLF_FACTORY_REPO_TOKEN:'fixture',BOXXKITE_API_KEY:'fixture'},fetchImpl:async()=>response}),/PRIVATE_SOURCE_RESPONSE_DENIED/);}
+  assert.equal(cancelled,true);
+ });
+}
