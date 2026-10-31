@@ -131,6 +131,9 @@ on:
       - '.gitleaksignore'
       - 'docs/checkpoints/omega/GITLEAKS-IMMUTABLE-NONSECRET-*'
       - 'tests/cross-job-pair-routing.test.mjs'
+      - 'tests/runner-state-restore-gate.test.mjs'
+      - 'tests/runner-loss-two-job-contract.test.mjs'
+      - 'tests/omega-b-preservation.test.mjs'
 permissions:
   contents: read
 concurrency:
@@ -1484,8 +1487,47 @@ jobs:
         node <<'NODE'
         const fs=require('fs'),path=require('path');
         if(fs.existsSync(process.env.WOLF_FACTORY_RUNTIME_ROOT))throw Error('RECOVERY_ROOT_NOT_FRESH');
-        const sha=process.env.SNAPSHOT_SHA;if(!/^[a-f0-9]{40}$/.test(sha))throw Error('SNAPSHOT_SHA_REQUIRED');
-        fetch('https://raw.githubusercontent.com/insidethemarginmedia-cpu/wolf-factory-home/'+sha+'/docs/checkpoints/runner-loss/'+process.env.GITHUB_RUN_ID+'.json',{redirect:'error',signal:AbortSignal.timeout(20000)}).then(async r=>{if(!r.ok)throw Error('DURABLE_CHECKPOINT_UNAVAILABLE');const raw=await r.text();if(Buffer.byteLength(raw)>1048576)throw Error('CHECKPOINT_LIMIT');fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'wolf-runner-state.envelope.json'),raw,{flag:'wx',mode:0o600});}).catch(()=>{console.error('DURABLE_CHECKPOINT_READ_FAILED');process.exitCode=1;});
+        // RUNNER_STATE_RESTORE_GATE_BEGIN
+        async function restoreSealedRunnerState(env, fetchImpl = globalThis.fetch, writeImpl = null) {
+          const fail = reason => { throw Error('RESTORE_' + reason); };
+          if (env.GITHUB_REPOSITORY !== 'insidethemarginmedia-cpu/wolf-factory-home' || env.GITHUB_ACTOR !== 'insidethemarginmedia-cpu' ||
+              env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || env.WOLF_RUNNER_LOSS_TEST !== '1') fail('SCOPE_DENIED');
+          if (env.EUR_SPEND !== '0' || ['COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT'].some(k => env[k] !== 'DENY')) fail('COST_DENIED');
+          if (typeof writeImpl !== 'function') fail('CONTEXT_REQUIRED');
+          const snapshot = env.SNAPSHOT_SHA, run = env.GITHUB_RUN_ID, source = env.WOLF_FACTORY_EXPECTED_SHA, temp = env.RUNNER_TEMP;
+          if (!/^[a-f0-9]{40}$/.test(snapshot || '')) throw Error('SNAPSHOT_SHA_REQUIRED');
+          if (!/^[1-9][0-9]*$/.test(run || '') || !/^[a-f0-9]{40}$/.test(source || '') || typeof temp !== 'string' || !temp) fail('CONTEXT_REQUIRED');
+          const url = 'https://raw.githubusercontent.com/insidethemarginmedia-cpu/wolf-factory-home/' + snapshot + '/docs/checkpoints/runner-loss/' + run + '.json';
+          let response;
+          try {
+            response = await fetchImpl(url, {redirect: 'error', signal: AbortSignal.timeout(20000)});
+          } catch { throw Error('DURABLE_CHECKPOINT_READ_FAILED'); }
+          if (response.status === 404) fail('CHECKPOINT_MISSING');
+          if (!response.ok) throw Error('DURABLE_CHECKPOINT_UNAVAILABLE');
+          let content;
+          try { content = await response.text(); } catch { throw Error('DURABLE_CHECKPOINT_READ_FAILED'); }
+          if (typeof content !== 'string' || Buffer.byteLength(content) > 1048576) throw Error('CHECKPOINT_LIMIT');
+          let envelope; try { envelope = JSON.parse(content); } catch { fail('CHECKPOINT_CORRUPT'); }
+          if (content !== JSON.stringify(envelope) + '\n') fail('CHECKPOINT_CORRUPT');
+          const keys = ['version', 'algorithm', 'context', 'salt', 'iv', 'tag', 'ciphertext', 'payloadSha256'];
+          if (!envelope || typeof envelope !== 'object' || Object.keys(envelope).sort().join() !== keys.sort().join() ||
+              envelope.version !== 1 || envelope.algorithm !== 'aes-256-gcm+scrypt+gzip' || !/^[a-f0-9]{64}$/.test(envelope.payloadSha256 || '')) fail('CHECKPOINT_CORRUPT');
+          for (const [key, size] of [['salt', 32], ['iv', 12], ['tag', 16], ['ciphertext', null]]) {
+            const value = envelope[key];
+            if (typeof value !== 'string' || !value || Buffer.from(value, 'base64').toString('base64') !== value ||
+                (size !== null && Buffer.from(value, 'base64').length !== size) || (size === null && !Buffer.from(value, 'base64').length)) fail('CHECKPOINT_CORRUPT');
+          }
+          const context = {workflowID: 'wolf-runner-loss-' + run, runID: run, sourceSha: source};
+          if (JSON.stringify(envelope.context) !== JSON.stringify(context)) fail('CHECKPOINT_IDENTITY_MISMATCH');
+          const target = String(temp).replace(/[/\\]+$/, '') + '/wolf-runner-state.envelope.json';
+          try { writeImpl(target, content); }
+          catch (error) { if (error && error.code === 'EEXIST') fail('TARGET_EXISTS'); throw error; }
+          return {state: 'RESTORED', checkpointPath: 'docs/checkpoints/runner-loss/' + run + '.json', snapshotSha: snapshot, target, payloadSha256: envelope.payloadSha256, context, fetchCount: 1, retryCount: 0};
+        }
+        // RUNNER_STATE_RESTORE_GATE_END
+        restoreSealedRunnerState(process.env, globalThis.fetch, (file, content) => fs.writeFileSync(file, content, {flag: 'wx', mode: 0o600})).then(
+          receipt => console.log('WOLF_RUNNER_STATE_RESTORE_GATE=' + JSON.stringify(receipt)),
+          error => { console.error('WOLF_RUNNER_STATE_RESTORE_FAILED=' + ((error && error.message) || 'DURABLE_CHECKPOINT_READ_FAILED')); process.exitCode = 1; });
         NODE
         node scripts/wolf-dbos-runner-state.mjs restore
     - name: Prepare explicitly selected SSH publication credential
