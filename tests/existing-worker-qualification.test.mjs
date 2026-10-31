@@ -26,3 +26,9 @@ test('private worker loader limits streamed bytes before dynamic import or infer
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(textCalls,0);assert.equal(reads,1);assert.equal(cancelled,1);
 });
+
+test('CLI retains the known HTTP 503 classification',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../scripts/existing-worker-qualification.mjs',import.meta.url),'utf8');
+ assert.ok(source.includes("'OPENROUTER_HTTP_503'"));
+});
