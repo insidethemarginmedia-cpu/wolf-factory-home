@@ -364,7 +364,7 @@ jobs:
       - run: node --test tests/*.test.mjs
   dbos-runtime:
     needs: security-tests
-    if: always() && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_dbos_runtime == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
+    if: always() && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_dbos_runtime == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028') && github.actor == 'insidethemarginmedia-cpu'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
