@@ -479,7 +479,7 @@ jobs:
       (inputs.verify_private_regression != true || needs.factory-source-admission.result == 'success') &&
       github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' &&
       ((github.ref == 'refs/heads/feat/public-runtime-probe-20261022') ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && (inputs.verify_private_source == true || inputs.reconcile_boxxkite_label != '')) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && (inputs.verify_private_source == true || inputs.reconcile_boxxkite_label != '' || inputs.qualify_worker == true)) ||
       (github.event_name == 'schedule' && github.ref == 'refs/heads/main' && inputs.night_shift == true &&
       needs.factory-source-admission.result == 'success' && needs.night-shift-admission.outputs.ready == 'true'))
     runs-on: ubuntu-latest
