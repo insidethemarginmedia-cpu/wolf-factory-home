@@ -117,7 +117,7 @@ test('mission identity and execution key cannot be invented by the caller', () =
       missionId,
     );
   }
-  for (const missionId of ['OMEGA_B_41040712384', 'WOLF_WAKEUP_MANUAL_41211185406', 'WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1']) {
+  for (const missionId of ['OMEGA_C_41300000001', 'WOLF_WAKEUP_MANUAL_41211185406', 'WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V1']) {
     assert.equal(AUTHORISED_MISSION_IDENTITY.test(missionId), true, missionId);
     assert.equal(validateAdmissionRequest({env: ENV, request: request({missionId})}).authorized, true, missionId);
   }
@@ -203,7 +203,7 @@ test('a duplicate admission reservation is refused so one dispatch cannot create
 
 test('the receipt carries every required property and never claims autonomy by default', () => {
   const receipt = admissionReceipt({
-    admission: {missionId: 'OMEGA_B_41040712384', executionKey: KEY, worker: 'flint', model: WORKERS.flint.model, authorized: true},
+    admission: {missionId: 'OMEGA_C_41300000001', executionKey: KEY, worker: 'flint', model: WORKERS.flint.model, authorized: true},
     outcome: classifyDispatchOutcome({status: 403, body: 'Resource not accessible by integration'}),
   });
   for (const key of RECEIPT_KEYS) assert.ok(Object.hasOwn(receipt, key), key);

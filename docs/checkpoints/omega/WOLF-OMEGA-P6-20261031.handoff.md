@@ -243,20 +243,28 @@ zero-cost gates. No bypass, no duplicated skill records, no new controller.
 
 ## 7. Protected historical state
 
-Mission `OMEGA_B_41040712384` was **not** replayed, recreated, lease-reset, deleted, reassigned or
-given a fabricated terminal outcome. `git diff --name-only` touches **zero** files referencing
-run `41040712384`. The four durable records are byte-unchanged:
+The protected Mission B was **not** replayed, recreated, lease-reset, deleted, reassigned or
+given a fabricated terminal outcome. `git diff --name-only` returns **no** path under
+`docs/checkpoints/runner-loss/` or `docs/checkpoints/night-shift/operations/`, so all four
+sealed records are byte-unchanged, and the sealing digests are re-verified on every test run
+by `tests/omega-b-preservation.test.mjs`.
+
+Its exact identity, run id and record paths are deliberately **not** restated here: that test
+maintains a closed allowlist of files permitted to reference them, so any new tracked file
+mentioning the run requires a deliberate, explicit authorisation rather than an incidental
+documentation edit. Full forensic detail (identity, paths, SHA-256 of each sealed record) is
+carried in the delivered package evidence, outside version control:
 
 ```
-f67b11090fadf00e849676b791fc80f03e56ad5f1bbd0c8dadd6291b81bcb20d  docs/checkpoints/runner-loss/41040712384.json
-ac53264ffa0acb130a9b364d41d38b00134ddcbaed8570cb23335acc935baf6b  docs/checkpoints/runner-loss/41040712384-b-intent.json
-ef0c31f6c4692796d5d6cb3713437a46630bab2dda8e258fd514468a0351e181  docs/checkpoints/night-shift/operations/WOLF_PAIR_41040712384_INTENT.json
-f7acaf0c496d81d45a8c1c1496d011f36993c409c26fe64069b678d34e6442d7  docs/checkpoints/night-shift/operations/WOLF_PAIR_41040712384_READY.json
+EVIDENCE/protected-state.txt   (this package)
 ```
 
-External effect classification remains **UNKNOWN**. No reconciliation was attempted.
+Two consequences worth stating plainly:
 
----
+- its external effect classification remains **UNKNOWN**, and no reconciliation was attempted;
+- new work uses fresh identities only. The admission contract added in §3 refuses any mission
+  identity the reachable authority does not already recognise, and refuses the protected one
+  for new work by construction.
 
 ## 8. Verification receipts (executed, this session)
 

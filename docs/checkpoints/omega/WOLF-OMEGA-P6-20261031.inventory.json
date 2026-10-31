@@ -15,16 +15,56 @@
     "privateFactoryHeadVerified": false
   },
   "accessMatrix": [
-    {"surface": "public-runtime", "state": "GRANTED", "evidence": "git fetch + gh api 200"},
-    {"surface": "private-factory", "state": "BLOCKED", "evidence": "gh api 404 Not Found; git clone: remote: Write access to repository not granted / error: 403"},
-    {"surface": "workflow-dispatch", "state": "BLOCKED", "evidence": "HTTP 403 Resource not accessible by integration; token x-oauth-scopes empty (GitHub App installation token)"},
-    {"surface": "actions-run-metadata", "state": "GRANTED", "evidence": "GET /actions/runs/{id}/jobs returns step conclusions"},
-    {"surface": "actions-logs-and-artifacts", "state": "NOT_ATTEMPTED", "evidence": "not required for any claim in this package"},
-    {"surface": "composio-connector", "state": "BLOCKED", "evidence": "list_connector_tools('composio') -> unsupported"},
-    {"surface": "ai-provider-egress", "state": "BLOCKED", "evidence": "curl https://api.groq.com/ 000; api.openai.com 000; openrouter.ai 000; generativelanguage.googleapis.com 000; api.anthropic.com 000; www.googleapis.com 000"},
-    {"surface": "local-inference", "state": "ABSENT", "evidence": "http://127.0.0.1:11434/api/version no listener"},
-    {"surface": "provider-credentials", "state": "ABSENT", "evidence": "no GROQ_API_KEY / OPENROUTER_API_KEY / BOXXKITE_API_KEY in environment"},
-    {"surface": "protected-default-branch-write", "state": "FORBIDDEN", "evidence": "mandate section 10"}
+    {
+      "surface": "public-runtime",
+      "state": "GRANTED",
+      "evidence": "git fetch + gh api 200"
+    },
+    {
+      "surface": "private-factory",
+      "state": "BLOCKED",
+      "evidence": "gh api 404 Not Found; git clone: remote: Write access to repository not granted / error: 403"
+    },
+    {
+      "surface": "workflow-dispatch",
+      "state": "BLOCKED",
+      "evidence": "HTTP 403 Resource not accessible by integration; token x-oauth-scopes empty (GitHub App installation token)"
+    },
+    {
+      "surface": "actions-run-metadata",
+      "state": "GRANTED",
+      "evidence": "GET /actions/runs/{id}/jobs returns step conclusions"
+    },
+    {
+      "surface": "actions-logs-and-artifacts",
+      "state": "NOT_ATTEMPTED",
+      "evidence": "not required for any claim in this package"
+    },
+    {
+      "surface": "composio-connector",
+      "state": "BLOCKED",
+      "evidence": "list_connector_tools('composio') -> unsupported"
+    },
+    {
+      "surface": "ai-provider-egress",
+      "state": "BLOCKED",
+      "evidence": "curl https://api.groq.com/ 000; api.openai.com 000; openrouter.ai 000; generativelanguage.googleapis.com 000; api.anthropic.com 000; www.googleapis.com 000"
+    },
+    {
+      "surface": "local-inference",
+      "state": "ABSENT",
+      "evidence": "http://127.0.0.1:11434/api/version no listener"
+    },
+    {
+      "surface": "provider-credentials",
+      "state": "ABSENT",
+      "evidence": "no GROQ_API_KEY / OPENROUTER_API_KEY / BOXXKITE_API_KEY in environment"
+    },
+    {
+      "surface": "protected-default-branch-write",
+      "state": "FORBIDDEN",
+      "evidence": "mandate section 10"
+    }
   ],
   "recoveredFlintIntegration": {
     "isSeparateService": false,
@@ -33,9 +73,21 @@
     "privateAdapter": "infra/worker-router/direct-openrouter-executor.mjs",
     "privatePolicy": "infra/worker-router/engineering-model-policy.mjs",
     "publicQualificationEntrypoint": "scripts/existing-worker-qualification.mjs",
-    "economicPredicates": ["is_free_tier===true", "limit===0", "byok_usage===0", "pricing.prompt==='0'", "pricing.completion==='0'", "all pricing values === '0'"],
+    "economicPredicates": [
+      "is_free_tier===true",
+      "limit===0",
+      "byok_usage===0",
+      "pricing.prompt==='0'",
+      "pricing.completion==='0'",
+      "all pricing values === '0'"
+    ],
     "economicDenialCode": "EXACT_FREE_MODEL_REQUIRED",
-    "receiptPredicates": ["model matches exactly", "costUsd===0", "generationId non-empty", "content==='WOLF_RUNTIME_OK'"],
+    "receiptPredicates": [
+      "model matches exactly",
+      "costUsd===0",
+      "generationId non-empty",
+      "content==='WOLF_RUNTIME_OK'"
+    ],
     "realInferencePerformedInThisEnvironment": false
   },
   "missionSubmissionSchema": {
@@ -59,7 +111,10 @@
     "file": ".github/workflows/private-controller-preflight.yml",
     "job": "service-access",
     "change": "additive disjunct: inputs.qualify_worker == true on refs/heads/fix/omega-acceptance-ready-20261028",
-    "diffLines": {"added": 1, "removed": 1},
+    "diffLines": {
+      "added": 1,
+      "removed": 1
+    },
     "beforeMatrix": {
       "qualify_worker@fix/omega-acceptance-ready-20261028": "SKIPPED",
       "qualify_worker@feat/public-runtime-probe-20261022": "RUNS",
@@ -80,9 +135,21 @@
     "falsification": "pre-repair workflow -> 6 pass / 1 FAIL; repaired workflow -> 7 pass / 0 fail"
   },
   "newArtifacts": [
-    {"path": "scripts/composio-mission-admission.mjs", "purpose": "Composio->existing admission transport contract (pure, no network)", "sha256": "c8eece69a6f48fd2f7a31755afdda40459f6ba53058409ef7361d1282d52e46b"},
-    {"path": "tests/composio-mission-admission.test.mjs", "tests": 11, "sha256": "69958d1e63b6b89a50901c3739e067c1f13bf879693cbf2de085a3b909d23a7b"},
-    {"path": "tests/worker-qualification-reachability.test.mjs", "tests": 7, "sha256": "66496fc353cbc088b3f316919330c97d3a7c0fbb4a55aea1c56ad22f4ed991d9"}
+    {
+      "path": "scripts/composio-mission-admission.mjs",
+      "purpose": "Composio->existing admission transport contract (pure, no network)",
+      "sha256": "c8eece69a6f48fd2f7a31755afdda40459f6ba53058409ef7361d1282d52e46b"
+    },
+    {
+      "path": "tests/composio-mission-admission.test.mjs",
+      "tests": 11,
+      "sha256": "69958d1e63b6b89a50901c3739e067c1f13bf879693cbf2de085a3b909d23a7b"
+    },
+    {
+      "path": "tests/worker-qualification-reachability.test.mjs",
+      "tests": 7,
+      "sha256": "66496fc353cbc088b3f316919330c97d3a7c0fbb4a55aea1c56ad22f4ed991d9"
+    }
   ],
   "testEvidence": {
     "baseline": "182/182 PASS",
@@ -100,19 +167,75 @@
     "consecutiveScheduledRunsWithMissionWork": 0,
     "window": "2026-10-29T13:19Z .. 2026-10-31T12:46Z",
     "runs": [
-      {"id": 41202573628, "event": "schedule", "branch": "main", "conclusion": "success", "quotaGate": "skipped", "missionJobs": "all skipped", "createdAt": "2026-10-31T12:46:15Z"},
-      {"id": 41174505505, "event": "schedule", "branch": "main", "conclusion": "success", "quotaGate": "skipped", "missionJobs": "all skipped", "createdAt": "2026-10-31T05:55:43Z"},
-      {"id": 41061101794, "event": "schedule", "branch": "main", "conclusion": "success", "quotaGate": "not reached", "missionJobs": "all skipped", "createdAt": "2026-10-30T13:10:56Z"},
-      {"id": 41011531152, "event": "schedule", "branch": "main", "conclusion": "success", "quotaGate": "not reached", "missionJobs": "all skipped", "createdAt": "2026-10-30T06:00:12Z"},
-      {"id": 40880808815, "event": "schedule", "branch": "main", "conclusion": "success", "quotaGate": "not reached", "missionJobs": "all skipped", "createdAt": "2026-10-29T13:19:02Z"}
+      {
+        "id": 41202573628,
+        "event": "schedule",
+        "branch": "main",
+        "conclusion": "success",
+        "quotaGate": "skipped",
+        "missionJobs": "all skipped",
+        "createdAt": "2026-10-31T12:46:15Z"
+      },
+      {
+        "id": 41174505505,
+        "event": "schedule",
+        "branch": "main",
+        "conclusion": "success",
+        "quotaGate": "skipped",
+        "missionJobs": "all skipped",
+        "createdAt": "2026-10-31T05:55:43Z"
+      },
+      {
+        "id": 41061101794,
+        "event": "schedule",
+        "branch": "main",
+        "conclusion": "success",
+        "quotaGate": "not reached",
+        "missionJobs": "all skipped",
+        "createdAt": "2026-10-30T13:10:56Z"
+      },
+      {
+        "id": 41011531152,
+        "event": "schedule",
+        "branch": "main",
+        "conclusion": "success",
+        "quotaGate": "not reached",
+        "missionJobs": "all skipped",
+        "createdAt": "2026-10-30T06:00:12Z"
+      },
+      {
+        "id": 40880808815,
+        "event": "schedule",
+        "branch": "main",
+        "conclusion": "success",
+        "quotaGate": "not reached",
+        "missionJobs": "all skipped",
+        "createdAt": "2026-10-29T13:19:02Z"
+      }
     ],
     "rootCause": "private scripts/wolf-night-shift-wakeup.mjs prepare returns ready != 'true'",
     "whyUnrepaired": "requires protected-branch write and private reservation state"
   },
   "providers": [
-    {"name": "flint", "identity": "recursive/flint-v1.0:free", "admission": "BLOCKED", "reason": "PROVIDER_EGRESS_BLOCKED + DISPATCH_SCOPE_DENIED"},
-    {"name": "groq", "identity": "openai/gpt-oss-120b", "admission": "BLOCKED", "reason": "PROVIDER_EGRESS_BLOCKED", "note": "GROQ_FREE_PLAN_CONFIRMED is a static workflow literal, not a runtime verification"},
-    {"name": "ollama", "identity": "qwen2.5-coder:0.5b", "admission": "BLOCKED", "reason": "NO_LOCAL_RUNTIME"}
+    {
+      "name": "flint",
+      "identity": "recursive/flint-v1.0:free",
+      "admission": "BLOCKED",
+      "reason": "PROVIDER_EGRESS_BLOCKED + DISPATCH_SCOPE_DENIED"
+    },
+    {
+      "name": "groq",
+      "identity": "openai/gpt-oss-120b",
+      "admission": "BLOCKED",
+      "reason": "PROVIDER_EGRESS_BLOCKED",
+      "note": "GROQ_FREE_PLAN_CONFIRMED is a static workflow literal, not a runtime verification"
+    },
+    {
+      "name": "ollama",
+      "identity": "qwen2.5-coder:0.5b",
+      "admission": "BLOCKED",
+      "reason": "NO_LOCAL_RUNTIME"
+    }
   ],
   "economicPolicyPreserved": true,
   "composioSkills": {
@@ -124,27 +247,51 @@
     "duplicatesCreated": false
   },
   "protectedMissionB": {
-    "missionId": "OMEGA_B_41040712384",
+    "missionId": "SEALED_PROTECTED_MISSION_B",
     "externalEffect": "UNKNOWN",
     "recordsUnchanged": true,
     "recordsTouched": 0,
     "replayed": false,
     "leaseReset": false,
     "terminalOutcomeFabricated": false,
-    "recordSha256": {
-      "docs/checkpoints/runner-loss/41040712384.json": "f67b11090fadf00e849676b791fc80f03e56ad5f1bbd0c8dadd6291b81bcb20d",
-      "docs/checkpoints/runner-loss/41040712384-b-intent.json": "ac53264ffa0acb130a9b364d41d38b00134ddcbaed8570cb23335acc935baf6b",
-      "docs/checkpoints/night-shift/operations/WOLF_PAIR_41040712384_INTENT.json": "ef0c31f6c4692796d5d6cb3713437a46630bab2dda8e258fd514468a0351e181",
-      "docs/checkpoints/night-shift/operations/WOLF_PAIR_41040712384_READY.json": "f7acaf0c496d81d45a8c1c1496d011f36993c409c26fe64069b678d34e6442d7"
-    }
+    "identityRestatedHere": false,
+    "identityLocation": "EVIDENCE/protected-state.txt (package only, outside version control)",
+    "reasonNotRestated": "tests/omega-b-preservation.test.mjs maintains a closed allowlist of files permitted to reference the run id; widening it in a documentation commit would weaken the trip-wire",
+    "sealedRecords": 4,
+    "sealedRecordHashesVerified": true,
+    "sealedRecordHashesLocation": "EVIDENCE/protected-state.txt (package only)"
   },
   "blockers": [
-    {"id": "B1", "blocker": "private factory unreadable", "evidence": "403/404"},
-    {"id": "B2", "blocker": "no actions:write credential", "evidence": "403 Resource not accessible by integration"},
-    {"id": "B3", "blocker": "no provider egress or keys", "evidence": "curl 000"},
-    {"id": "B4", "blocker": "composio connector unsupported", "evidence": "list_connector_tools status=unsupported"},
-    {"id": "B5", "blocker": "scheduled wakeup inert", "evidence": "runs 41202573628, 41174505505"},
-    {"id": "B6", "blocker": "no authorised real-mission identity", "evidence": "AUTHORISED_MISSION_IDENTITY in scripts/composio-mission-admission.mjs"}
+    {
+      "id": "B1",
+      "blocker": "private factory unreadable",
+      "evidence": "403/404"
+    },
+    {
+      "id": "B2",
+      "blocker": "no actions:write credential",
+      "evidence": "403 Resource not accessible by integration"
+    },
+    {
+      "id": "B3",
+      "blocker": "no provider egress or keys",
+      "evidence": "curl 000"
+    },
+    {
+      "id": "B4",
+      "blocker": "composio connector unsupported",
+      "evidence": "list_connector_tools status=unsupported"
+    },
+    {
+      "id": "B5",
+      "blocker": "scheduled wakeup inert",
+      "evidence": "runs 41202573628, 41174505505"
+    },
+    {
+      "id": "B6",
+      "blocker": "no authorised real-mission identity",
+      "evidence": "AUTHORISED_MISSION_IDENTITY in scripts/composio-mission-admission.mjs"
+    }
   ],
   "negativeClaims": [
     "no real Flint inference performed",
