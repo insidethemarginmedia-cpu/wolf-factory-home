@@ -1,0 +1,57 @@
+{
+  "state": "VERIFIED",
+  "scope": "MANUAL_SYNTHETIC_CROSS_JOB_ONLY",
+  "producerPid": 2,
+  "source": "AUTHENTICATED_GITHUB_IMMUTABLE_SNAPSHOTS",
+  "inputSha256": "d7b64bacaebe8527a2e68e816697ba8b3dcf7d93078f18933261409a37beef6b",
+  "continuationState": "NEXT_READY_DRAINED",
+  "finalCommit": "1362b7c7205140781c383a14fbb7eda1757ee64d",
+  "publication": {
+    "state": "VERIFIED",
+    "producer": "INDEPENDENT_GIT_OBJECT_READBACK",
+    "commitSha": "3baeff03826e5a63b406e95a09ceca98cd8f0683",
+    "operationId": "WOLF_PAIR_40864221496_FINAL",
+    "recordPath": "docs/checkpoints/runner-loss/40864221496-final.json",
+    "digest": "a615e0ef032e694232fab39440be59bce65cab4f5228befdbf5c684b9d8ad414",
+    "journalRevision": "5c10913796ee2957d2b12319148ec9f81dd612f7",
+    "receiptId": "wolf-git-verifier-9aeb8389fc44106475e8a681c26ea47f042cf7dfae00c4656bbeffa4efc96f15"
+  },
+  "checkpoints": [
+    {
+      "state": "VERIFIED",
+      "producer": "INDEPENDENT_IMMUTABLE_PAIR_CHECKPOINT_READBACK",
+      "digest": "c6b20d1d1b4a8214d3fe83f2e23b089f5205849b0c4dcf105202b7d408603705",
+      "checkpointCommit": "e705d555dece9f6743d7fedf3a0c07b504b2083e",
+      "codeCommit": "e23cf2826e713ec2bcd4959242c55578b07f1d9b",
+      "missionId": "OMEGA_A_40864221496",
+      "sourceSha256": "ba1a531f581d2e6094e978ed6f7aca7a8d92eeb62c6e7ad73ee692f7f18bc772",
+      "receiptId": "wolf-pair-verifier-4ba66da670a85a4dbc660c39a693031dd187b8625811b078f71fe18cf81ad259"
+    },
+    {
+      "state": "VERIFIED",
+      "producer": "INDEPENDENT_IMMUTABLE_PAIR_CHECKPOINT_READBACK",
+      "digest": "b784d76876720a3900ed23d961275ce7f91c60ce9639f36c15c0a3d462ddce82",
+      "checkpointCommit": "17b62f60855b1798d16ede1ffec55021b6cac648",
+      "codeCommit": "b4338c6f8f63ea63b085fd0b5274a4eb0a20a3a6",
+      "missionId": "OMEGA_B_40864221496",
+      "sourceSha256": "c8698c72046703dde9db751fc5ee8a746bf8e4b36343f46926fc3eb7c3b3b325",
+      "receiptId": "wolf-pair-verifier-d4d8c9f440ca3e16220f80fee8d47d923697a27c00c82b8a87906958737546fa"
+    }
+  ],
+  "duplicate": {
+    "state": "ALREADY_COMPLETED",
+    "commitSha": "1362b7c7205140781c383a14fbb7eda1757ee64d",
+    "checkpointB": {
+      "state": "PERSISTED",
+      "commitSha": "17b62f60855b1798d16ede1ffec55021b6cac648",
+      "checkpointId": "wolf-cp-d95ab57a943deb6a850e1829d9b37582685da4ba9bc882bb3cb513929a2e4583",
+      "path": "docs/checkpoints/runtime/wolf-cp-d95ab57a943deb6a850e1829d9b37582685da4ba9bc882bb3cb513929a2e4583.json",
+      "replayed": false,
+      "missionId": "OMEGA_B_40864221496"
+    },
+    "externalExecutionAuthorized": false
+  },
+  "originalJournalSha": "5c10913796ee2957d2b12319148ec9f81dd612f7",
+  "originalJournalState": "SUSPENDED",
+  "receiptId": "wolf-cross-job-independent-1ee81396c67706f97a1ff0ad4bdee0234ba2c1aed31480a0c343475a8dfec4a9"
+}

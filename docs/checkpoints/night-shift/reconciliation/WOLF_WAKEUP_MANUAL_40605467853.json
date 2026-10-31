@@ -1,0 +1,73 @@
+{
+  "schema": "WolfSuspendedMissionReconciliation/v1",
+  "missionId": "WOLF_WAKEUP_MANUAL_40605467853",
+  "state": "VERIFIED_NO_MISSION_EXECUTION_OBSERVED",
+  "decision": "KEEP_SUSPENDED_NO_AUTOMATIC_RETRY",
+  "scope": "Only this correlated GitHub workflow execution; authoritative step and job skip receipts confirm zero downstream execution.",
+  "originalJournal": {
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40605467853.json",
+    "blob": "c23ad47b8c8e91e452433878aa0d9aea530a6b7f",
+    "state": "CLAIMED",
+    "automaticRetry": false,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  },
+  "evidence": {
+    "runId": 40605467853,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40605467853",
+    "event": "workflow_dispatch",
+    "headSha": "4cd98df45b5b6b8f86d0fa372d7aa89d8d0139a6",
+    "jobs": [
+      {
+        "id": 122543744555,
+        "name": "night-shift-admission",
+        "conclusion": "failure",
+        "failedStep": "Reserve one durable wakeup without external mission effects"
+      },
+      {
+        "id": 122543798609,
+        "name": "integrated-factory",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122543798812,
+        "name": "runner-loss-prepare",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122543798979,
+        "name": "opencode-runtime",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122543799143,
+        "name": "security-tests",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122543799299,
+        "name": "dbos-runtime",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122543799484,
+        "name": "service-access",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 122543799706,
+        "name": "runner-loss-recover",
+        "conclusion": "skipped"
+      }
+    ],
+    "missionOwnerInvoked": false,
+    "dbosServiceStarted": false,
+    "inferencePerformed": false,
+    "executorStarted": false,
+    "privateBranchPublicationPerformed": false,
+    "gitJournalEffectsPreserved": true,
+    "reason": "ALL_MISSION_EXECUTION_JOBS_SKIPPED_BEFORE_OWNER_OR_DBOS_START"
+  },
+  "journalReset": false,
+  "journalDeleted": false,
+  "missionReplayed": false
+}

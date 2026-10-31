@@ -1,0 +1,63 @@
+{
+  "schema": "WolfDurablePairCompletion/v1",
+  "operationId": "WOLF_PAIR_40864221496_FINAL",
+  "state": "NEXT_READY_DRAINED",
+  "runId": "40864221496",
+  "manifest": {
+    "baseSha": "5fdab9c474f405d6f422dcee06793491afe813b1",
+    "workflowID": "wolf-cross-job-40864221496",
+    "requireIntegratedReview": true,
+    "restartAfterMissionA": true,
+    "crossJobContinuation": true,
+    "missions": [
+      {
+        "taskId": "OMEGA_A_40864221496",
+        "target": "docs/factory-acceptance/omega-40864221496-a.py",
+        "fixtureSource": "def add(a,b):\n    return a-b\n",
+        "requirement": "add(a,b) must return the arithmetic sum of the two integers.",
+        "testSource": "import importlib.util\nfrom pathlib import Path\ns=importlib.util.spec_from_file_location('candidate',Path(__file__).with_name('candidate.py'))\nm=importlib.util.module_from_spec(s);s.loader.exec_module(m)\nassert m.add(2,3)==5\nassert m.add(-3,2)==-1\n",
+        "independentSource": "import importlib.util\nfrom pathlib import Path\ns=importlib.util.spec_from_file_location('candidate',Path(__file__).with_name('candidate.py'))\nm=importlib.util.module_from_spec(s);s.loader.exec_module(m)\nfor a in range(-5,6):\n for b in range(-5,6): assert m.add(a,b)==a+b\n"
+      },
+      {
+        "taskId": "OMEGA_B_40864221496",
+        "target": "docs/factory-acceptance/omega-40864221496-b.py",
+        "fixtureSource": "def normalize(value):\n    return value.strip()\n",
+        "requirement": "normalize(value) strips whitespace, collapses every run of internal whitespace into a single space, and lowercases text.",
+        "testSource": "import importlib.util\nfrom pathlib import Path\ns=importlib.util.spec_from_file_location('candidate',Path(__file__).with_name('candidate.py'))\nm=importlib.util.module_from_spec(s);s.loader.exec_module(m)\nassert m.normalize(' A  B ')=='a b'\nassert m.normalize(' HeLLo ')=='hello'\n",
+        "independentSource": "import importlib.util\nfrom pathlib import Path\ns=importlib.util.spec_from_file_location('candidate',Path(__file__).with_name('candidate.py'))\nm=importlib.util.module_from_spec(s);s.loader.exec_module(m)\nassert m.normalize('')==''\nassert m.normalize(' A\\tB\\n C ')=='a b c'\nassert m.normalize(' X ')==m.normalize(m.normalize(' X '))\n"
+      }
+    ]
+  },
+  "continuationRevision": "3c92e39e459a413f67bee4cada85b052346c0abb",
+  "checkpointA": {
+    "state": "PERSISTED",
+    "commitSha": "e705d555dece9f6743d7fedf3a0c07b504b2083e",
+    "checkpointId": "wolf-cp-a1e678c02e49bf8832824b9f0f956912b5833f6e8a1695a59ca7c98ae8c9be5f",
+    "path": "docs/checkpoints/runtime/wolf-cp-a1e678c02e49bf8832824b9f0f956912b5833f6e8a1695a59ca7c98ae8c9be5f.json",
+    "replayed": false,
+    "missionId": "OMEGA_A_40864221496"
+  },
+  "checkpointB": {
+    "state": "PERSISTED",
+    "commitSha": "17b62f60855b1798d16ede1ffec55021b6cac648",
+    "checkpointId": "wolf-cp-d95ab57a943deb6a850e1829d9b37582685da4ba9bc882bb3cb513929a2e4583",
+    "path": "docs/checkpoints/runtime/wolf-cp-d95ab57a943deb6a850e1829d9b37582685da4ba9bc882bb3cb513929a2e4583.json",
+    "replayed": false,
+    "missionId": "OMEGA_B_40864221496"
+  },
+  "executionKey": "63992367de443efb04d7a4715c63b949f9423f0a8565a833620eb1adcad9cafe",
+  "cleanup": [
+    {
+      "state": "DESTROYED",
+      "missionId": "OMEGA_A_40864221496",
+      "session_id": "8fbd87ce-f7e8-4bc5-8579-272a86e965df",
+      "independentReadback": true
+    },
+    {
+      "state": "DESTROYED",
+      "missionId": "OMEGA_B_40864221496",
+      "session_id": "a733fc9d-5167-4d3f-bd0c-f1d694a993e9",
+      "independentReadback": true
+    }
+  ]
+}

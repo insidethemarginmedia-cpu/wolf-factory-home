@@ -2,6 +2,12 @@ name: Private Controller Access Preflight
 on:
   workflow_call:
     inputs:
+      consult_ollama:
+        type: boolean
+        default: false
+      public_runtime_sha:
+        type: string
+        required: true
       night_shift:
         type: boolean
         default: false
@@ -11,13 +17,28 @@ on:
       WOLF_FACTORY_DEPLOY_KEY:
         required: true
       OPENROUTER_API_KEY:
-        required: true
+        required: false
       GROQ_API_KEY:
         required: true
       BOXXKITE_API_KEY:
         required: true
+    outputs:
+      operational_outcome:
+        description: >-
+          Operational disposition of the bounded wakeup. MISSION_WORK_ADMITTED,
+          NO_MISSION_WORK_PERFORMED or V1_TERMINAL_DISPOSITION_ONLY. A run is not
+          autonomous acceptance unless this value is MISSION_WORK_ADMITTED.
+        value: ${{ jobs.night-shift-admission.outputs.operational_outcome }}
   workflow_dispatch:
     inputs:
+      consult_ollama:
+        description: Optional reuse of the qualified advisory Ollama runtime
+        type: boolean
+        default: false
+      public_runtime_sha:
+        description: Optional literal runtime SHA; direct dispatch otherwise uses its exact HEAD
+        type: string
+        default: ''
       night_shift:
         description: Run one bounded manual wakeup through the existing Factory
         type: boolean
@@ -30,6 +51,10 @@ on:
         description: Verify private source authorization only, without fetching source
         type: boolean
         default: false
+      reconcile_boxxkite_label:
+        description: Read-only exact-label lookup after an unknown sandbox create; never retries
+        type: string
+        default: ''
       verify_private_checkout:
         description: Read-only private checkout at pinned source SHA, no inference or publication
         type: boolean
@@ -41,13 +66,29 @@ on:
       use_publication_deploy_key:
         description: Use the explicitly authorized repository-scoped SSH publication credential
         type: boolean
-        default: false
+        default: true
       verify_private_regression:
         description: Run private regression and build only; no inference, sandbox or publication
         type: boolean
         default: false
+      reconcile_v1:
+        description: Independently read and reconcile historical V1 receipts without any journal mutation
+        type: boolean
+        default: false
+      v1_expected_revision:
+        description: Exact operational branch SHA required by the read-only V1 verifier
+        type: string
+        default: ''
+      v1_terminal_request:
+        description: Separately approved immutable gate-A request JSON; empty keeps V1 untouched
+        type: string
+        default: ''
       verify_runner_loss:
         description: Recover the existing Factory on a fresh runner and execute Mission C
+        type: boolean
+        default: false
+      verify_cross_job_ab:
+        description: Bounded synthetic A/B across existing jobs with durable KCT and DBOS recovery
         type: boolean
         default: false
       execute_integrated:
@@ -63,8 +104,9 @@ on:
         type: boolean
         default: false
   push:
-    branches: [feat/public-runtime-probe-20261022]
+    branches: [feat/public-runtime-probe-20261022, fix/omega-acceptance-ready-20261028]
     paths:
+      - '.github/workflows/night-shift-wakeup.yml'
       - '.github/workflows/private-controller-preflight.yml'
       - 'scripts/private-controller-preflight.mjs'
       - 'scripts/private-source-authorization.mjs'
@@ -74,27 +116,173 @@ on:
       - 'tests/existing-worker-qualification.test.mjs'
       - 'scripts/boxxkite-service-diagnostic.mjs'
       - 'tests/boxxkite-service-diagnostic.test.mjs'
+      - 'scripts/private-source-response.mjs'
+      - 'tests/private-source-response.test.mjs'
+      - 'scripts/git-publication-preflight.mjs'
+      - 'tests/git-publication-preflight.test.mjs'
+      - 'tests/factory-source-admission.test.mjs'
+      - 'tests/public-runtime-pin.test.mjs'
+      - 'tests/scheduler-promotion-candidate.test.mjs'
+      - 'docs/checkpoints/omega/MAIN-SCHEDULER-PROMOTION-*'
+      - 'tests/runner-checkpoint-publication.test.mjs'
+      - 'tests/night-shift-operational-outcome.test.mjs'
+      - 'tests/publication-reconciliation-superseded.test.mjs'
+      - 'tests/gitleaks-immutable-findings.test.mjs'
+      - '.gitleaksignore'
+      - 'docs/checkpoints/omega/GITLEAKS-IMMUTABLE-NONSECRET-*'
+      - 'tests/cross-job-pair-routing.test.mjs'
+      - 'tests/runner-state-restore-gate.test.mjs'
+      - 'tests/runner-loss-two-job-contract.test.mjs'
+      - 'tests/omega-b-preservation.test.mjs'
 permissions:
   contents: read
 concurrency:
   group: private-controller-preflight
   cancel-in-progress: false
 jobs:
+  factory-source-admission:
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && (inputs.night_shift == true || inputs.execute_integrated == true || inputs.verify_private_regression == true || inputs.verify_runner_loss == true || inputs.reconcile_v1 == true || inputs.verify_cross_job_ab == true || inputs.v1_terminal_request != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      public_runtime_sha: ${{ steps.pin.outputs.public_runtime_sha }}
+      source_sha: ${{ steps.pin.outputs.source_sha }}
+    steps:
+    - name: Resolve authorized Factory HEAD once at admission
+      id: pin
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        WOLF_NIGHT_SHIFT: ${{ inputs.night_shift }}
+        WOLF_PUBLIC_RUNTIME_SHA: ${{ inputs.public_runtime_sha }}
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        WOLF_EXECUTE_INTEGRATED: ${{ inputs.execute_integrated }}
+        WOLF_VERIFY_RUNNER_LOSS: ${{ inputs.verify_runner_loss }}
+        WOLF_VERIFY_CROSS_JOB: ${{ inputs.verify_cross_job_ab }}
+        WOLF_V1_TERMINAL_REQUEST: ${{ inputs.v1_terminal_request }}
+        EUR_SPEND: '0'
+        COST_UNKNOWN: DENY
+        PAID_FALLBACK: DENY
+        TRIAL_CREDIT: DENY
+      run: |
+        node --input-type=module <<'NODE'
+        import fs from 'node:fs';
+        // PUBLIC_RUNTIME_PIN_BEGIN
+        async function resolvePublicRuntimePin(env, fetchImpl = globalThis.fetch) {
+          const repository = 'insidethemarginmedia-cpu/wolf-factory-home';
+          const scheduled = env.GITHUB_EVENT_NAME === 'schedule' && env.GITHUB_REF === 'refs/heads/main';
+          const manual = env.GITHUB_EVENT_NAME === 'workflow_dispatch' && ['refs/heads/feat/public-runtime-probe-20261022', 'refs/heads/fix/omega-acceptance-ready-20261028'].includes(env.GITHUB_REF);
+          if (env.GITHUB_REPOSITORY !== repository || env.GITHUB_ACTOR !== 'insidethemarginmedia-cpu' || (!scheduled && !manual)) throw Error('PUBLIC_RUNTIME_SCOPE_DENIED');
+          if (env.EUR_SPEND !== '0' || ['COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT'].some(k => env[k] !== 'DENY')) throw Error('PUBLIC_RUNTIME_COST_DENIED');
+          const pin = env.WOLF_PUBLIC_RUNTIME_SHA || (manual ? env.GITHUB_SHA : '');
+          if (!/^[a-f0-9]{40}$/.test(pin || '') || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '')) throw Error('PUBLIC_RUNTIME_IMMUTABLE_PIN_REQUIRED');
+          if (![env.GITHUB_RUN_ID, env.GITHUB_RUN_ATTEMPT].every(v => /^[1-9][0-9]*$/.test(v || '')) || !env.GITHUB_TOKEN) throw Error('PUBLIC_RUNTIME_CONTEXT_REQUIRED');
+          let run;
+          try {
+            const response = await fetchImpl('https://api.github.com/repos/' + repository + '/actions/runs/' + env.GITHUB_RUN_ID + '/attempts/' + env.GITHUB_RUN_ATTEMPT, {headers: {authorization: 'Bearer ' + env.GITHUB_TOKEN, accept: 'application/vnd.github+json'}, redirect: 'error', signal: AbortSignal.timeout(15000)});
+            if (!response.ok) throw Error();
+            const raw = await response.text();
+            if (Buffer.byteLength(raw) > 262144) throw Error();
+            run = JSON.parse(raw);
+          } catch { throw Error('PUBLIC_RUNTIME_METADATA_UNAVAILABLE'); }
+          if (String(run?.id) !== env.GITHUB_RUN_ID || String(run.run_attempt) !== env.GITHUB_RUN_ATTEMPT || run.event !== env.GITHUB_EVENT_NAME || run.head_sha !== env.GITHUB_SHA) throw Error('PUBLIC_RUNTIME_RUN_MISMATCH');
+          const prefix = repository + '/.github/workflows/private-controller-preflight.yml@';
+          if (run.referenced_workflows != null && !Array.isArray(run.referenced_workflows)) throw Error('PUBLIC_RUNTIME_CALLEE_MISMATCH');
+          const refs = (run.referenced_workflows || []).filter(r => typeof r?.path === 'string' && r.path.startsWith(prefix));
+          if (refs.length) {
+            if (refs.length !== 1 || refs[0].path !== prefix + pin || refs[0].sha !== pin) throw Error('PUBLIC_RUNTIME_CALLEE_MISMATCH');
+          } else if (!manual || run.path !== '.github/workflows/private-controller-preflight.yml' || pin !== env.GITHUB_SHA) throw Error('PUBLIC_RUNTIME_CALLEE_MISMATCH');
+          return pin;
+        }
+        // PUBLIC_RUNTIME_PIN_END
+        // FACTORY_SOURCE_ADMISSION_BEGIN
+        async function resolveFactorySource(env, fetchImpl = globalThis.fetch) {
+          const manual = env.GITHUB_EVENT_NAME === 'workflow_dispatch' && [
+            'refs/heads/feat/public-runtime-probe-20261022',
+            'refs/heads/fix/omega-acceptance-ready-20261028',
+          ].includes(env.GITHUB_REF);
+          const scheduled = env.GITHUB_EVENT_NAME === 'schedule' && env.GITHUB_REF === 'refs/heads/main';
+          if (env.GITHUB_REPOSITORY !== 'insidethemarginmedia-cpu/wolf-factory-home' ||
+              env.GITHUB_ACTOR !== 'insidethemarginmedia-cpu' || (!manual && !scheduled)) {
+            throw Error('FACTORY_SOURCE_SCOPE_DENIED');
+          }
+          if (env.EUR_SPEND !== '0' || ['COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT'].some(k => env[k] !== 'DENY')) {
+            throw Error('FACTORY_SOURCE_COST_DENIED');
+          }
+          if (env.WOLF_VERIFY_CROSS_JOB === 'true' && (!manual || env.GITHUB_REF !== 'refs/heads/fix/omega-acceptance-ready-20261028' || env.WOLF_NIGHT_SHIFT === 'true' || env.WOLF_EXECUTE_INTEGRATED === 'true' || env.WOLF_VERIFY_RUNNER_LOSS === 'true')) throw Error('FACTORY_SOURCE_CROSS_JOB_SCOPE_DENIED');
+          if (env.WOLF_V1_TERMINAL_REQUEST && (!manual || env.WOLF_NIGHT_SHIFT === 'true' || env.WOLF_EXECUTE_INTEGRATED === 'true' || env.WOLF_VERIFY_RUNNER_LOSS === 'true' || env.WOLF_VERIFY_CROSS_JOB === 'true')) throw Error('FACTORY_SOURCE_TERMINAL_SCOPE_DENIED');
+          if (env.WOLF_EXECUTE_INTEGRATED === 'true' && env.WOLF_VERIFY_RUNNER_LOSS === 'true') {
+            throw Error('FACTORY_SOURCE_CONCURRENT_ACCEPTANCE_DENIED');
+          }
+          const token = env.WOLF_FACTORY_REPO_TOKEN;
+          if (typeof token !== 'string' || !token.trim() || /[\r\n\0]/.test(token)) throw Error('FACTORY_SOURCE_CREDENTIAL_REQUIRED');
+          const repository = 'donraposo1-source/project-wolf';
+          const branch = 'feat/factory-real-worker-m1-20261006';
+          let response;
+          try {
+            response = await fetchImpl('https://api.github.com/repos/' + repository + '/git/ref/heads/' + branch, {
+              headers: {authorization: 'Bearer ' + token, accept: 'application/vnd.github+json'},
+              redirect: 'error', signal: AbortSignal.timeout(20000),
+            });
+          } catch { throw Error('FACTORY_SOURCE_NETWORK_FAILED'); }
+          if (!response.ok) throw Error('FACTORY_SOURCE_HTTP_DENIED');
+          let data;
+          try {
+            const raw = await response.text();
+            if (Buffer.byteLength(raw) > 8192) throw Error();
+            data = JSON.parse(raw);
+          } catch { throw Error('FACTORY_SOURCE_RESPONSE_INVALID'); }
+          if (data?.ref !== 'refs/heads/' + branch || data.object?.type !== 'commit' || !/^[a-f0-9]{40}$/.test(data.object?.sha || '')) {
+            throw Error('FACTORY_SOURCE_REF_DENIED');
+          }
+          return Object.freeze({repository, branch, sha: data.object.sha});
+        }
+        // FACTORY_SOURCE_ADMISSION_END
+        const publicPin = process.env.WOLF_NIGHT_SHIFT === 'true' ? await resolvePublicRuntimePin(process.env) : process.env.GITHUB_SHA;
+        const admission = await resolveFactorySource(process.env);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, 'public_runtime_sha=' + publicPin + '\n');
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, 'source_sha=' + admission.sha + '\n');
+        console.log('WOLF_FACTORY_SOURCE_ADMITTED=' + JSON.stringify(admission));
+        NODE
+    - name: Checkout immutable private V1 verifier for an explicitly selected read-only reconciliation
+      if: inputs.reconcile_v1 == true && github.event_name == 'workflow_dispatch'
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: donraposo1-source/project-wolf
+        ref: ${{ steps.pin.outputs.source_sha }}
+        token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        path: private-v1-verifier
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Verify original V1 Git effects and execution exclusion without mutation
+      if: inputs.reconcile_v1 == true && github.event_name == 'workflow_dispatch'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        WOLF_V1_EXPECTED_REVISION: ${{ inputs.v1_expected_revision }}
+        EUR_SPEND: '0'
+        COST_UNKNOWN: DENY
+        PAID_FALLBACK: DENY
+        TRIAL_CREDIT: DENY
+      run: node private-v1-verifier/scripts/wolf-night-shift-wakeup.mjs reconcile
   night-shift-admission:
-    if: inputs.night_shift == true && github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
-      && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') || (github.event_name
-      == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'))
+    needs: factory-source-admission
+    if: github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((inputs.night_shift == true && inputs.v1_terminal_request == '' && ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'))) || (inputs.v1_terminal_request != '' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && inputs.night_shift != true && inputs.verify_cross_job_ab != true && inputs.execute_integrated != true && inputs.verify_runner_loss != true))
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
       contents: write
+      actions: read
     outputs:
       ready: ${{ steps.reserve.outputs.ready == 'true' && steps.quota.outcome == 'success' }}
+      operational_outcome: ${{ steps.operational_skip.outputs.operational_outcome || steps.terminal.outputs.operational_outcome || (steps.quota.conclusion == 'success' && 'MISSION_WORK_ADMITTED' || 'OPERATIONAL_OUTCOME_UNDETERMINED') }}
     env:
-      WOLF_FACTORY_EXPECTED_SHA: ee2d8ba15cd99d8788409c00c2fec3b1cd052370
+      WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
       GROQ_FREE_PLAN_CONFIRMED: 'true'
-      WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
+      WOLF_FACTORY_RUNTIME_ROOT: ${{ inputs.v1_terminal_request != '' && format('/tmp/wolf-v1-disposition-{0}', github.run_id) || format('/tmp/wolf-integrated-{0}', github.run_id) }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       EUR_SPEND: '0'
       COST_UNKNOWN: DENY
@@ -104,15 +292,54 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: ee2d8ba15cd99d8788409c00c2fec3b1cd052370
+        ref: ${{ needs.factory-source-admission.outputs.source_sha }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
     - name: Reserve one durable wakeup without external mission effects
+      if: inputs.v1_terminal_request == ''
       id: reserve
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: node scripts/wolf-night-shift-wakeup.mjs prepare
+    - name: Publish only a separately approved V1 terminal disposition
+      if: inputs.v1_terminal_request != ''
+      id: terminal
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        WOLF_TERMINAL_REQUEST_JSON: ${{ inputs.v1_terminal_request }}
+        WOLF_V1_DISPOSITION_REQUEST: ${{ runner.temp }}/wolf-v1-request.json
+      run: |
+        node --input-type=module <<'NODE'
+        import fs from 'node:fs';
+        const raw=process.env.WOLF_TERMINAL_REQUEST_JSON;
+        if(typeof raw!=='string'||Buffer.byteLength(raw)>16384)throw Error('TERMINAL_REQUEST_LIMIT');
+        fs.writeFileSync(process.env.WOLF_V1_DISPOSITION_REQUEST,JSON.stringify(JSON.parse(raw)),{flag:'wx',mode:0o600});
+        NODE
+        node scripts/wolf-night-shift-wakeup.mjs publish-terminal-disposition
+        echo 'operational_outcome=V1_TERMINAL_DISPOSITION_ONLY' >> "$GITHUB_OUTPUT"
+    - name: Record explicit operational skip without mission work
+      if: inputs.v1_terminal_request == '' && steps.reserve.outputs.ready != 'true'
+      id: operational_skip
+      env:
+        RESERVE_READY: ${{ steps.reserve.outputs.ready }}
+      run: |
+        set -euo pipefail
+        outcome='NO_MISSION_WORK_PERFORMED'
+        {
+          echo '### Wolf wakeup operational outcome: NO_MISSION_WORK_PERFORMED'
+          echo ''
+          echo "The reservation gate returned ready=${RESERVE_READY:-<empty>}. The quota gate and every"
+          echo 'mission job were skipped, so this run performed no mission work.'
+          echo ''
+          echo 'This run is NOT autonomous acceptance. No mission executed, no external effect was'
+          echo 'created and no lease was released or replayed by this step.'
+          echo ''
+          echo "WOLF_WAKEUP_OPERATIONAL_OUTCOME=${outcome}"
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "operational_outcome=${outcome}" >> "$GITHUB_OUTPUT"
+        echo "WOLF_WAKEUP_OPERATIONAL_OUTCOME=${outcome}"
     - name: Admit one bounded direct Groq Free attempt without OpenRouter quota dependency
       id: quota
       if: steps.reserve.outputs.ready == 'true'
@@ -127,7 +354,7 @@ jobs:
         GITHUB_TOKEN: ${{ github.token }}
       run: node scripts/wolf-night-shift-wakeup.mjs suspend
   security-tests:
-    needs: night-shift-admission
+    needs: [night-shift-admission, factory-source-admission]
     if: always() && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && (inputs.night_shift != true || needs.night-shift-admission.outputs.ready == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -136,11 +363,11 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-          ref: ${{ inputs.night_shift == true && 'f13d1a3e0a2abb93890a0e36746f4eefb9c94f82' || github.sha }}
+          ref: ${{ inputs.night_shift == true && needs.factory-source-admission.outputs.public_runtime_sha || github.sha }}
       - run: node --test tests/*.test.mjs
   dbos-runtime:
     needs: security-tests
-    if: always() && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_dbos_runtime == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
+    if: always() && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_dbos_runtime == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028') && github.actor == 'insidethemarginmedia-cpu'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -246,16 +473,33 @@ jobs:
           echo PRIVATE_DBOS_RUNNER_RECOVERY=PASS
 
   service-access:
-    needs: security-tests
-    if: always() && needs.security-tests.result == 'success' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu'
+    needs: [security-tests, factory-source-admission, night-shift-admission]
+    if: >-
+      always() && needs.security-tests.result == 'success' &&
+      (inputs.verify_private_regression != true || needs.factory-source-admission.result == 'success') &&
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' &&
+      ((github.ref == 'refs/heads/feat/public-runtime-probe-20261022') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && (inputs.verify_private_source == true || inputs.reconcile_boxxkite_label != '')) ||
+      (github.event_name == 'schedule' && github.ref == 'refs/heads/main' && inputs.night_shift == true &&
+      needs.factory-source-admission.result == 'success' && needs.night-shift-admission.outputs.ready == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
           fetch-depth: 1
+          ref: ${{ inputs.night_shift == true && needs.factory-source-admission.outputs.public_runtime_sha || github.sha }}
+      - name: Observe an unknown Boxxkite create with the existing controller credential
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && inputs.reconcile_boxxkite_label != ''
+        env:
+          BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
+          WOLF_BOXXKITE_RECONCILE_LABEL: ${{ inputs.reconcile_boxxkite_label }}
+        run: node scripts/boxxkite-service-diagnostic.mjs --reconcile-create
       - name: Verify OpenRouter authentication independently (no inference)
+        if: inputs.night_shift != true && env.OPENROUTER_API_KEY != ''
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: node scripts/private-controller-preflight.mjs --openrouter-auth-only
@@ -264,7 +508,7 @@ jobs:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: node scripts/private-controller-preflight.mjs --github-auth-only
       - name: Read current free request allowance without inference
-        if: github.event_name == 'workflow_dispatch' && inputs.execute_integrated != true && inputs.verify_private_regression != true
+        if: github.event_name == 'workflow_dispatch' && inputs.night_shift != true && env.OPENROUTER_API_KEY != '' && inputs.execute_integrated != true && inputs.verify_private_regression != true
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: 'node --input-type=module <<''NODE''
@@ -305,6 +549,7 @@ jobs:
           if(!receive.ok)process.exitCode=78;
           NODE
       - name: Verify service access without inference or private checkout
+        if: inputs.night_shift != true && env.OPENROUTER_API_KEY != ''
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
@@ -348,7 +593,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: ee2d8ba15cd99d8788409c00c2fec3b1cd052370
+          ref: ${{ needs.factory-source-admission.outputs.source_sha }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           path: private-groq-observer
           persist-credentials: false
@@ -431,12 +676,15 @@ jobs:
           echo CEZAR_OPENCODE_LIFECYCLE_EXIT_CODE=0
 
   integrated-factory:
-    needs: [security-tests, night-shift-admission]
-    if: always() && needs.security-tests.result == 'success' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && (inputs.execute_integrated == true || inputs.verify_private_regression == true)) || (inputs.night_shift == true && needs.night-shift-admission.outputs.ready == 'true'))
+    needs: [security-tests, night-shift-admission, factory-source-admission]
+    if: always() && needs.factory-source-admission.result == 'success' && needs.security-tests.result == 'success' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028') && (inputs.execute_integrated == true || inputs.verify_private_regression == true || inputs.verify_cross_job_ab == true)) || (inputs.night_shift == true && needs.night-shift-admission.outputs.ready == 'true' && ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022')))) && (inputs.verify_cross_job_ab != true || (github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && inputs.night_shift != true && inputs.execute_integrated != true && inputs.verify_runner_loss != true))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: write
+      actions: read
+    outputs:
+      snapshot_sha: ${{ steps.cross_job_export.outputs.snapshot_sha }}
     services:
       postgres:
         image: postgres:16
@@ -452,7 +700,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      WOLF_OLLAMA_FACTORY_ENABLED: '1'
+      WOLF_OLLAMA_FACTORY_ENABLED: ${{ inputs.consult_ollama == true && '1' || '0' }}
       WOLF_OLLAMA_ZERO_COST_VERIFIED: '1'
       WOLF_OLLAMA_ENDPOINT: http://127.0.0.1:11434
       WOLF_OLLAMA_MODEL_DIGEST: 4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09
@@ -462,10 +710,12 @@ jobs:
       CEZAR_SHA: 1b13522dd3642a4ea8331629b3680838164d2a2e
       OPENCODE_VERSION_PIN: 1.18.34
       WOLF_FACTORY_CWD: ${{ github.workspace }}
-      WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
-      WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
+      WOLF_FACTORY_RUNTIME_ROOT: ${{ inputs.verify_cross_job_ab == true && format('/tmp/wolf-cross-job-{0}', github.run_id) || format('/tmp/wolf-integrated-{0}', github.run_id) }}
+      WOLF_FACTORY_ACCEPTANCE_MANIFEST: ${{ inputs.verify_cross_job_ab == true && format('/tmp/wolf-cross-job-{0}/manifest.json', github.run_id) || format('/tmp/wolf-manifest-{0}.json', github.run_id) }}
+      WOLF_CROSS_JOB_TEST: ${{ inputs.verify_cross_job_ab == true && '1' || '0' }}
+      WOLF_FACTORY_ORIGINAL_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: ee2d8ba15cd99d8788409c00c2fec3b1cd052370
+      WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -480,14 +730,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: ee2d8ba15cd99d8788409c00c2fec3b1cd052370
+          ref: ${{ needs.factory-source-admission.outputs.source_sha }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'ee2d8ba15cd99d8788409c00c2fec3b1cd052370'
+          test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -543,7 +793,7 @@ jobs:
           fi
           test -z "$(git status --porcelain)"
       - name: Require existing service credentials without reading values
-        if: inputs.execute_integrated == true || inputs.night_shift == true
+        if: inputs.execute_integrated == true || inputs.night_shift == true || inputs.verify_cross_job_ab == true
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -562,7 +812,7 @@ jobs:
           node --test tests/wolf-engineering-model-policy.test.mjs
           echo INTEGRATED_QUALIFIED_MODEL_POLICY=REUSED
       - name: Reuse or install pinned existing OpenCode runtime
-        if: inputs.execute_integrated == true || inputs.night_shift == true
+        if: inputs.execute_integrated == true || inputs.night_shift == true || inputs.verify_cross_job_ab == true
         shell: bash
         run: |
           set -euo pipefail
@@ -575,7 +825,7 @@ jobs:
           opencode --help >/dev/null
           echo OPENCODE_HELP_EXIT_CODE=0
       - name: Build the existing pinned Cezar controller
-        if: inputs.execute_integrated == true || inputs.night_shift == true
+        if: inputs.execute_integrated == true || inputs.night_shift == true || inputs.verify_cross_job_ab == true
         shell: bash
         run: |
           set -euo pipefail
@@ -586,7 +836,7 @@ jobs:
           npm run build --prefix "$RUNNER_TEMP/cezar"
           echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
       - name: Reuse qualified pinned ephemeral Ollama for existing Factory review
-        if: inputs.execute_integrated == true || inputs.night_shift == true
+        if: inputs.consult_ollama == true && (inputs.execute_integrated == true || inputs.night_shift == true || inputs.verify_cross_job_ab == true)
         continue-on-error: true # Ollama is advisory; failure must not block Flint/Groq or DBOS
         shell: bash
         run: "set -euo pipefail\ntest \"$(nproc)\" -ge 3\ntest \"$(free -b | awk '/^Mem:/ {print $2}')\" -ge 12884901888\ntimeout 180s docker pull \"\
@@ -599,35 +849,40 @@ jobs:
           \ Error('OLLAMA_MODEL_DIGEST_MISMATCH');\nconsole.log('WOLF_OLLAMA_FACTORY_RUNTIME='+JSON.stringify({state:'QUALIFIED_LOCAL_RUNTIME_READY',model:m.name,modelDigest:m.digest,endpoint:'127.0.0.1:11434',inferencePerformed:false}));\n\
           NODE\n"
       - name: Prepare explicitly selected SSH publication credential
-        if: (inputs.execute_integrated == true && inputs.use_publication_deploy_key == true) || inputs.night_shift == true
+        if: ((inputs.execute_integrated == true || inputs.verify_cross_job_ab == true) && inputs.use_publication_deploy_key == true) || inputs.night_shift == true
         env:
           WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
         run: |
           node --input-type=module <<'NODE'
-          import fs from 'node:fs';import path from 'node:path';
-          const key=process.env.WOLF_FACTORY_DEPLOY_KEY;
-          if(!key||!key.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+          import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';
+          const raw=typeof process.env.WOLF_FACTORY_DEPLOY_KEY==='string'?process.env.WOLF_FACTORY_DEPLOY_KEY.replace(/\r\n?/g,'\n').trim():'';
+          if(!raw||!raw.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+          if(raw.includes('\0')||!raw.endsWith('-----END OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_INVALID');process.exit(78);}
           const keyFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-key');
           const hostsFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-known-hosts');
-          fs.writeFileSync(keyFile,key.trim()+'\n',{flag:'wx',mode:0o600});
-          fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
-          const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
-          const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
-          fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
-          console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+          fs.writeFileSync(keyFile,raw+'\n',{flag:'wx',mode:0o600});
+          const cleanup=()=>{for(const f of [keyFile,hostsFile])fs.rmSync(f,{force:true});};
+          try{
+            fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
+            const k=spawnSync('ssh-keygen',['-y','-f',keyFile],{stdio:['ignore','ignore','pipe'],timeout:5000});
+            if(k.status!==0||k.signal||k.error){cleanup();console.error('PUBLICATION_DEPLOY_KEY_INVALID');process.exit(78);}
+            const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+            const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
+            fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
+            console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+          }catch(e){cleanup();throw e;}
           NODE
       - name: Prepare bounded synthetic missions and authorized Git transport
-        if: inputs.execute_integrated == true
+        if: inputs.execute_integrated == true || inputs.verify_cross_job_ab == true
         shell: bash
         run: |
           set -euo pipefail
-          git switch -c feat/factory-real-worker-m1-20261006
-          if test "${WOLF_FACTORY_GIT_TRANSPORT:-https-token}" = ssh-deploy-key; then
-            git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
-          else
-            git remote set-url origin https://github.com/donraposo1-source/project-wolf.git
+          if test "${WOLF_FACTORY_GIT_TRANSPORT:-}" != ssh-deploy-key; then
+            echo PUBLICATION_DEPLOY_KEY_SELECTION_REQUIRED=true
+            exit 78
           fi
-          git config credential.helper '!f() { echo username=x-access-token; echo password="$WOLF_FACTORY_REPO_TOKEN"; }; f'
+          git switch -c feat/factory-real-worker-m1-20261006
+          git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
           node <<'NODE'
           const fs=require('fs'),path=require('path');
           const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
@@ -638,7 +893,7 @@ jobs:
           const run=process.env.GITHUB_RUN_ID;
           const test=(expression)=>"import importlib.util\nfrom pathlib import Path\ns=importlib.util.spec_from_file_location('candidate',Path(__file__).with_name('candidate.py'))\nm=importlib.util.module_from_spec(s);s.loader.exec_module(m)\n"+expression+'\n';
           const missions=[{taskId:'OMEGA_A_'+run,target:'docs/factory-acceptance/omega-'+run+'-a.py',fixtureSource:'def add(a,b):\n    return a-b\n',requirement:'add(a,b) must return the arithmetic sum of the two integers.',testSource:test('assert m.add(2,3)==5\nassert m.add(-3,2)==-1'),independentSource:test('for a in range(-5,6):\n for b in range(-5,6): assert m.add(a,b)==a+b')},{taskId:'OMEGA_B_'+run,target:'docs/factory-acceptance/omega-'+run+'-b.py',fixtureSource:'def normalize(value):\n    return value.strip()\n',requirement:'normalize(value) strips whitespace, collapses every run of internal whitespace into a single space, and lowercases text.',testSource:test("assert m.normalize(' A  B ')=='a b'\nassert m.normalize(' HeLLo ')=='hello'"),independentSource:test("assert m.normalize('')==''\nassert m.normalize(' A\\tB\\n C ')=='a b c'\nassert m.normalize(' X ')==m.normalize(m.normalize(' X '))")}];
-          fs.writeFileSync(process.env.WOLF_FACTORY_ACCEPTANCE_MANIFEST,JSON.stringify({baseSha:process.env.WOLF_FACTORY_EXPECTED_SHA,workflowID:'wolf-omega-integrated-'+run,requireIntegratedReview:true,restartAfterMissionA:true,missions}));
+          fs.writeFileSync(process.env.WOLF_FACTORY_ACCEPTANCE_MANIFEST,JSON.stringify({baseSha:process.env.WOLF_FACTORY_EXPECTED_SHA,workflowID:(process.env.WOLF_CROSS_JOB_TEST==='1'?'wolf-cross-job-':'wolf-omega-integrated-')+run,requireIntegratedReview:true,restartAfterMissionA:true,...(process.env.WOLF_CROSS_JOB_TEST==='1'?{crossJobContinuation:true}:{}),missions}));
           NODE
       - name: Materialize the reserved self-repair in the existing canonical inbox
         if: inputs.night_shift == true
@@ -650,19 +905,84 @@ jobs:
       
           git remote set-url origin git@github.com:donraposo1-source/project-wolf.git'
       - name: Verify authorized branch publication with no ref update
-        if: inputs.execute_integrated == true || inputs.night_shift == true
+        if: inputs.execute_integrated == true || inputs.night_shift == true || inputs.verify_cross_job_ab == true
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
           import {spawnSync} from 'node:child_process';
-          const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+          const branch='feat/factory-real-worker-m1-20261006',repo='donraposo1-source/project-wolf';
+          const transport=process.env.WOLF_FACTORY_GIT_TRANSPORT||'https-token';
+          if(transport!=='ssh-deploy-key'&&transport!=='https-token')throw Error('UNAUTHORIZED_GIT_TRANSPORT');
+          const cur=spawnSync('git',['symbolic-ref','--quiet','--short','HEAD'],{encoding:'utf8',timeout:5000});
+          if(cur.status!==0||cur.stdout.trim()!==branch)throw Error('UNAUTHORIZED_LOCAL_BRANCH');
+          const rem=spawnSync('git',['remote','get-url','origin'],{encoding:'utf8',timeout:5000});
+          const expectedRemote=transport==='ssh-deploy-key'?'git@github.com:'+repo+'.git':'https://github.com/'+repo+'.git';
+          if(rem.status!==0||rem.stdout.trim()!==expectedRemote)throw Error('UNAUTHORIZED_GIT_REMOTE');
+          const pinned=process.env.WOLF_FACTORY_EXPECTED_SHA;
+          if(!/^[a-f0-9]{40}$/.test(pinned||''))throw Error('MISSION_SOURCE_PIN_REQUIRED');
+          const tip=spawnSync('git',['ls-remote','--exit-code','origin','refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+          if(tip.status!==0||tip.signal||tip.error)throw Error('REMOTE_COMMIT_UNVERIFIED');
+          if(tip.stdout.trim()!==pinned+'\trefs/heads/'+branch)throw Error('CONCURRENT_BRANCH_ADVANCED');
+          const p=spawnSync('git',['push','--dry-run','--force-with-lease=refs/heads/'+branch+':'+pinned,'origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
           const text=String(p.stderr||'');
-          const safe=text.replace(/https?:\/\/[^\s]+/g,'[REDACTED_URL]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').split(process.env.WOLF_FACTORY_REPO_TOKEN||'\0').join('[REDACTED_TOKEN]').slice(0,4000);
+          let safe=text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[REDACTED_KEY]');
+          for(const rawVal of [process.env.WOLF_FACTORY_REPO_TOKEN,process.env.GITHUB_TOKEN]){
+            if(typeof rawVal==='string'&&rawVal){for(const v of new Set([rawVal,rawVal.trim()].filter(Boolean))){for(const s of [v,encodeURIComponent(v),Buffer.from('x-access-token:'+v).toString('base64')])if(s)safe=safe.split(s).join('[REDACTED_TOKEN]');}}
+          }
+          safe=safe.replace(/authorization:\s*(?:basic|bearer)\s+[^\s'"]+/gi,'Authorization: [REDACTED_AUTH]').replace(/x-access-token:[^\s@'"]+/gi,'x-access-token:[REDACTED_TOKEN]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').replace(/(?:https?|ssh):\/\/[^\s'"]+/gi,'[REDACTED_URL]');
+          if(process.env.RUNNER_TEMP)safe=safe.split(process.env.RUNNER_TEMP).join('[REDACTED_RUNNER_TEMP]');
+          safe=safe.slice(0,4000);
           console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
-          const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
-          console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
-          if(p.status!==0)throw Error(reason);
+          const reason=p.status===0&&!p.signal&&!p.error?'AUTHORIZED':p.error?.code==='ETIMEDOUT'||p.signal==='SIGTERM'||p.signal==='SIGKILL'?'GIT_PUBLICATION_TIMEOUT':/host key verification failed|remote host identification has changed|no [a-z0-9-]+ host key is known/i.test(text)?'SSH_HOST_VERIFICATION_FAILED':/load key .*:(?:\s*invalid format|\s*error in libcrypto|\s*bad permissions|\s*no such file)|identity file .* not accessible/i.test(text)?'SSH_KEY_INVALID':/\b403\b|write access.*not granted|permission to .* denied|permission.*denied|authentication failed|could not read username|could not read password|terminal prompts disabled|repository not found/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/GH006|GH013|protected branch|repository rule violations|hook declined/i.test(text)?'BRANCH_PROTECTION_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|stale info|cannot lock ref .* expected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':/does not appear to be a git repository|no such remote|src refspec .* does not match any|invalid refspec/i.test(text)?'INVALID_GIT_REMOTE_OR_BRANCH':/could not resolve hostname|connection timed out|operation timed out|connection reset|kex_exchange_identification|network is unreachable/i.test(text)?'GIT_NETWORK_UNAVAILABLE':'GIT_PUBLICATION_PREFLIGHT_FAILED';
+          console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,transport,expectedRemoteSha:pinned,casEnforced:true,refUpdated:false}));
+          if(p.status!==0||reason!=='AUTHORIZED')throw Error(reason);
+          const leaseFence=process.env.WOLF_CROSS_JOB_TEST==='1'?2:process.env.WOLF_RUNNER_LOSS_TEST==='1'?JSON.parse(fs.readFileSync(path.join(process.env.WOLF_FACTORY_RUNTIME_ROOT,'runner-loss-admission.json'),'utf8')).fencingToken+1:1;
+          if(!Number.isSafeInteger(leaseFence)||leaseFence<1)throw Error('STALE_LEASE_FENCE_REJECTED');
+          const manifest=JSON.parse(fs.readFileSync(process.env.WOLF_FACTORY_ACCEPTANCE_MANIFEST,'utf8')),missionId=manifest.missions?.[process.env.WOLF_CROSS_JOB_TEST==='1'&&process.env.GITHUB_JOB==='runner-loss-recover'?1:0]?.taskId;
+          if(typeof missionId!=='string'||!/^\w[\w-]{0,69}$/.test(missionId))throw Error('CAS_LEASE_MISSION_ID_REQUIRED');
+          const claimsPath=path.resolve(process.env.WOLF_FACTORY_RUNTIME_ROOT,'.continuity/tasks/claims');
+          const leasePath=path.resolve(process.env.RUNNER_TEMP,'wolf-cas-lease.json');
+          fs.writeFileSync(leasePath,JSON.stringify({repository:repo,branch,expectedRemoteSha:pinned,admittedSha:pinned,leaseFence,missionId},null,2)+'\n',{mode:0o600});
+          fs.mkdirSync('.git/hooks',{recursive:true});
+          const hook="#!"+process.execPath+"\nconst fs = require('node:fs');\nconst path = require('node:path');\nconst {spawnSync} = require('node:child_process');\nconst leasePath = "+JSON.stringify(leasePath)+";\nconst minimumFence = 1;\nconst canonicalRepository = \"donraposo1-source/project-wolf\";\nconst canonicalBranch = \"feat/factory-real-worker-m1-20261006\";\nconst expectedMissionId = null;\nconst kctAuthorityPath = null;\nconst kctAuthorityDirectory = "+JSON.stringify(claimsPath)+";\nconst deny = reason => { throw Object.assign(new Error(reason), {wolfReason: reason}); };\nconst sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);\nconst git = args => {\n  const result = spawnSync('git', args, {encoding: 'utf8', timeout: 30000, env: {...process.env, GIT_TERMINAL_PROMPT: '0'}});\n  if (result.status !== 0 || result.signal || result.error) deny('REMOTE_COMMIT_UNVERIFIED');\n  return String(result.stdout || '').trim();\n};\nlet lock;\ntry {\n  if (!fs.existsSync(leasePath)) deny('CAS_LEASE_MISSING');\n  try { lock = fs.openSync(leasePath + '.lock', 'wx', 0o600); }\n  catch { deny('PUBLICATION_LEASE_BUSY'); }\n  const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));\n  if (lease.repository !== canonicalRepository || lease.branch !== canonicalBranch || !sha(lease.expectedRemoteSha) || !sha(lease.admittedSha)) deny('CAS_LEASE_STATE_MISMATCH');\n  const workerFence = Number(process.env.WOLF_GIT_PUBLICATION_FENCE);\n  if (!Number.isSafeInteger(lease.leaseFence) || lease.leaseFence < minimumFence || !Number.isSafeInteger(workerFence) || workerFence !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');\n  // P0-A: Mission identity - the lease must carry the admitted mission identity.\n  if (expectedMissionId) {\n    if (!lease.missionId) deny('LEASE_OWNERSHIP_NOT_VALIDATED');\n    if (lease.missionId !== expectedMissionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');\n  }\n  if (kctAuthorityDirectory) {\n    if (typeof lease.missionId !== 'string' || !/^[A-Za-z0-9_-]{1,70}$/.test(lease.missionId) || process.env.WOLF_GIT_PUBLICATION_MISSION_ID !== lease.missionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');\n    let claim;\n    try { claim = JSON.parse(fs.readFileSync(path.join(kctAuthorityDirectory, encodeURIComponent(lease.missionId) + '.json'), 'utf8')); }\n    catch { deny('KCT_AUTHORITY_INACCESSIBLE'); }\n    if (claim?.taskId !== lease.missionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');\n    if (!Number.isSafeInteger(claim.fencingToken) || claim.fencingToken < 1 || claim.fencingToken !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');\n    if (!Number.isFinite(claim.expiresAt) || claim.expiresAt <= Date.now()) deny('KCT_LEASE_EXPIRED');\n  }\n  // P0-A: Fence authority from external KCT/DBOS state - the same process cannot\n  // self-authorize by overwriting a sidecar file. Cross-check against the\n  // authoritative checkpoint written by a previous recovery cycle.\n  let kctFence = null;\n  if (kctAuthorityPath) {\n    try {\n      const kct = JSON.parse(fs.readFileSync(kctAuthorityPath, 'utf8'));\n      kctFence = Number.isSafeInteger(kct.newFence) ? kct.newFence : (Number.isSafeInteger(kct.leaseFence) ? kct.leaseFence : null);\n    } catch {\n      // If the authoritative KCT state is inaccessible, fail closed.\n      deny('KCT_AUTHORITY_INACCESSIBLE');\n    }\n    if (!Number.isSafeInteger(kctFence) || kctFence < 1) deny('KCT_AUTHORITY_INVALID');\n  }\n  if (kctFence !== null && lease.leaseFence < kctFence) deny('STALE_LEASE_FENCE_REJECTED');\n  const lines = fs.readFileSync(0, 'utf8').trim().split(/\\r?\\n/).filter(Boolean);\n  if (lines.length > 1) deny('MULTIPLE_PUBLICATION_REFS_DENIED');\n  for (const line of lines) {\n    const [, localSha, remoteRef, remoteSha] = line.trim().split(/\\s+/);\n    const targetRef = 'refs/heads/' + canonicalBranch;\n    if (remoteRef !== targetRef || !sha(localSha)) deny('UNAUTHORIZED_TARGET_BRANCH');\n    const observed = git(['ls-remote', '--exit-code', process.argv[2] || 'origin', targetRef]).split(/\\s+/)[0];\n    const pending = lease.pendingPublication;\n    if (pending) {\n      if (!sha(pending.candidateSha) || pending.expectedRemoteSha !== lease.expectedRemoteSha) deny('CAS_LEASE_STATE_MISMATCH');\n      if (pending.leaseFence !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');\n      if (observed === lease.expectedRemoteSha) deny('PUBLICATION_OUTCOME_RECONCILIATION_REQUIRED');\n      if (observed !== pending.candidateSha) deny('CONCURRENT_BRANCH_ADVANCED');\n      // Exact readback of our own recorded intent is the only allowed advancement.\n      lease.expectedRemoteSha = observed;\n      delete lease.pendingPublication;\n    }\n    if (observed !== lease.expectedRemoteSha || remoteSha !== lease.expectedRemoteSha) deny('CONCURRENT_BRANCH_ADVANCED');\n    const ff = spawnSync('git', ['merge-base', '--is-ancestor', lease.expectedRemoteSha, localSha], {encoding: 'utf8', timeout: 5000});\n    if (ff.status !== 0 || ff.error || ff.signal) deny('CONCURRENT_BRANCH_ADVANCED');\n    if (localSha !== lease.expectedRemoteSha) lease.pendingPublication = {expectedRemoteSha: lease.expectedRemoteSha, candidateSha: localSha, leaseFence: lease.leaseFence};\n    const temporary = leasePath + '.tmp-' + process.pid;\n    fs.writeFileSync(temporary, JSON.stringify(lease, null, 2) + '\\n', {mode: 0o600});\n    fs.renameSync(temporary, leasePath);\n  }\n} catch (error) {\n  console.error(error.wolfReason || 'CAS_PUBLICATION_GUARD_DENIED');\n  process.exitCode = 1;\n} finally {\n  if (lock !== undefined) {\n    fs.closeSync(lock);\n    fs.rmSync(leasePath + '.lock', {force: true});\n  }\n}\n";
+          fs.writeFileSync('.git/hooks/pre-push',hook,{mode:0o700});
+          fs.appendFileSync(process.env.GITHUB_ENV,'WOLF_GIT_PUBLICATION_FENCE='+leaseFence+'\nWOLF_GIT_PUBLICATION_MISSION_ID='+missionId+'\n');
+          NODE
+      - name: Execute A and publish durable cross-job NEXT_READY
+        id: cross_job_export
+        if: inputs.verify_cross_job_ab == true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
+          PG_CONTAINER_ID: ${{ job.services.postgres.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-a.log" 2>&1
+          rc=$?
+          set -e
+          if test "$rc" -ne 79; then tail -c 8000 "$RUNNER_TEMP/wolf-a.log"; exit 1; fi
+          grep WOLF_MISSION_A_DURABLE_BEFORE_RESTART "$RUNNER_TEMP/wolf-a.log"
+          node scripts/wolf-cross-job-pair.mjs export
+      - name: Destroy cross-job A database and worker state
+        if: inputs.verify_cross_job_ab == true && steps.cross_job_export.outcome == 'success'
+        env:
+          PG_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker stop "$PG_CONTAINER_ID" >/dev/null
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
+          if(root!=='/tmp/wolf-cross-job-'+process.env.GITHUB_RUN_ID)throw Error('DISPOSABLE_ROOT_REQUIRED');
+          fs.rmSync(root,{recursive:true});if(fs.existsSync(root))throw Error('A_STATE_SURVIVED');
+          console.log('WOLF_CROSS_JOB_A_DESTROYED=VERIFIED');
           NODE
       - name: Execute Mission A then restart existing controller for automatic Mission B
         if: inputs.execute_integrated == true
@@ -680,7 +1000,23 @@ jobs:
           set -e
           if test "$rc" -ne 79; then tail -c 8000 "$RUNNER_TEMP/wolf-first.log"; exit 1; fi
           grep WOLF_MISSION_A_DURABLE_BEFORE_RESTART "$RUNNER_TEMP/wolf-first.log"
-          WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-recovery.log" 2>&1 || { tail -c 8000 "$RUNNER_TEMP/wolf-recovery.log"; exit 1; }
+          mission_a_sha="$(git rev-parse --verify HEAD)"
+          git merge-base --is-ancestor "$WOLF_FACTORY_EXPECTED_SHA" "$mission_a_sha"
+          test "$mission_a_sha" != "$WOLF_FACTORY_EXPECTED_SHA"
+          test "$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')" = "$mission_a_sha"
+          MISSION_A_SHA="$mission_a_sha" node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const lp=path.join(process.env.RUNNER_TEMP,'wolf-cas-lease.json');
+          const cur=JSON.parse(fs.readFileSync(lp,'utf8'));
+          if(cur.admittedSha!==process.env.WOLF_FACTORY_EXPECTED_SHA||cur.pendingPublication?.candidateSha!==process.env.MISSION_A_SHA||cur.pendingPublication?.leaseFence!==cur.leaseFence)throw Error('CAS_LEASE_STATE_MISMATCH');
+          const manifest=JSON.parse(fs.readFileSync(process.env.WOLF_FACTORY_ACCEPTANCE_MANIFEST,'utf8')),next=manifest.missions?.[1]?.taskId;
+          if(cur.missionId!==manifest.missions?.[0]?.taskId||typeof next!=='string'||!/^\w[\w-]{0,69}$/.test(next)||next===cur.missionId)throw Error('LEASE_MISSION_IDENTITY_MISMATCH');
+          const {pendingPublication,...settled}=cur;
+          fs.writeFileSync(lp,JSON.stringify({...settled,expectedRemoteSha:process.env.MISSION_A_SHA,admittedSha:process.env.MISSION_A_SHA,missionId:next,leaseFence:1},null,2)+'\n',{mode:0o600});
+          NODE
+          mission_b_fence="$(node -p 'JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/wolf-cas-lease.json","utf8")).leaseFence')"
+          mission_b_id="$(node -p 'JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/wolf-cas-lease.json","utf8")).missionId')"
+          WOLF_GIT_PUBLICATION_MISSION_ID="$mission_b_id" WOLF_GIT_PUBLICATION_FENCE="$mission_b_fence" WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-recovery.log" 2>&1 || { tail -c 8000 "$RUNNER_TEMP/wolf-recovery.log"; exit 1; }
           node <<'NODE'
           const fs=require('fs'),path=require('path');
           const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
@@ -689,6 +1025,12 @@ jobs:
           for(const p of final.evidence){if(!p.integratedReview||p.cycle.state!=='CYCLE_COMPLETED'||!p.durable?.checkpointId)throw Error('INTEGRATED_MISSION_EVIDENCE_REQUIRED');}
           console.log('WOLF_INTEGRATED_ACCEPTANCE='+JSON.stringify({workflowID:final.workflowID,restartReceipt:final.restartReceipt,controllerPid:final.controllerPid,result:final.result,missions:final.evidence.map(p=>({missionId:p.spec.taskId,flint:p.providerReceipts.map(r=>r.generationId),opencode:p.integratedReview.opencode,groq:p.integratedReview.groq,executor:p.remoteReceipts,checkpoint:p.durable,verification:p.verifierReceipts.map(v=>({receiptId:v.receiptId,local:v.local,remote:v.remote})),trace:p.trace}))}));
           NODE
+          local_head="$(git rev-parse --verify HEAD)"
+          git merge-base --is-ancestor "$mission_a_sha" "$local_head"
+          test "$local_head" != "$mission_a_sha"
+          remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
+          test "$remote_head" = "$local_head"
+          echo "WOLF_REMOTE_COMMIT_VERIFIED=$remote_head"
       - name: Execute one KCT admitted bounded synthetic Factory self-repair
         if: inputs.night_shift == true
         env:
@@ -697,15 +1039,20 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
-        run: 'WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs
-      
+        shell: bash
+        run: |
+          set -euo pipefail
+          WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs
+          local_head="$(git rev-parse --verify HEAD)"
+          git merge-base --is-ancestor "$WOLF_FACTORY_EXPECTED_SHA" "$local_head"
+          test "$local_head" != "$WOLF_FACTORY_EXPECTED_SHA"
+          remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
+          test "$remote_head" = "$local_head"
+          echo "WOLF_REMOTE_COMMIT_VERIFIED=$remote_head"
           rm -f "$RUNNER_TEMP/wolf-publication-key" "$RUNNER_TEMP/wolf-publication-known-hosts"
-      
           npm test
-      
           npm run build
-      
-          node scripts/wolf-night-shift-wakeup.mjs finish'
+          node scripts/wolf-night-shift-wakeup.mjs finish
       - name: Suspend after failed repair; never retry unknown external effects
         if: failure() && inputs.night_shift == true
         env:
@@ -718,7 +1065,7 @@ jobs:
           node <<'NODE'
           const fs=require('fs'),path=require('path');
           const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;if(!fs.existsSync(root))process.exit(0);
-          for(const f of fs.readdirSync(root).filter(n=>/^OMEGA_[AB]_[0-9]+-(provider|integrated-review|remote|verifiers|cleanup)\.json$/.test(n))){
+          for(const f of fs.readdirSync(root).filter(n=>/^(?:OMEGA_[ABC]_[0-9]+|WOLF_WAKEUP_MANUAL_[0-9]+|WOLF_WAKEUP_SCHEDULE_ACCEPTANCE_V[0-9]+)-(provider|integrated-review|remote|verifiers|cleanup)\.json$/.test(n))){
             const v=JSON.parse(fs.readFileSync(path.join(root,f),'utf8'));let evidence;
             if(f.endsWith('-provider.json'))evidence=v.map(r=>({generationId:r.generationId,model:r.model,costUsd:r.costUsd}));
             else if(f.endsWith('-remote.json'))evidence=v.map(r=>({jobId:r.jobId,sandboxId:r.sandboxId,passed:r.passed,exitCode:r.exitCode,sourceSha256:r.sourceSha256}));
@@ -728,23 +1075,23 @@ jobs:
           }
           NODE
       - name: Remove ephemeral SSH publication files
-        if: always() && ((inputs.execute_integrated == true && inputs.use_publication_deploy_key == true) || inputs.night_shift == true)
+        if: always() && (((inputs.execute_integrated == true || inputs.verify_cross_job_ab == true) && inputs.use_publication_deploy_key == true) || inputs.night_shift == true)
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';import path from 'node:path';
-          for(const name of ['wolf-publication-key','wolf-publication-known-hosts'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
+          for(const name of ['wolf-publication-key','wolf-publication-known-hosts','wolf-cas-lease.json'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
           NODE
 
       - name: Destroy only this disposable Ollama container
-        if: always() && (inputs.execute_integrated == true || inputs.night_shift == true)
+        if: always() && (inputs.execute_integrated == true || inputs.night_shift == true || inputs.verify_cross_job_ab == true)
         run: 'docker rm -f wolf-ollama 2>/dev/null || true
       
           '
 
   runner-loss-prepare:
-    needs: security-tests
-    if: always() && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
-      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'
+    needs: [security-tests, factory-source-admission]
+    if: always() && needs.factory-source-admission.result == 'success' && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
+      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028')
       && github.actor == 'insidethemarginmedia-cpu'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -770,7 +1117,7 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-runner-loss-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-runner-loss-${{ github.run_id }}/manifest.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 57dd1e11344af0f736a6b7b07c7e5e15c768cbcd
+      WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -786,14 +1133,14 @@ jobs:
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 57dd1e11344af0f736a6b7b07c7e5e15c768cbcd
+        ref: ${{ needs.factory-source-admission.outputs.source_sha }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
     - name: Assert immutable source and recovery fixture
       run: |
         set -euo pipefail
-        test "$(git rev-parse HEAD)" = '57dd1e11344af0f736a6b7b07c7e5e15c768cbcd'
+        test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
         test -f scripts/wolf-dbos-outer-e2e.mjs
         test -f scripts/wolf-factory-boxxkite-acceptance.mjs
         test -z "$(git status --porcelain)"
@@ -867,6 +1214,7 @@ jobs:
         NODE
     - name: KCT admits C and DBOS persists its pending state
       env: &id001
+        GITHUB_TOKEN: ${{ github.token }}
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -895,7 +1243,67 @@ jobs:
       shell: bash
       run: |-
         set -euo pipefail
-        node scripts/wolf-dbos-runner-state.mjs publish
+        if test "$GITHUB_REF" != refs/heads/fix/omega-acceptance-ready-20261028; then
+          node scripts/wolf-dbos-runner-state.mjs publish
+          exit 0
+        fi
+        node --input-type=module <<'NODE'
+        import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
+        // FEATURE_CHECKPOINT_PUBLICATION_BEGIN
+        async function publishFeatureCheckpoint(env, content, fetchImpl = globalThis.fetch) {
+          const repository = 'insidethemarginmedia-cpu/wolf-factory-home', branch = 'fix/omega-acceptance-ready-20261028';
+          const fail = reason => { throw Error('CHECKPOINT_' + reason); };
+          if (env.GITHUB_REPOSITORY !== repository || env.GITHUB_ACTOR !== 'insidethemarginmedia-cpu' ||
+              env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || env.GITHUB_REF !== 'refs/heads/' + branch || env.WOLF_RUNNER_LOSS_TEST !== '1') fail('SCOPE_DENIED');
+          if (env.EUR_SPEND !== '0' || ['COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT'].some(k => env[k] !== 'DENY')) fail('COST_DENIED');
+          const token = env.WOLF_RUNTIME_CHECKPOINT_TOKEN, base = env.GITHUB_SHA, run = env.GITHUB_RUN_ID;
+          if (!token || /[\r\n\0]/.test(token) || !/^[a-f0-9]{40}$/.test(base || '') || !/^[0-9]+$/.test(run || '') || !/^[a-f0-9]{40}$/.test(env.WOLF_FACTORY_EXPECTED_SHA || '')) fail('CONTEXT_REQUIRED');
+          if (typeof content !== 'string' || Buffer.byteLength(content) > 1048576) fail('SIZE_DENIED');
+          let envelope;try { envelope = JSON.parse(content); } catch { fail('ENVELOPE_REQUIRED'); }
+          if (content !== JSON.stringify(envelope) + '\n') fail('CANONICAL_ENVELOPE_REQUIRED');
+          const keys = ['version', 'algorithm', 'context', 'salt', 'iv', 'tag', 'ciphertext', 'payloadSha256'];
+          if (!envelope || Object.keys(envelope).sort().join() !== keys.sort().join() || envelope.version !== 1 || envelope.algorithm !== 'aes-256-gcm+scrypt+gzip' || !/^[a-f0-9]{64}$/.test(envelope.payloadSha256 || '')) fail('SEALED_ENVELOPE_REQUIRED');
+          const context = {workflowID: 'wolf-runner-loss-' + run, runID: run, sourceSha: env.WOLF_FACTORY_EXPECTED_SHA};
+          if (JSON.stringify(envelope.context) !== JSON.stringify(context)) fail('ENVELOPE_CONTEXT_DENIED');
+          for (const [key, size] of [['salt', 32], ['iv', 12], ['tag', 16], ['ciphertext', null]]) {
+            const value = envelope[key];
+            if (typeof value !== 'string' || !value || Buffer.from(value, 'base64').toString('base64') !== value || (size !== null && Buffer.from(value, 'base64').length !== size)) fail('ENVELOPE_FORMAT_DENIED');
+          }
+          async function api(method, route, body, missing = false) {
+            let response;
+            try {
+              response = await fetchImpl('https://api.github.com/repos/' + repository + route, {
+                method, headers: {authorization: 'Bearer ' + token, 'content-type': 'application/json'},
+                ...(body ? {body: JSON.stringify(body)} : {}), redirect: 'error', signal: AbortSignal.timeout(20000),
+              });
+            } catch { fail('EFFECT_UNKNOWN_RECONCILE_REQUIRED'); }
+            if (missing && response.status === 404) return null;
+            if (!response.ok) fail('PUBLICATION_DENIED_RECONCILE_REQUIRED');
+            try { return await response.json(); } catch { fail('RESPONSE_INVALID_RECONCILE_REQUIRED'); }
+          }
+          const ref = '/git/ref/heads/' + branch, file = 'docs/checkpoints/runner-loss/' + run + '.json';
+          const prior = await api('GET', ref);
+          if (prior.ref !== 'refs/heads/' + branch || prior.object?.type !== 'commit' || prior.object?.sha !== base) fail('REMOTE_ADVANCED_RECONCILE_REQUIRED');
+          if (await api('GET', '/contents/' + file + '?ref=' + base, undefined, true)) fail('ALREADY_EXISTS_RECONCILE_REQUIRED');
+          const parent = await api('GET', '/git/commits/' + base);
+          if (parent.sha !== base || !/^[a-f0-9]{40}$/.test(parent.tree?.sha || '')) fail('PARENT_INVALID');
+          const tree = await api('POST', '/git/trees', {base_tree: parent.tree.sha, tree: [{path: file, mode: '100644', type: 'blob', content}]});
+          if (!/^[a-f0-9]{40}$/.test(tree.sha || '')) fail('TREE_INVALID');
+          const commit = await api('POST', '/git/commits', {message: 'factory: encrypted runner checkpoint ' + run, tree: tree.sha, parents: [base]});
+          if (!/^[a-f0-9]{40}$/.test(commit.sha || '') || commit.tree?.sha !== tree.sha || commit.parents?.length !== 1 || commit.parents[0].sha !== base) fail('COMMIT_INVALID');
+          await api('PATCH', '/git/refs/heads/' + branch, {sha: commit.sha, force: false});
+          const observed = await api('GET', ref);
+          if (observed.ref !== 'refs/heads/' + branch || observed.object?.sha !== commit.sha) fail('SHA_READBACK_FAILED');
+          const readback = await api('GET', '/contents/' + file + '?ref=' + commit.sha);
+          if (Buffer.from(readback.content || '', 'base64').toString() !== content) fail('CONTENT_READBACK_FAILED');
+          return {state: 'PERSISTED', commitSha: commit.sha, path: file, encrypted: true};
+        }
+        // FEATURE_CHECKPOINT_PUBLICATION_END
+        const content = fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'wolf-runner-state.envelope.json'), 'utf8');
+        const receipt = await publishFeatureCheckpoint(process.env, content);
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, 'snapshot_sha=' + receipt.commitSha + '\n');
+        console.log('WOLF_OUTSIDE_RUNNER_CHECKPOINT=' + JSON.stringify({...receipt, sha256: crypto.createHash('sha256').update(content).digest('hex')}));
+        NODE
     - name: Destroy the disposable database and ephemeral controller state
       shell: bash
       run: |-
@@ -910,13 +1318,14 @@ jobs:
     needs:
     - security-tests
     - runner-loss-prepare
-    if: always() && needs.security-tests.result == 'success' && needs.runner-loss-prepare.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_runner_loss == true && inputs.use_publication_deploy_key ==
-      true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'
-      && github.actor == 'insidethemarginmedia-cpu'
+    - factory-source-admission
+    - integrated-factory
+    if: always() && needs.factory-source-admission.result == 'success' && needs.security-tests.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.use_publication_deploy_key == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu' && ((inputs.verify_runner_loss == true && inputs.verify_cross_job_ab != true && needs.runner-loss-prepare.result == 'success' && (github.ref == 'refs/heads/feat/public-runtime-probe-20261022' || github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028')) || (inputs.verify_cross_job_ab == true && inputs.verify_runner_loss != true && inputs.night_shift != true && inputs.execute_integrated != true && github.ref == 'refs/heads/fix/omega-acceptance-ready-20261028' && needs.integrated-factory.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: read
+      contents: write
+      actions: read
     services:
       postgres:
         image: postgres:16
@@ -932,10 +1341,12 @@ jobs:
       CEZAR_SHA: 1b13522dd3642a4ea8331629b3680838164d2a2e
       OPENCODE_VERSION_PIN: 1.18.34
       WOLF_FACTORY_CWD: ${{ github.workspace }}
-      WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-runner-loss-${{ github.run_id }}
-      WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-runner-loss-${{ github.run_id }}/manifest.json
+      WOLF_FACTORY_RUNTIME_ROOT: ${{ inputs.verify_cross_job_ab == true && format('/tmp/wolf-cross-job-{0}', github.run_id) || format('/tmp/wolf-runner-loss-{0}', github.run_id) }}
+      WOLF_FACTORY_ACCEPTANCE_MANIFEST: ${{ inputs.verify_cross_job_ab == true && format('/tmp/wolf-cross-job-{0}/manifest.json', github.run_id) || format('/tmp/wolf-runner-loss-{0}/manifest.json', github.run_id) }}
+      WOLF_CROSS_JOB_TEST: ${{ inputs.verify_cross_job_ab == true && '1' || '0' }}
+      WOLF_FACTORY_ORIGINAL_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 57dd1e11344af0f736a6b7b07c7e5e15c768cbcd
+      WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -945,20 +1356,20 @@ jobs:
       COST_UNKNOWN: DENY
       PAID_FALLBACK: DENY
       TRIAL_CREDIT: DENY
-      WOLF_RUNNER_LOSS_TEST: '1'
+      WOLF_RUNNER_LOSS_TEST: ${{ inputs.verify_cross_job_ab == true && '0' || '1' }}
     steps:
     - name: Checkout private Factory at verified immutable source
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 57dd1e11344af0f736a6b7b07c7e5e15c768cbcd
+        ref: ${{ needs.factory-source-admission.outputs.source_sha }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
     - name: Assert immutable source and recovery fixture
       run: |
         set -euo pipefail
-        test "$(git rev-parse HEAD)" = '57dd1e11344af0f736a6b7b07c7e5e15c768cbcd'
+        test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
         test -f scripts/wolf-dbos-outer-e2e.mjs
         test -f scripts/wolf-factory-boxxkite-acceptance.mjs
         test -z "$(git status --porcelain)"
@@ -997,6 +1408,7 @@ jobs:
           tests/wolf-dbos-mode-validation.test.mjs
         echo PRIVATE_CONTROLLER_SAFETY_CONTRACTS=PASS
     - name: Full private regression and build
+      if: inputs.verify_cross_job_ab != true
       run: |
         npm ci --ignore-scripts --no-audit --no-fund --prefix infra/worker-router/mastra-runtime
         npm test
@@ -1022,10 +1434,11 @@ jobs:
         BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
       run: |
         set -euo pipefail
-        for name in WOLF_FACTORY_REPO_TOKEN OPENROUTER_API_KEY GROQ_API_KEY BOXXKITE_API_KEY; do
+        for name in WOLF_FACTORY_REPO_TOKEN GROQ_API_KEY BOXXKITE_API_KEY; do
           if test -z "${!name:-}"; then echo "INTEGRATED_CONFIGURATION_REQUIRED=$name"; exit 78; fi
         done
     - name: Admit existing free OpenRouter key
+      if: inputs.verify_cross_job_ab != true
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       run: |
@@ -1060,17 +1473,61 @@ jobs:
         echo "WOLF_CEZAR_RUNNER=$RUNNER_TEMP/cezar/packages/cezar/dist/core/opencode-server-runner.js" >> "$GITHUB_ENV"
     - name: Read immutable encrypted checkpoint and restore on a fresh runner
       env:
-        SNAPSHOT_SHA: ${{ needs.runner-loss-prepare.outputs.snapshot_sha }}
+        SNAPSHOT_SHA: ${{ inputs.verify_cross_job_ab == true && needs.integrated-factory.outputs.snapshot_sha || needs.runner-loss-prepare.outputs.snapshot_sha }}
+        GITHUB_TOKEN: ${{ github.token }}
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         PG_CONTAINER_ID: ${{ job.services.postgres.id }}
       shell: bash
       run: |-
         set -euo pipefail
+        if test "$WOLF_CROSS_JOB_TEST" = 1; then
+          node scripts/wolf-cross-job-pair.mjs restore
+          exit 0
+        fi
         node <<'NODE'
         const fs=require('fs'),path=require('path');
         if(fs.existsSync(process.env.WOLF_FACTORY_RUNTIME_ROOT))throw Error('RECOVERY_ROOT_NOT_FRESH');
-        const sha=process.env.SNAPSHOT_SHA;if(!/^[a-f0-9]{40}$/.test(sha))throw Error('SNAPSHOT_SHA_REQUIRED');
-        fetch('https://raw.githubusercontent.com/insidethemarginmedia-cpu/wolf-factory-home/'+sha+'/docs/checkpoints/runner-loss/'+process.env.GITHUB_RUN_ID+'.json',{redirect:'error',signal:AbortSignal.timeout(20000)}).then(async r=>{if(!r.ok)throw Error('DURABLE_CHECKPOINT_UNAVAILABLE');const raw=await r.text();if(Buffer.byteLength(raw)>1048576)throw Error('CHECKPOINT_LIMIT');fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'wolf-runner-state.envelope.json'),raw,{flag:'wx',mode:0o600});}).catch(()=>{console.error('DURABLE_CHECKPOINT_READ_FAILED');process.exitCode=1;});
+        // RUNNER_STATE_RESTORE_GATE_BEGIN
+        async function restoreSealedRunnerState(env, fetchImpl = globalThis.fetch, writeImpl = null) {
+          const fail = reason => { throw Error('RESTORE_' + reason); };
+          if (env.GITHUB_REPOSITORY !== 'insidethemarginmedia-cpu/wolf-factory-home' || env.GITHUB_ACTOR !== 'insidethemarginmedia-cpu' ||
+              env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || env.WOLF_RUNNER_LOSS_TEST !== '1') fail('SCOPE_DENIED');
+          if (env.EUR_SPEND !== '0' || ['COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT'].some(k => env[k] !== 'DENY')) fail('COST_DENIED');
+          if (typeof writeImpl !== 'function') fail('CONTEXT_REQUIRED');
+          const snapshot = env.SNAPSHOT_SHA, run = env.GITHUB_RUN_ID, source = env.WOLF_FACTORY_EXPECTED_SHA, temp = env.RUNNER_TEMP;
+          if (!/^[a-f0-9]{40}$/.test(snapshot || '')) throw Error('SNAPSHOT_SHA_REQUIRED');
+          if (!/^[1-9][0-9]*$/.test(run || '') || !/^[a-f0-9]{40}$/.test(source || '') || typeof temp !== 'string' || !temp) fail('CONTEXT_REQUIRED');
+          const url = 'https://raw.githubusercontent.com/insidethemarginmedia-cpu/wolf-factory-home/' + snapshot + '/docs/checkpoints/runner-loss/' + run + '.json';
+          let response;
+          try {
+            response = await fetchImpl(url, {redirect: 'error', signal: AbortSignal.timeout(20000)});
+          } catch { throw Error('DURABLE_CHECKPOINT_READ_FAILED'); }
+          if (response.status === 404) fail('CHECKPOINT_MISSING');
+          if (!response.ok) throw Error('DURABLE_CHECKPOINT_UNAVAILABLE');
+          let content;
+          try { content = await response.text(); } catch { throw Error('DURABLE_CHECKPOINT_READ_FAILED'); }
+          if (typeof content !== 'string' || Buffer.byteLength(content) > 1048576) throw Error('CHECKPOINT_LIMIT');
+          let envelope; try { envelope = JSON.parse(content); } catch { fail('CHECKPOINT_CORRUPT'); }
+          if (content !== JSON.stringify(envelope) + '\n') fail('CHECKPOINT_CORRUPT');
+          const keys = ['version', 'algorithm', 'context', 'salt', 'iv', 'tag', 'ciphertext', 'payloadSha256'];
+          if (!envelope || typeof envelope !== 'object' || Object.keys(envelope).sort().join() !== keys.sort().join() ||
+              envelope.version !== 1 || envelope.algorithm !== 'aes-256-gcm+scrypt+gzip' || !/^[a-f0-9]{64}$/.test(envelope.payloadSha256 || '')) fail('CHECKPOINT_CORRUPT');
+          for (const [key, size] of [['salt', 32], ['iv', 12], ['tag', 16], ['ciphertext', null]]) {
+            const value = envelope[key];
+            if (typeof value !== 'string' || !value || Buffer.from(value, 'base64').toString('base64') !== value ||
+                (size !== null && Buffer.from(value, 'base64').length !== size) || (size === null && !Buffer.from(value, 'base64').length)) fail('CHECKPOINT_CORRUPT');
+          }
+          const context = {workflowID: 'wolf-runner-loss-' + run, runID: run, sourceSha: source};
+          if (JSON.stringify(envelope.context) !== JSON.stringify(context)) fail('CHECKPOINT_IDENTITY_MISMATCH');
+          const target = String(temp).replace(/[/\\]+$/, '') + '/wolf-runner-state.envelope.json';
+          try { writeImpl(target, content); }
+          catch (error) { if (error && error.code === 'EEXIST') fail('TARGET_EXISTS'); throw error; }
+          return {state: 'RESTORED', checkpointPath: 'docs/checkpoints/runner-loss/' + run + '.json', snapshotSha: snapshot, target, payloadSha256: envelope.payloadSha256, context, fetchCount: 1, retryCount: 0};
+        }
+        // RUNNER_STATE_RESTORE_GATE_END
+        restoreSealedRunnerState(process.env, globalThis.fetch, (file, content) => fs.writeFileSync(file, content, {flag: 'wx', mode: 0o600})).then(
+          receipt => console.log('WOLF_RUNNER_STATE_RESTORE_GATE=' + JSON.stringify(receipt)),
+          error => { console.error('WOLF_RUNNER_STATE_RESTORE_FAILED=' + ((error && error.message) || 'DURABLE_CHECKPOINT_READ_FAILED')); process.exitCode = 1; });
         NODE
         node scripts/wolf-dbos-runner-state.mjs restore
     - name: Prepare explicitly selected SSH publication credential
@@ -1078,17 +1535,23 @@ jobs:
         WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
       run: |
         node --input-type=module <<'NODE'
-        import fs from 'node:fs';import path from 'node:path';
-        const key=process.env.WOLF_FACTORY_DEPLOY_KEY;
-        if(!key||!key.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+        import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';
+        const raw=typeof process.env.WOLF_FACTORY_DEPLOY_KEY==='string'?process.env.WOLF_FACTORY_DEPLOY_KEY.replace(/\r\n?/g,'\n').trim():'';
+        if(!raw||!raw.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_REQUIRED');process.exit(78);}
+        if(raw.includes('\0')||!raw.endsWith('-----END OPENSSH PRIVATE KEY-----')){console.error('PUBLICATION_DEPLOY_KEY_INVALID');process.exit(78);}
         const keyFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-key');
         const hostsFile=path.join(process.env.RUNNER_TEMP,'wolf-publication-known-hosts');
-        fs.writeFileSync(keyFile,key.trim()+'\n',{flag:'wx',mode:0o600});
-        fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
-        const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
-        const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
-        fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
-        console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+        fs.writeFileSync(keyFile,raw+'\n',{flag:'wx',mode:0o600});
+        const cleanup=()=>{for(const f of [keyFile,hostsFile])fs.rmSync(f,{force:true});};
+        try{
+          fs.writeFileSync(hostsFile,'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n',{flag:'wx',mode:0o600});
+          const k=spawnSync('ssh-keygen',['-y','-f',keyFile],{stdio:['ignore','ignore','pipe'],timeout:5000});
+          if(k.status!==0||k.signal||k.error){cleanup();console.error('PUBLICATION_DEPLOY_KEY_INVALID');process.exit(78);}
+          const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+          const ssh='ssh -F /dev/null -i '+quote(keyFile)+' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile='+quote(hostsFile)+' -o BatchMode=yes -o ConnectTimeout=15';
+          fs.appendFileSync(process.env.GITHUB_ENV,'GIT_SSH_COMMAND='+ssh+'\nWOLF_FACTORY_GIT_TRANSPORT=ssh-deploy-key\n');
+          console.log('SCOPED_SSH_PUBLICATION_PREPARED=YES');
+        }catch(e){cleanup();throw e;}
         NODE
     - name: Select existing authorized branch and Git publication transport
       shell: bash
@@ -1096,21 +1559,59 @@ jobs:
         set -euo pipefail
         git switch -c feat/factory-real-worker-m1-20261006
         git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
+        if test "$WOLF_CROSS_JOB_TEST" = 1; then
+          git fetch --unshallow --no-tags origin refs/heads/feat/factory-real-worker-m1-20261006
+          test "$(git rev-parse FETCH_HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
+          git merge --ff-only --no-edit "$WOLF_FACTORY_EXPECTED_SHA"
+        fi
     - name: Verify authorized branch publication with no ref update
       env:
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
       run: |
         node --input-type=module <<'NODE'
+        import fs from 'node:fs';
+        import path from 'node:path';
         import {spawnSync} from 'node:child_process';
-        const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+        const branch='feat/factory-real-worker-m1-20261006',repo='donraposo1-source/project-wolf';
+        const transport=process.env.WOLF_FACTORY_GIT_TRANSPORT||'https-token';
+        if(transport!=='ssh-deploy-key'&&transport!=='https-token')throw Error('UNAUTHORIZED_GIT_TRANSPORT');
+        const cur=spawnSync('git',['symbolic-ref','--quiet','--short','HEAD'],{encoding:'utf8',timeout:5000});
+        if(cur.status!==0||cur.stdout.trim()!==branch)throw Error('UNAUTHORIZED_LOCAL_BRANCH');
+        const rem=spawnSync('git',['remote','get-url','origin'],{encoding:'utf8',timeout:5000});
+        const expectedRemote=transport==='ssh-deploy-key'?'git@github.com:'+repo+'.git':'https://github.com/'+repo+'.git';
+        if(rem.status!==0||rem.stdout.trim()!==expectedRemote)throw Error('UNAUTHORIZED_GIT_REMOTE');
+        const pinned=process.env.WOLF_FACTORY_EXPECTED_SHA;
+        if(!/^[a-f0-9]{40}$/.test(pinned||''))throw Error('MISSION_SOURCE_PIN_REQUIRED');
+        const tip=spawnSync('git',['ls-remote','--exit-code','origin','refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
+        if(tip.status!==0||tip.signal||tip.error)throw Error('REMOTE_COMMIT_UNVERIFIED');
+        if(tip.stdout.trim()!==pinned+'\trefs/heads/'+branch)throw Error('CONCURRENT_BRANCH_ADVANCED');
+        const p=spawnSync('git',['push','--dry-run','--force-with-lease=refs/heads/'+branch+':'+pinned,'origin','HEAD:refs/heads/'+branch],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
         const text=String(p.stderr||'');
-          const safe=text.replace(/https?:\/\/[^\s]+/g,'[REDACTED_URL]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').split(process.env.WOLF_FACTORY_REPO_TOKEN||'\0').join('[REDACTED_TOKEN]').slice(0,4000);
-          console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
-        const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
-        console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
-        if(p.status!==0)throw Error(reason);
+        let safe=text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[REDACTED_KEY]');
+        for(const rawVal of [process.env.WOLF_FACTORY_REPO_TOKEN,process.env.GITHUB_TOKEN]){
+          if(typeof rawVal==='string'&&rawVal){for(const v of new Set([rawVal,rawVal.trim()].filter(Boolean))){for(const s of [v,encodeURIComponent(v),Buffer.from('x-access-token:'+v).toString('base64')])if(s)safe=safe.split(s).join('[REDACTED_TOKEN]');}}
+        }
+        safe=safe.replace(/authorization:\s*(?:basic|bearer)\s+[^\s'"]+/gi,'Authorization: [REDACTED_AUTH]').replace(/x-access-token:[^\s@'"]+/gi,'x-access-token:[REDACTED_TOKEN]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').replace(/(?:https?|ssh):\/\/[^\s'"]+/gi,'[REDACTED_URL]');
+        if(process.env.RUNNER_TEMP)safe=safe.split(process.env.RUNNER_TEMP).join('[REDACTED_RUNNER_TEMP]');
+        safe=safe.slice(0,4000);
+        console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
+        const reason=p.status===0&&!p.signal&&!p.error?'AUTHORIZED':p.error?.code==='ETIMEDOUT'||p.signal==='SIGTERM'||p.signal==='SIGKILL'?'GIT_PUBLICATION_TIMEOUT':/host key verification failed|remote host identification has changed|no [a-z0-9-]+ host key is known/i.test(text)?'SSH_HOST_VERIFICATION_FAILED':/load key .*:(?:\s*invalid format|\s*error in libcrypto|\s*bad permissions|\s*no such file)|identity file .* not accessible/i.test(text)?'SSH_KEY_INVALID':/\b403\b|write access.*not granted|permission to .* denied|permission.*denied|authentication failed|could not read username|could not read password|terminal prompts disabled|repository not found/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/GH006|GH013|protected branch|repository rule violations|hook declined/i.test(text)?'BRANCH_PROTECTION_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|stale info|cannot lock ref .* expected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':/does not appear to be a git repository|no such remote|src refspec .* does not match any|invalid refspec/i.test(text)?'INVALID_GIT_REMOTE_OR_BRANCH':/could not resolve hostname|connection timed out|operation timed out|connection reset|kex_exchange_identification|network is unreachable/i.test(text)?'GIT_NETWORK_UNAVAILABLE':'GIT_PUBLICATION_PREFLIGHT_FAILED';
+        console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,transport,expectedRemoteSha:pinned,casEnforced:true,refUpdated:false}));
+        if(p.status!==0||reason!=='AUTHORIZED')throw Error(reason);
+        const leaseFence=process.env.WOLF_CROSS_JOB_TEST==='1'?2:process.env.WOLF_RUNNER_LOSS_TEST==='1'?JSON.parse(fs.readFileSync(path.join(process.env.WOLF_FACTORY_RUNTIME_ROOT,'runner-loss-admission.json'),'utf8')).fencingToken+1:1;
+        if(!Number.isSafeInteger(leaseFence)||leaseFence<1)throw Error('STALE_LEASE_FENCE_REJECTED');
+        const manifest=JSON.parse(fs.readFileSync(process.env.WOLF_FACTORY_ACCEPTANCE_MANIFEST,'utf8')),missionId=manifest.missions?.[process.env.WOLF_CROSS_JOB_TEST==='1'&&process.env.GITHUB_JOB==='runner-loss-recover'?1:0]?.taskId;
+        if(typeof missionId!=='string'||!/^\w[\w-]{0,69}$/.test(missionId))throw Error('CAS_LEASE_MISSION_ID_REQUIRED');
+        const claimsPath=path.resolve(process.env.WOLF_FACTORY_RUNTIME_ROOT,'.continuity/tasks/claims');
+        const leasePath=path.resolve(process.env.RUNNER_TEMP,'wolf-cas-lease.json');
+        fs.writeFileSync(leasePath,JSON.stringify({repository:repo,branch,expectedRemoteSha:pinned,admittedSha:pinned,leaseFence,missionId},null,2)+'\n',{mode:0o600});
+        fs.mkdirSync('.git/hooks',{recursive:true});
+        const hook="#!"+process.execPath+"\nconst fs = require('node:fs');\nconst path = require('node:path');\nconst {spawnSync} = require('node:child_process');\nconst leasePath = "+JSON.stringify(leasePath)+";\nconst minimumFence = 1;\nconst canonicalRepository = \"donraposo1-source/project-wolf\";\nconst canonicalBranch = \"feat/factory-real-worker-m1-20261006\";\nconst expectedMissionId = null;\nconst kctAuthorityPath = null;\nconst kctAuthorityDirectory = "+JSON.stringify(claimsPath)+";\nconst deny = reason => { throw Object.assign(new Error(reason), {wolfReason: reason}); };\nconst sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);\nconst git = args => {\n  const result = spawnSync('git', args, {encoding: 'utf8', timeout: 30000, env: {...process.env, GIT_TERMINAL_PROMPT: '0'}});\n  if (result.status !== 0 || result.signal || result.error) deny('REMOTE_COMMIT_UNVERIFIED');\n  return String(result.stdout || '').trim();\n};\nlet lock;\ntry {\n  if (!fs.existsSync(leasePath)) deny('CAS_LEASE_MISSING');\n  try { lock = fs.openSync(leasePath + '.lock', 'wx', 0o600); }\n  catch { deny('PUBLICATION_LEASE_BUSY'); }\n  const lease = JSON.parse(fs.readFileSync(leasePath, 'utf8'));\n  if (lease.repository !== canonicalRepository || lease.branch !== canonicalBranch || !sha(lease.expectedRemoteSha) || !sha(lease.admittedSha)) deny('CAS_LEASE_STATE_MISMATCH');\n  const workerFence = Number(process.env.WOLF_GIT_PUBLICATION_FENCE);\n  if (!Number.isSafeInteger(lease.leaseFence) || lease.leaseFence < minimumFence || !Number.isSafeInteger(workerFence) || workerFence !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');\n  // P0-A: Mission identity - the lease must carry the admitted mission identity.\n  if (expectedMissionId) {\n    if (!lease.missionId) deny('LEASE_OWNERSHIP_NOT_VALIDATED');\n    if (lease.missionId !== expectedMissionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');\n  }\n  if (kctAuthorityDirectory) {\n    if (typeof lease.missionId !== 'string' || !/^[A-Za-z0-9_-]{1,70}$/.test(lease.missionId) || process.env.WOLF_GIT_PUBLICATION_MISSION_ID !== lease.missionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');\n    let claim;\n    try { claim = JSON.parse(fs.readFileSync(path.join(kctAuthorityDirectory, encodeURIComponent(lease.missionId) + '.json'), 'utf8')); }\n    catch { deny('KCT_AUTHORITY_INACCESSIBLE'); }\n    if (claim?.taskId !== lease.missionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');\n    if (!Number.isSafeInteger(claim.fencingToken) || claim.fencingToken < 1 || claim.fencingToken !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');\n    if (!Number.isFinite(claim.expiresAt) || claim.expiresAt <= Date.now()) deny('KCT_LEASE_EXPIRED');\n  }\n  // P0-A: Fence authority from external KCT/DBOS state - the same process cannot\n  // self-authorize by overwriting a sidecar file. Cross-check against the\n  // authoritative checkpoint written by a previous recovery cycle.\n  let kctFence = null;\n  if (kctAuthorityPath) {\n    try {\n      const kct = JSON.parse(fs.readFileSync(kctAuthorityPath, 'utf8'));\n      kctFence = Number.isSafeInteger(kct.newFence) ? kct.newFence : (Number.isSafeInteger(kct.leaseFence) ? kct.leaseFence : null);\n    } catch {\n      // If the authoritative KCT state is inaccessible, fail closed.\n      deny('KCT_AUTHORITY_INACCESSIBLE');\n    }\n    if (!Number.isSafeInteger(kctFence) || kctFence < 1) deny('KCT_AUTHORITY_INVALID');\n  }\n  if (kctFence !== null && lease.leaseFence < kctFence) deny('STALE_LEASE_FENCE_REJECTED');\n  const lines = fs.readFileSync(0, 'utf8').trim().split(/\\r?\\n/).filter(Boolean);\n  if (lines.length > 1) deny('MULTIPLE_PUBLICATION_REFS_DENIED');\n  for (const line of lines) {\n    const [, localSha, remoteRef, remoteSha] = line.trim().split(/\\s+/);\n    const targetRef = 'refs/heads/' + canonicalBranch;\n    if (remoteRef !== targetRef || !sha(localSha)) deny('UNAUTHORIZED_TARGET_BRANCH');\n    const observed = git(['ls-remote', '--exit-code', process.argv[2] || 'origin', targetRef]).split(/\\s+/)[0];\n    const pending = lease.pendingPublication;\n    if (pending) {\n      if (!sha(pending.candidateSha) || pending.expectedRemoteSha !== lease.expectedRemoteSha) deny('CAS_LEASE_STATE_MISMATCH');\n      if (pending.leaseFence !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');\n      if (observed === lease.expectedRemoteSha) deny('PUBLICATION_OUTCOME_RECONCILIATION_REQUIRED');\n      if (observed !== pending.candidateSha) deny('CONCURRENT_BRANCH_ADVANCED');\n      // Exact readback of our own recorded intent is the only allowed advancement.\n      lease.expectedRemoteSha = observed;\n      delete lease.pendingPublication;\n    }\n    if (observed !== lease.expectedRemoteSha || remoteSha !== lease.expectedRemoteSha) deny('CONCURRENT_BRANCH_ADVANCED');\n    const ff = spawnSync('git', ['merge-base', '--is-ancestor', lease.expectedRemoteSha, localSha], {encoding: 'utf8', timeout: 5000});\n    if (ff.status !== 0 || ff.error || ff.signal) deny('CONCURRENT_BRANCH_ADVANCED');\n    if (localSha !== lease.expectedRemoteSha) lease.pendingPublication = {expectedRemoteSha: lease.expectedRemoteSha, candidateSha: localSha, leaseFence: lease.leaseFence};\n    const temporary = leasePath + '.tmp-' + process.pid;\n    fs.writeFileSync(temporary, JSON.stringify(lease, null, 2) + '\\n', {mode: 0o600});\n    fs.renameSync(temporary, leasePath);\n  }\n} catch (error) {\n  console.error(error.wolfReason || 'CAS_PUBLICATION_GUARD_DENIED');\n  process.exitCode = 1;\n} finally {\n  if (lock !== undefined) {\n    fs.closeSync(lock);\n    fs.rmSync(leasePath + '.lock', {force: true});\n  }\n}\n";
+        fs.writeFileSync('.git/hooks/pre-push',hook,{mode:0o700});
+        fs.appendFileSync(process.env.GITHUB_ENV,'WOLF_GIT_PUBLICATION_FENCE='+leaseFence+'\nWOLF_GIT_PUBLICATION_MISSION_ID='+missionId+'\n');
         NODE
     - name: Recover the existing DBOS workflow and execute Mission C automatically
+      if: inputs.verify_cross_job_ab != true
       env: *id001
       shell: bash
       run: |-
@@ -1124,23 +1625,66 @@ jobs:
         fs.copyFileSync(path.join(root,'acceptance-final.json'),path.join(process.env.RUNNER_TEMP,'wolf-first-c-proof.json'));
         NODE
         first_head=$(git rev-parse HEAD)
+        git merge-base --is-ancestor "$WOLF_FACTORY_EXPECTED_SHA" "$first_head"
+        test "$first_head" != "$WOLF_FACTORY_EXPECTED_SHA"
+        test "$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')" = "$first_head"
+        FIRST_HEAD="$first_head" node <<'NODE'
+        const fs=require('fs'),path=require('path');
+        const lp=path.join(process.env.RUNNER_TEMP,'wolf-cas-lease.json');
+        const cur=JSON.parse(fs.readFileSync(lp,'utf8')),fence=JSON.parse(fs.readFileSync(path.join(process.env.WOLF_FACTORY_RUNTIME_ROOT,'kct-recovery.json'),'utf8'));
+        if(cur.admittedSha!==process.env.WOLF_FACTORY_EXPECTED_SHA||cur.pendingPublication?.candidateSha!==process.env.FIRST_HEAD||cur.pendingPublication?.leaseFence!==cur.leaseFence||!Number.isSafeInteger(fence.newFence)||fence.newFence<cur.leaseFence)throw Error('CAS_LEASE_STATE_MISMATCH');
+        const {pendingPublication,...settled}=cur;
+        fs.writeFileSync(lp,JSON.stringify({...settled,expectedRemoteSha:process.env.FIRST_HEAD,leaseFence:fence.newFence},null,2)+'\n',{mode:0o600});
+        NODE
         WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-duplicate.log" 2>&1 || { tail -c 6000 "$RUNNER_TEMP/wolf-duplicate.log"; exit 1; }
         test "$(git rev-parse HEAD)" = "$first_head"
+        remote_head="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')"
+        test "$remote_head" = "$first_head"
+        echo "WOLF_REMOTE_COMMIT_VERIFIED=$remote_head"
         node <<'NODE'
         const fs=require('fs'),path=require('path');const a=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'wolf-first-c-proof.json'),'utf8')),b=JSON.parse(fs.readFileSync(path.join(process.env.WOLF_FACTORY_RUNTIME_ROOT,'acceptance-final.json'),'utf8'));
         if(JSON.stringify(a.evidence)!==JSON.stringify(b.evidence)||b.evidence.length!==1||b.dbosStatus!=='SUCCESS')throw Error('DUPLICATE_WAKEUP_RECONCILIATION_FAILED');console.log('WOLF_DUPLICATE_WAKEUP=VERIFIED_NO_NEW_EFFECTS');
         NODE
+    - name: Recover automatic Mission B, verify, and reject a fresh duplicate process
+      if: inputs.verify_cross_job_ab == true
+      env:
+        SNAPSHOT_SHA: ${{ needs.integrated-factory.outputs.snapshot_sha }}
+        GITHUB_TOKEN: ${{ github.token }}
+        WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}
+        PG_CONTAINER_ID: ${{ job.services.postgres.id }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        WOLF_RESIDENT_MODE=dbos-engineering node infra/autonomy/resident-entrypoint.mjs > "$RUNNER_TEMP/wolf-b.log" 2>&1 || { tail -c 10000 "$RUNNER_TEMP/wolf-b.log"; exit 1; }
+        node scripts/wolf-cross-job-pair.mjs complete
+        first_head="$(git rev-parse HEAD)"
+        test "$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')" = "$first_head"
+        docker stop "$PG_CONTAINER_ID" >/dev/null
+        node --input-type=module <<'NODE'
+        import fs from 'node:fs';
+        const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
+        if(root!=='/tmp/wolf-cross-job-'+process.env.GITHUB_RUN_ID)throw Error('DISPOSABLE_ROOT_REQUIRED');
+        fs.rmSync(root,{recursive:true});if(fs.existsSync(root))throw Error('B_STATE_SURVIVED');
+        NODE
+        node scripts/wolf-cross-job-pair.mjs duplicate
+        test "$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/feat/factory-real-worker-m1-20261006 | awk '{print $1}')" = "$first_head"
+        echo "WOLF_CROSS_JOB_NO_DUPLICATE_EXTERNAL_EFFECT=$first_head"
     - name: Remove ephemeral SSH publication files
       if: always()
       run: |
         node --input-type=module <<'NODE'
         import fs from 'node:fs';import path from 'node:path';
-        for(const name of ['wolf-publication-key','wolf-publication-known-hosts'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
+        for(const name of ['wolf-publication-key','wolf-publication-known-hosts','wolf-cas-lease.json'])fs.rmSync(path.join(process.env.RUNNER_TEMP,name),{force:true});
         NODE
     - name: Verify tests and production build after recovered publication
       shell: bash
       run: |-
         set -euo pipefail
+        if test "$WOLF_CROSS_JOB_TEST" = 1; then
+          npm ci --ignore-scripts --no-audit --no-fund --prefix infra/worker-router/mastra-runtime
+        fi
         npm test
         npm run build
 

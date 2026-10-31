@@ -1,0 +1,172 @@
+{
+  "schema": "WolfOmegaP2RecoveryInventory/v1",
+  "recordedAt": "2026-10-31",
+  "branch": "arena/b9b951dd-wolf-factory-home",
+  "baseline": {
+    "commit": "e2eeed64dd4d0f5ecd54a31b39712a913438c183",
+    "parent": "fix/omega-acceptance-ready-20261028",
+    "publicDraftPr": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/1",
+    "publicTestsAtBaseline": "140/140 PASS",
+    "modulesParseAtBaseline": true
+  },
+  "access": {
+    "publicRuntimeRepository": {
+      "state": "GRANTED",
+      "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+      "evidence": "gh api repos/insidethemarginmedia-cpu/wolf-factory-home -> private=false, default_branch=main"
+    },
+    "privateFactoryRepository": {
+      "state": "BLOCKED",
+      "repository": "donraposo1-source/project-wolf",
+      "evidence": [
+        "gh api repos/donraposo1-source/project-wolf -> 404 Not Found (HTTP 404)",
+        "git ls-remote https://github.com/donraposo1-source/project-wolf -> remote: Write access to repository not granted. fatal: ... error: 403"
+      ],
+      "consequence": "No private source, no private PR diff, no private test fixture and no private checkpoint can be read or executed from this environment."
+    },
+    "circleCi": {
+      "state": "BLOCKED",
+      "evidence": "No CircleCI credentials or host access are available; verify-build #11280 logs cannot be retrieved, so the reported gitleaks failure cannot be reproduced."
+    },
+    "gitleaksBinary": {
+      "state": "BLOCKED",
+      "required": {
+        "version": "8.30.1",
+        "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+      },
+      "evidence": "GET https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -> 302 to objects.githubusercontent.com, then curl (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL. The release CDN is outside the egress allowlist, so the pinned checksum cannot be verified and no scan is claimed."
+    },
+    "composioMcp": {
+      "state": "BLOCKED",
+      "evidence": "list_connector_tools('composio') -> unsupported. No Composio session exists in Arena, and the reported https://connect.composio.dev/mcp 403 transport boundary is not reproducible from here.",
+      "consequence": "The seven Engineering Skills were not loaded and are not claimed as used."
+    },
+    "googleAntigravity": {
+      "state": "BLOCKED",
+      "evidence": "Case-insensitive search of every tracked file for 'antigravity' returns no match. No adapter, configuration, credential or execution contract exists in the accessible code.",
+      "consequence": "Integration boundary preserved by not fabricating an adapter; admission tests are impossible because there is no admitted execution path to test."
+    },
+    "jules": {
+      "state": "PROHIBITED_AND_ABSENT",
+      "evidence": "Case-insensitive search of every tracked file for 'jules' returns no match in the public runtime; no admission path exists here."
+    }
+  },
+  "fourStateInventory": {
+    "INTEGRATED_AND_VERIFIED": [
+      {
+        "item": "Public runtime test suite",
+        "result": "156/156 PASS",
+        "command": "node --test tests/*.test.mjs",
+        "note": "140 pre-existing tests plus 16 new regression tests added by this record."
+      },
+      {
+        "item": "Module parse/build verification",
+        "result": "ALL_MODULES_PARSE=OK",
+        "command": "node --check scripts/*.mjs tests/*.test.mjs",
+        "note": "This repository has no package.json or bundler; the private build runs inside the private checkout."
+      },
+      {
+        "item": "Compare-and-swap pre-push guard",
+        "result": "VERIFIED_BY_LIVE_EXECUTION",
+        "evidence": [
+          "Rendered hook installed into a real Git repository and executed as a process.",
+          "Single-ref pre-push input is parsed and the guard proceeds to its lease/fence checks.",
+          "Two refs in one push -> MULTIPLE_PUBLICATION_REFS_DENIED (exit 1).",
+          "Missing WOLF_GIT_PUBLICATION_FENCE -> STALE_LEASE_FENCE_REJECTED (exit 1)."
+        ]
+      },
+      {
+        "item": "Gitleaks suppression policy",
+        "result": "VERIFIED",
+        "evidence": "Every .gitleaksignore entry is an exact <40-hex-commit>:<path>:<rule>:<line> fingerprint; the 7 entries and docs/checkpoints/omega/GITLEAKS-IMMUTABLE-NONSECRET-20261029.json are one to one; no rule, path or pattern allowlist exists.",
+        "newTest": "tests/gitleaks-immutable-findings.test.mjs"
+      },
+      {
+        "item": "Historical scanner findings classification",
+        "result": "ALL_SEVEN_CONFIRMED_NON_SECRET",
+        "method": "Fetched the exact blob at each exact fingerprint commit through the authenticated GitHub API and inspected the exact line. No scanner binary was used.",
+        "evidence": [
+          "4 x generic-api-key are the literal '\"executionKey\": \"<sha256>\"' (and one jobB line) of a PUBLIC_CANONICAL_MISSION_SHA256 that equals the recorded expectedDigest.",
+          "3 x private-key are single-line validation literals: startsWith/endsWith('-----BEGIN OPENSSH PRIVATE KEY-----'). No PEM body exists on or after those lines.",
+          "Repository-wide scan finds no complete PEM block with a base64 body."
+        ]
+      },
+      {
+        "item": "Publication uncertainty reconciliation",
+        "result": "CORRECTED_AND_VERIFIED",
+        "defect": "A candidate commit that provably landed but was then superseded by later publications stayed UNKNOWN_UNTIL_RECONCILED forever, permanently blocking that mission from publishing again.",
+        "newTest": "tests/publication-reconciliation-superseded.test.mjs"
+      },
+      {
+        "item": "Scheduled wakeup operational disposition",
+        "result": "CORRECTED_AND_VERIFIED",
+        "defect": "A wakeup whose reservation gate did not admit mission work concluded as a green run with no mission work and no recorded disposition.",
+        "newTest": "tests/night-shift-operational-outcome.test.mjs"
+      }
+    ],
+    "IMPLEMENTED_BUT_NOT_VERIFIED": [
+      {
+        "item": "Night-shift operational outcome publication",
+        "reason": "The correction lives on this branch. Scheduled runs execute the reusable workflow at the immutable SHA pinned by .github/workflows/night-shift-wakeup.yml (currently 7001be578b9ac8baedfc7cb10bc7f28d0a09c125 on this branch, c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1 on main), so nothing changes until that pin is deliberately promoted.",
+        "gate": "Separate founder promotion of the reviewed controller SHA; this record does not merge or promote anything."
+      },
+      {
+        "item": "Operational outcome as a caller-visible reusable-workflow output",
+        "reason": "Declared under on.workflow_call.outputs and structurally validated, but no current caller consumes it."
+      }
+    ],
+    "AVAILABLE_BUT_NOT_INTEGRATED": [
+      {
+        "item": "GitHub Actions on the public repository",
+        "note": "Runs, jobs, step statuses and referenced_workflows are readable. Artifact/log bodies are not (results-receiver host is outside the allowlist)."
+      },
+      {
+        "item": "Ollama public synthetic qualification workflow",
+        "note": "Present and deliberately inert: manual dispatch only, restricted to feat/public-runtime-probe-20261022, zero-cost and digest pinned."
+      },
+      {
+        "item": "Docs-only promotion candidate",
+        "note": "docs/checkpoints/omega/MAIN-SCHEDULER-PROMOTION-20261029.proposal.json is self-consistent but its expectedBlob describes a caller revision that main no longer matches; it remains productionMutationAuthorized=false."
+      }
+    ],
+    "UNAVAILABLE_OR_BLOCKED": [
+      "CircleCI verify-build #11280 reproduction (private, no credentials).",
+      "Private Factory HEAD/SHA refresh, PR #698, PR #696, PR #701 diffs.",
+      "Mission B external-effect classification (authoritative receipts are private).",
+      "DBOS/KCT private crash-recovery fixtures and cross-job runner-loss replay.",
+      "Qwen Code offline npm runtime and worker adapter reconciliation.",
+      "Composio MCP transport recovery and the seven Engineering Skills.",
+      "Google Antigravity evaluation, admission and smoke test.",
+      "Groq/Flint/Ollama live economic admission (no provider credentials in this environment).",
+      "Product acceptance targets (login/Dashboard navigation, Habitat day/night, PT-PT labels): the product source is not in this repository."
+    ]
+  },
+  "missionB": {
+    "missionId": "OMEGA_B_41040712384",
+    "runId": "41040712384",
+    "executionKey": "8efdf3d4e567148eb3961c27a7608346b141431096b3bfadf1119c64503ef96b",
+    "durableStateObservedLocally": "INTENT",
+    "fencingTokenObservedLocally": 1,
+    "externalEffect": "UNKNOWN",
+    "classification": "EFFECT_UNKNOWN",
+    "classificationRationale": "The durable intent and the NEXT_READY continuation are present in docs/checkpoints/runner-loss/41040712384-b-intent.json and docs/checkpoints/runner-loss/41040712384.json, but no authoritative external receipt (Boxxkite create identity, DBOS journal, mission lease, publication evidence) is reachable. An empty or absent search result is not evidence of absence.",
+    "actionsTaken": "None. No replay, no replacement execution key, no lease release and no terminal checkpoint were produced."
+  },
+  "scheduledWakeup41174505505": {
+    "run": "41174505505",
+    "event": "schedule",
+    "headBranch": "main",
+    "headSha": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+    "referencedWorkflow": "private-controller-preflight.yml@c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1",
+    "conclusion": "success",
+    "durationSeconds": 8,
+    "steps": [
+      {"name": "Reserve one durable wakeup without external mission effects", "conclusion": "success"},
+      {"name": "Require currently observable free provider quota before inference", "conclusion": "skipped"},
+      {"name": "Persist safe suspension after bounded gate failure", "conclusion": "skipped"}
+    ],
+    "downstreamJobs": "ALL_SKIPPED",
+    "operationalResult": "STOPPED_RECONCILIATION_REQUIRED_CONFIRMED_BY_SKIPPED_GATES",
+    "assessment": "Administratively successful, operationally skipped. Confirms the mandate's STOPPED_RECONCILIATION_REQUIRED observation and must not be counted as autonomous acceptance."
+  }
+}

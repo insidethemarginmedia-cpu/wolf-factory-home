@@ -1,0 +1,124 @@
+{
+  "schema": "WolfOmegaP4RepairInventory/v1",
+  "recordedAt": "2026-10-31",
+  "branch": "arena/35e73e30-wolf-factory-home",
+  "baseline": {
+    "commit": "653b58a0322960cbad768069f92ce42b911644a1",
+    "parentBranch": "fix/omega-acceptance-ready-20261028",
+    "publicDraftPr": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/1",
+    "publicTestsAtBaseline": "156/156 PASS",
+    "publicTestsAfterRepair": "182/182 PASS"
+  },
+  "access": {
+    "publicRuntimeRepository": {"state": "GRANTED", "evidence": "git ls-remote + gh api 200; full history unshallowed"},
+    "privateFactoryRepository": {
+      "state": "BLOCKED",
+      "repository": "donraposo1-source/project-wolf",
+      "evidence": ["gh api repos/donraposo1-source/project-wolf -> 404", "gh api .../branches/feat/factory-real-worker-m1-20261006 -> 404"],
+      "consequence": "infra/autonomy/boxxkite-jules-test-runner.mjs, infra/autonomy/boxxkite-transport.mjs and tests/wolf-boxxkite-jules-test-runner.test.mjs cannot be read, executed or patched here; no private-side change was fabricated"
+    },
+    "actionsRunMetadata": {"state": "GRANTED", "evidence": "gh api runs/41201041594/jobs -> step names, conclusions, started_at, completed_at"},
+    "actionsLogArchives": {"state": "BLOCKED", "evidence": "gh run view --log -> results-receiver.actions.githubusercontent.com EOF; host outside egress allowlist"},
+    "runArtifacts": {"state": "NONE_EXIST", "evidence": "gh api runs/41201041594/artifacts -> total_count 0; runs/41193744041/artifacts -> total_count 0"},
+    "workflowDispatchReproduction": {"state": "BLOCKED", "evidence": "POST .../workflows/private-controller-preflight.yml/dispatches -> 403 Resource not accessible by integration (token lacks actions:write)"}
+  },
+  "p0a": {
+    "status": "ROOT_CAUSE_UNRESOLVED_PRIVATE_SOURCE_REQUIRED",
+    "failingRun": "41201041594",
+    "failingJob": "integrated-factory",
+    "failingStep": "Full private regression and build",
+    "telemetry": [
+      {"run": "41201041594", "publicSha": "653b58a", "stepSeconds": 21, "outcome": "FAILURE"},
+      {"run": "41193744041", "publicSha": "ac7383a", "stepSeconds": 21, "outcome": "FAILURE"},
+      {"run": "41195261777", "publicSha": "ac7383a", "stepSeconds": 37, "outcome": "success"},
+      {"run": "41152854023", "publicSha": "e2eeed6", "stepSeconds": 41, "outcome": "success"},
+      {"run": "41064289201", "publicSha": "637bda5", "stepSeconds": 33, "outcome": "success"},
+      {"run": "41042718440", "publicSha": "a218315", "stepSeconds": 32, "outcome": "success"},
+      {"run": "41040259520", "publicSha": "0e470ba", "stepSeconds": 33, "outcome": "success"}
+    ],
+    "confirmed": [
+      "Both failures terminate the step after ~21s versus 32-41s for every pass: under bash -e a failing npm test aborts before the trailing admission test and build, so the private suite ran to completion and failed on its result",
+      "The identical 21s failure signature occurred twice ~105 minutes apart on two different public SHAs whose inter-run changes cannot affect the private npm test",
+      "Public-side commits between the runs changed only workflow gating and runtime scripts"
+    ],
+    "hypothesis": "Bounded-poll race: the synthetic Jules isolated-test scenario polls a detached child with short intervals and a limited poll count; node --test file parallelism on a 4-core runner delays the detached process, the budget is exhausted before the JSON receipt is observable, and the runner reports the fail-closed JULES_ISOLATED_TEST_FAILED_OR_UNRESOLVED. Consistent with six isolated Composio passes. NOT PROVEN without the private source.",
+    "requestedPrivateFiles": [
+      "infra/autonomy/boxxkite-jules-test-runner.mjs",
+      "infra/autonomy/boxxkite-transport.mjs",
+      "tests/wolf-boxxkite-jules-test-runner.test.mjs",
+      "package.json (test script definition)"
+    ],
+    "privateRepairDesignContract": [
+      "Distinguish STARTING/RUNNING/COMPLETED/FAILED/RECEIPT_MISSING at the polling boundary",
+      "On poll-budget exhaustion perform exactly one bounded terminal reconciliation (child exit status + final receipt read) before declaring UNRESOLVED",
+      "Atomic receipt writes (temp+rename); readers tolerate ENOENT but never torn JSON",
+      "Contention-aware poll budget or serialization of that single test file; raising constants alone is rejected",
+      "Preserve fail-closed outcomes, bounded timeouts and mandatory sandbox cleanup"
+    ]
+  },
+  "p0b": {
+    "status": "PUBLIC_SIDE_HARDENED_LIVE_TWO_JOB_ACCEPTANCE_NOT_VERIFIED",
+    "defectsCorrected": [
+      "Restore failures were flattened into one opaque DURABLE_CHECKPOINT_READ_FAILED reason (swallowed cause)",
+      "No public-side identity/integrity validation of the sealed envelope before handing it to the private restore"
+    ],
+    "correction": "Marked restoreSealedRunnerState gate in runner-loss-recover: scope+economic admission before IO, one bounded pinned fetch (no polling, no retry), canonical 8-key sealed-envelope validation symmetric to publishFeatureCheckpoint, context identity check against {wolf-runner-loss-<run>, run, admitted source SHA}, distinct fail-closed reason codes, byte-exact exclusive wx 0600 write to the existing RUNNER_TEMP target",
+    "canonicalityEvidence": "All three real published envelopes (40238444987, 40621309211 via the private publish path; 40941257246 via the feature publisher) are byte-canonical JSON.stringify(envelope)+newline with identical 8-key schema",
+    "newTests": ["tests/runner-state-restore-gate.test.mjs (9)", "tests/runner-loss-two-job-contract.test.mjs (8)"],
+    "falsification": "Gate suite fails against pre-fix workflow 653b58a (marker absent); two-job contract test 2 fails pre-fix; remaining tests pin pre-existing contracts and pass before and after",
+    "decodedEquivalence": "YAML-decoded step passes bash -n; decoded heredoc passes node --check; decoded gate byte-equals the raw-extracted gate after de-indent; functional smoke RESTORED + RESTORE_CHECKPOINT_IDENTITY_MISMATCH"
+  },
+  "p0c": {
+    "status": "PROTECTED_AND_GUARDED",
+    "protectedRun": "41040712384",
+    "protectedMission": "OMEGA_B_41040712384",
+    "executionKeyPrefix": "8efdf3d4",
+    "externalEffect": "UNKNOWN (read-only reconciliation observed 39 sandboxes, zero matching labels; automatic retry denied)",
+    "sealedRecords": [
+      {"path": "docs/checkpoints/runner-loss/41040712384-b-intent.json", "sealingCommit": "329967c718264c30842f26e363628657c15eed19", "digestPinnedByTest": true},
+      {"path": "docs/checkpoints/runner-loss/41040712384.json", "sealingCommit": "572c45050b9637a203ddbcd8f132687ce76e3349", "digestPinnedByTest": true},
+      {"path": "docs/checkpoints/night-shift/operations/WOLF_PAIR_41040712384_INTENT.json", "sealingCommit": "f567816a42f082a42d483d5b581208ad5f21ee86", "digestPinnedByTest": true},
+      {"path": "docs/checkpoints/night-shift/operations/WOLF_PAIR_41040712384_READY.json", "sealingCommit": "5531148454a3e1b1d7e9ecaa205bf5b19a28c2ec", "digestPinnedByTest": true}
+    ],
+    "guarantees": [
+      "Byte-for-byte SHA-256 pins on all four records",
+      "Runtime re-validation of both fenced-receipt digest chains",
+      "Tripwire against any new tracked file referencing the protected run",
+      "No machine-readable surface may assert a terminal or negative-creation disposition",
+      "No workflow or script may target the run or its execution identity",
+      "Zero-match reconciliation stays NO_MATCH_OBSERVED + createOutcome UNKNOWN + automaticRetryAuthorized false (live module call, one fetch, no mutation)"
+    ],
+    "newTests": ["tests/omega-b-preservation.test.mjs (9)"],
+    "terminalDispositionEvidenceSpecification": "Provider account audit logs or support attestation for creations in the run window with the exact label; billing/metering records; or the sandbox id observed by an authorized read-only listing. Until one exists, the effect stays UNKNOWN and replay stays denied."
+  },
+  "p0dMatrix": {
+    "crashBeforeCheckpoint": {"status": "PASS_STATIC_CONTRACT", "evidence": "runner-loss-two-job-contract test 1: Job B gated on needs.runner-loss-prepare.result == 'success'"},
+    "crashAfterCheckpoint": {"status": "PASS_STATIC_CONTRACT", "evidence": "test 2: transport is durable Git at the immutable snapshot commit; artifacts are absent from the entire workflow"},
+    "corruptCheckpoint": {"status": "PASS_EXECUTED", "evidence": "restore-gate test: 13 corrupt forms all RESTORE_CHECKPOINT_CORRUPT, zero writes"},
+    "missingCheckpoint": {"status": "PASS_EXECUTED", "evidence": "restore-gate test: 404 -> RESTORE_CHECKPOINT_MISSING, single fetch, no retry"},
+    "incorrectSourceSha": {"status": "PASS_EXECUTED", "evidence": "restore-gate test: stale source SHA -> RESTORE_CHECKPOINT_IDENTITY_MISMATCH"},
+    "duplicateRecovery": {"status": "PASS_EXECUTED_AND_STATIC", "evidence": "restore-gate RESTORE_TARGET_EXISTS on exclusive-write collision; two-job contract test 4 duplicate-wakeup zero-new-effects"},
+    "concurrentRecovery": {"status": "PASS_STATIC_CONTRACT", "evidence": "two-job contract test 6: single non-cancelling concurrency group"},
+    "staleKctFencingToken": {"status": "PASS_EXECUTED", "evidence": "pre-existing live-hook tests (git-publication-preflight.test.mjs: STALE_LEASE_FENCE_REJECTED for claim fence above lease, workflow fence below authority, worker fence mismatch) + new static pins in two-job contract test 3"},
+    "expiredLease": {"status": "PASS_EXECUTED", "evidence": "pre-existing live-hook test: expiresAt in the past -> KCT_LEASE_EXPIRED; new static pin in two-job contract test 3"},
+    "crashAfterDurableMissionBIntent": {"status": "PASS_EXECUTED", "evidence": "omega-b-preservation: intent frozen at state INTENT, NEXT_READY continuation pinned, terminated origin recorded, digest chains re-validated"},
+    "unknownExternalEffect": {"status": "PASS_EXECUTED", "evidence": "pre-existing publication-reconciliation-superseded + boxxkite diagnostic tests; new preservation test 8 re-executes the exact-label zero-match reconciliation"},
+    "duplicateDbosScheduling": {"status": "PARTIAL_STATIC", "evidence": "two-job contract test 4 pins admissionCount==1, fence+1, staleFenceRejected and the duplicate-wakeup no-new-effects sequence; DBOS-runtime-level injection requires the private runtime"},
+    "delayedDetachedProcessStartup": {"status": "BLOCKED_PRIVATE_SOURCE", "evidence": "requires infra/autonomy/boxxkite-transport.mjs"},
+    "lateCompletionAfterPollingTimeout": {"status": "BLOCKED_PRIVATE_SOURCE", "evidence": "requires infra/autonomy/boxxkite-jules-test-runner.mjs"},
+    "failedIsolatedTest": {"status": "BLOCKED_PRIVATE_SOURCE", "evidence": "requires the private runner + test pair"},
+    "missingOrMalformedAsyncReceipt": {"status": "BLOCKED_PRIVATE_SOURCE", "evidence": "requires the private transport receipt writer"},
+    "sandboxCleanupFailure": {"status": "PARTIAL_STATIC", "evidence": "two-job contract test 5 pins verified destruction (EPHEMERAL_STATE_REMAINS / A_STATE_SURVIVED / B_STATE_SURVIVED / docker stop on both jobs); sandbox-level cleanup injection requires the private transport"}
+  },
+  "receipts": {
+    "suite": {"command": "node --test tests/*.test.mjs", "result": "182/182 PASS", "exitCode": 0},
+    "newFiles": [
+      {"command": "node --test tests/runner-state-restore-gate.test.mjs", "result": "9/9 PASS", "exitCode": 0},
+      {"command": "node --test tests/omega-b-preservation.test.mjs", "result": "9/9 PASS", "exitCode": 0},
+      {"command": "node --test tests/runner-loss-two-job-contract.test.mjs", "result": "8/8 PASS", "exitCode": 0}
+    ],
+    "parse": {"command": "node --check scripts/*.mjs tests/*.test.mjs", "result": "ALL_MODULES_PARSE=OK", "exitCode": 0},
+    "yaml": {"tool": "yaml@2.9.1 out-of-tree", "result": "parse OK, 9 jobs; decoded step bash -n OK; decoded heredoc node --check OK; decoded gate equals raw gate after de-indent"}
+  },
+  "zeroCostContract": {"EUR_SPEND": "0", "COST_UNKNOWN": "DENY", "PAID_FALLBACK": "DENY", "TRIAL_CREDIT": "DENY", "inferencePerformed": false, "sandboxCreated": false, "julesActivated": false, "circleCiUsed": false, "newRepositories": 0, "newPullRequests": 0, "newWorkflows": 0, "mergedAnything": false, "productionStateMutated": false, "unknownEffectReplayed": false}
+}

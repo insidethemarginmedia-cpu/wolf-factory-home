@@ -8,8 +8,19 @@
     "kind": "FACTORY_SYNTHETIC_SELF_REPAIR",
     "costBoundary": "EUR0"
   },
-  "state": "CLAIMED",
+  "state": "SUSPENDED",
   "ownerRun": "40605467853",
   "attemptBudget": 1,
-  "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  "externalEffectState": "NO_MISSION_EFFECTS_VERIFIED",
+  "reason": "RESERVATION_READBACK_FAILED_BEFORE_ADMISSION",
+  "automaticRetry": false,
+  "reconciliation": {
+    "state": "PRE_ADMISSION_RESERVATION_FAILURE_CONFIRMED",
+    "sourceRunId": "40605467853",
+    "sourceJobId": "122543744555",
+    "failureStep": "Reserve one durable wakeup without external mission effects",
+    "downstreamMissionJobs": "SKIPPED",
+    "evidenceUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40605467853",
+    "automaticRetryAuthorized": false
+  }
 }

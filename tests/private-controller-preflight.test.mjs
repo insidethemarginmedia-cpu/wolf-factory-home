@@ -110,3 +110,29 @@ test('GitHub identity diagnostic rejects missing, malformed, denied and invalid 
  await assert.rejects(verifyGitHubAuthentication({env,fetchImpl:async()=>{throw Error('private-marker');}}),{message:'GITHUB_AUTH_NETWORK_FAILED'});
  await assert.rejects(verifyGitHubAuthentication({env,fetchImpl:async()=>({ok:true,json:async()=>({})})}),{message:'GITHUB_AUTH_RESPONSE_INVALID'});
 });
+
+test('every declared price must be exact zero before model admission',async()=>{
+ for(const field of ['request','image','web_search','internal_reasoning','input_cache_read','input_cache_write','audio','future_fee']){
+  for(const price of ['0.001',null,0,'unknown','-1','0.000']){
+   const s=serve([repo,ref,key,{data:[{id:model,pricing:{prompt:'0',completion:'0',[field]:price}}]}]);
+   await assert.rejects(verifyPrivateControllerAccess({env,fetchImpl:s.fetchImpl}),{message:'EXACT_FREE_MODEL_REQUIRED'},`${field}=${price}`);
+  }
+ }
+});
+
+test('duplicate exact model identities cannot select a favorable price',async()=>{
+ const s=serve([repo,ref,key,{data:[catalog.data[0],{id:model,pricing:{prompt:'1',completion:'1'}}]}]);
+ await assert.rejects(verifyPrivateControllerAccess({env,fetchImpl:s.fetchImpl}),{message:'EXACT_FREE_MODEL_REQUIRED'});
+});
+
+test('explicit zero ancillary prices retain the qualified model',async()=>{
+ const s=serve([repo,ref,key,{data:[{id:model,pricing:{prompt:'0',completion:'0',request:'0',internal_reasoning:'0'}}]}]);
+ assert.equal((await verifyPrivateControllerAccess({env,fetchImpl:s.fetchImpl})).state,'PREFLIGHT_VERIFIED');
+});
+
+test('malformed catalog envelopes fail with sanitized admission reason',async()=>{
+ for(const bad of [null,{}, {data:{}},{data:[null]}]){
+  const s=serve([repo,ref,key,bad]);
+  await assert.rejects(verifyPrivateControllerAccess({env,fetchImpl:s.fetchImpl}),{message:'EXACT_FREE_MODEL_REQUIRED'});
+ }
+});

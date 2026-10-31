@@ -17,3 +17,12 @@ test('existing adapter receives only exact authorized model and bounded diagnost
 test('paid, missing and wrong-content receipts are rejected',async()=>{
  for(const overrides of [{costUsd:1},{generationId:''},{content:'unexpected'},{model:'paid-model'}])await assert.rejects(qualifyExistingWorker({env,fetchImpl:fetcher([key,repo,ref,key,catalog]),loadExecutor:()=>async()=>({model:'recursive/flint-v1.0:free',costUsd:0,generationId:'fixture',content:'WOLF_RUNTIME_OK',...overrides})}),/WORKER_QUALIFICATION_RECEIPT_INVALID/);
 });
+
+test('private worker loader limits streamed bytes before dynamic import or inference',async()=>{
+ let textCalls=0,reads=0,cancelled=0,n=0;
+ const values=[key,repo,ref,key,catalog];
+ const response={ok:true,text:async()=>{textCalls++;return '{}';},body:{getReader:()=>({read:async()=>{reads++;return {done:false,value:new Uint8Array(1048577)};},cancel:()=>{cancelled++;}})}};
+ await assert.rejects(qualifyExistingWorker({env,fetchImpl:async()=>n<values.length?{ok:true,json:async()=>values[n++]}:response}),{message:'PRIVATE_SOURCE_SIZE_DENIED'});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(textCalls,0);assert.equal(reads,1);assert.equal(cancelled,1);
+});

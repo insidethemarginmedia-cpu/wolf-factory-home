@@ -19,8 +19,12 @@ export async function verifyPrivateControllerAccess({env=process.env,fetchImpl=g
  const key=await get('https://openrouter.ai/api/v1/key',env.OPENROUTER_API_KEY,'PROVIDER_KEY');
  if(key.data?.is_free_tier!==true||key.data?.limit!==0||key.data?.byok_usage!==0)throw Error('ZERO_SPENDING_SERVICE_KEY_REQUIRED');
  const catalog=await get('https://openrouter.ai/api/v1/models',undefined,'MODEL_CATALOG');
- const model=catalog.data?.find(item=>item.id==='recursive/flint-v1.0:free');
- if(model?.pricing?.prompt!=='0'||model?.pricing?.completion!=='0')throw Error('EXACT_FREE_MODEL_REQUIRED');
+ // A free suffix and zero token prices do not authorize paid ancillary charges.
+ // Reject ambiguous identities and unknown/new nonzero pricing fields fail-closed.
+ const models=Array.isArray(catalog?.data)?catalog.data.filter(item=>item?.id==='recursive/flint-v1.0:free'):[];
+ const model=models.length===1?models[0]:undefined;
+ const pricing=model?.pricing;
+ if(!pricing||typeof pricing!=='object'||Array.isArray(pricing)||pricing.prompt!=='0'||pricing.completion!=='0'||Object.values(pricing).some(price=>price!=='0'))throw Error('EXACT_FREE_MODEL_REQUIRED');
  return {state:'PREFLIGHT_VERIFIED',privateRepositoryAccess:true,canonicalRefVerified:true,model:model.id,inferencePerformed:false,privateSourceFetched:false,missionExecutionVerified:false};
 }
 
