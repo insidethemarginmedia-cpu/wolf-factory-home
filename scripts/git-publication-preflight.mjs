@@ -1193,13 +1193,44 @@ function recoverPublicationUncertaintyLocked({
       };
       recovered.push(verifiedRecord);
     } else if (observedSha && observedSha !== entry.headSha) {
-      unreconciled.push({
-        ...entry,
-        reconciliationAttemptedAt: new Date().toISOString(),
-        reason: 'CONFLICTING_REMOTE_STATE',
-        observedSha,
-        expectedSha: entry.headSha,
-      });
+      // The recorded candidate is not the current tip. Two very different cases
+      // used to collapse into one ambiguous CONFLICTING_REMOTE_STATE and stayed
+      // UNKNOWN forever, which blocked every later publication for that mission:
+      //   (a) the candidate commit really landed and the branch advanced past it
+      //       (subsequent mission/checkpoint publications), i.e. the external
+      //       effect happened and must be confirmed but never replayed;
+      //   (b) the tip does not contain the candidate at all (rewritten or
+      //       unrelated history), which must stay UNKNOWN.
+      // Only Git ancestry, computed from objects already present locally, can
+      // prove (a). No fetch, no replay and no credential use happens here.
+      const headShaValid = typeof entry.headSha === 'string' && /^[a-f0-9]{40}$/.test(entry.headSha);
+      const ancestry = headShaValid
+        ? spawnImpl(
+            'git',
+            ['merge-base', '--is-ancestor', entry.headSha, observedSha],
+            {cwd, encoding: 'utf8', timeout: 5000},
+          )
+        : null;
+      if (ancestry && ancestry.status === 0 && !ancestry.signal && !ancestry.error) {
+        recovered.push({
+          ...entry,
+          published: true,
+          externalEffectState: 'VERIFIED',
+          effectDisposition: 'CONFIRMED_SUPERSEDED',
+          supersededBy: observedSha,
+          verifiedAt: new Date().toISOString(),
+          reconciledFrom: 'UNKNOWN_UNTIL_RECONCILED',
+        });
+      } else {
+        unreconciled.push({
+          ...entry,
+          reconciliationAttemptedAt: new Date().toISOString(),
+          reason: 'CONFLICTING_REMOTE_STATE',
+          observedSha,
+          expectedSha: entry.headSha,
+          ancestryProven: false,
+        });
+      }
     } else {
       unreconciled.push({
         ...entry,

@@ -22,6 +22,13 @@ on:
         required: true
       BOXXKITE_API_KEY:
         required: true
+    outputs:
+      operational_outcome:
+        description: >-
+          Operational disposition of the bounded wakeup. MISSION_WORK_ADMITTED,
+          NO_MISSION_WORK_PERFORMED or V1_TERMINAL_DISPOSITION_ONLY. A run is not
+          autonomous acceptance unless this value is MISSION_WORK_ADMITTED.
+        value: ${{ jobs.night-shift-admission.outputs.operational_outcome }}
   workflow_dispatch:
     inputs:
       consult_ollama:
@@ -118,6 +125,11 @@ on:
       - 'tests/scheduler-promotion-candidate.test.mjs'
       - 'docs/checkpoints/omega/MAIN-SCHEDULER-PROMOTION-*'
       - 'tests/runner-checkpoint-publication.test.mjs'
+      - 'tests/night-shift-operational-outcome.test.mjs'
+      - 'tests/publication-reconciliation-superseded.test.mjs'
+      - 'tests/gitleaks-immutable-findings.test.mjs'
+      - '.gitleaksignore'
+      - 'docs/checkpoints/omega/GITLEAKS-IMMUTABLE-NONSECRET-*'
       - 'tests/cross-job-pair-routing.test.mjs'
 permissions:
   contents: read
@@ -262,6 +274,7 @@ jobs:
       actions: read
     outputs:
       ready: ${{ steps.reserve.outputs.ready == 'true' && steps.quota.outcome == 'success' }}
+      operational_outcome: ${{ steps.operational_skip.outputs.operational_outcome || steps.terminal.outputs.operational_outcome || (steps.quota.conclusion == 'success' && 'MISSION_WORK_ADMITTED' || 'OPERATIONAL_OUTCOME_UNDETERMINED') }}
     env:
       WOLF_FACTORY_EXPECTED_SHA: ${{ needs.factory-source-admission.outputs.source_sha }}
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
@@ -288,6 +301,7 @@ jobs:
       run: node scripts/wolf-night-shift-wakeup.mjs prepare
     - name: Publish only a separately approved V1 terminal disposition
       if: inputs.v1_terminal_request != ''
+      id: terminal
       env:
         GITHUB_TOKEN: ${{ github.token }}
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
@@ -301,6 +315,28 @@ jobs:
         fs.writeFileSync(process.env.WOLF_V1_DISPOSITION_REQUEST,JSON.stringify(JSON.parse(raw)),{flag:'wx',mode:0o600});
         NODE
         node scripts/wolf-night-shift-wakeup.mjs publish-terminal-disposition
+        echo 'operational_outcome=V1_TERMINAL_DISPOSITION_ONLY' >> "$GITHUB_OUTPUT"
+    - name: Record explicit operational skip without mission work
+      if: inputs.v1_terminal_request == '' && steps.reserve.outputs.ready != 'true'
+      id: operational_skip
+      env:
+        RESERVE_READY: ${{ steps.reserve.outputs.ready }}
+      run: |
+        set -euo pipefail
+        outcome='NO_MISSION_WORK_PERFORMED'
+        {
+          echo '### Wolf wakeup operational outcome: NO_MISSION_WORK_PERFORMED'
+          echo ''
+          echo "The reservation gate returned ready=${RESERVE_READY:-<empty>}. The quota gate and every"
+          echo 'mission job were skipped, so this run performed no mission work.'
+          echo ''
+          echo 'This run is NOT autonomous acceptance. No mission executed, no external effect was'
+          echo 'created and no lease was released or replayed by this step.'
+          echo ''
+          echo "WOLF_WAKEUP_OPERATIONAL_OUTCOME=${outcome}"
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "operational_outcome=${outcome}" >> "$GITHUB_OUTPUT"
+        echo "WOLF_WAKEUP_OPERATIONAL_OUTCOME=${outcome}"
     - name: Admit one bounded direct Groq Free attempt without OpenRouter quota dependency
       id: quota
       if: steps.reserve.outputs.ready == 'true'
