@@ -90,8 +90,12 @@ test('concurrent runs serialize under one non-cancelling concurrency group', () 
 test('recovery missions use fresh per-run synthetic identities and can never address the protected original run', () => {
   assert.ok(prepare.includes("taskId:'OMEGA_C_'+run"), 'Mission C identity is derived from the fresh run id');
   assert.ok(prepare.includes("workflowID:'wolf-runner-loss-'+run"));
-  assert.equal(source.includes('41040712384'), false, 'the workflow must never hardcode the protected run');
-  assert.equal(source.includes('8efdf3d4e567148eb3961c27a7608346b141431096b3bfadf1119c64503ef96b'), false);
+  // The protected identity is read from the sealed intent at runtime; this file must never embed it
+  // (tests/omega-b-preservation.test.mjs enforces that carrier restriction repository-wide).
+  const intent = JSON.parse(fs.readFileSync(new URL('../docs/checkpoints/runner-loss/41040712384-b-intent.json', import.meta.url), 'utf8'));
+  assert.equal(source.includes(intent.runId), false, 'the workflow must never hardcode the protected run');
+  assert.equal(source.includes(intent.missionId), false, 'the workflow must never hardcode the protected mission');
+  assert.equal(source.includes(intent.executionKey), false, 'the workflow must never hardcode the protected execution identity');
   assert.ok(recover.includes("process.env.WOLF_CROSS_JOB_TEST==='1'&&process.env.GITHUB_JOB==='runner-loss-recover'?1:0"), 'the recovering job leases its own mission identity, never Mission A');
 });
 

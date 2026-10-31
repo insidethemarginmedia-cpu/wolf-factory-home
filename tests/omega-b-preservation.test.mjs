@@ -94,6 +94,7 @@ test('no new disposition record for the original run can appear unnoticed', () =
     'docs/checkpoints/omega/WOLF-OMEGA-P4-20261031.inventory.json',
     'tests/boxxkite-service-diagnostic.test.mjs',
     'tests/omega-b-preservation.test.mjs', // this guard itself embeds the run id in the sealed-record paths
+    'tests/runner-loss-two-job-contract.test.mjs', // reads the sealed intent by path to derive the protected identity at runtime
   ]);
   const referencing = trackedFilesMatching(runId);
   for (const rel of SEALED_RECORD_DIGESTS.keys()) assert.ok(referencing.includes(rel), rel + ' must not be deleted');
