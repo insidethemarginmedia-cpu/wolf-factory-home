@@ -115,6 +115,34 @@ test('active KCT claims fence the generated guard against wrong mission, stale t
   });
 });
 
+test('released KCT generation cannot authorize publication in helper or either workflow hook', () => {
+  for (const source of ['helper', 'integrated-factory', 'runner-loss-recover']) {
+    withPublicationGuardFixture(source, ({tmp, cwd, remote, leasePath, admittedSha, env}) => {
+      const claimsPath = path.join(tmp, '.continuity', 'tasks', 'claims');
+      if (source === 'helper') {
+        installCompareAndSwapPrePushGuard({
+          cwd, leaseFilePath: leasePath, expectedRemoteSha: admittedSha,
+          missionId: 'OMEGA_TEST_0001', kctAuthorityDirectory: claimsPath,
+        });
+      }
+      const hookPath = path.join(cwd, '.git', 'hooks', 'pre-push');
+      const invoke = () => spawnSync(process.execPath, [hookPath, 'origin', remote], {
+        cwd, env, encoding: 'utf8',
+        input: `HEAD ${admittedSha} refs/heads/${CANONICAL_BRANCH} ${admittedSha}\n`,
+      });
+      const live = invoke();
+      assert.equal(live.status, 0, `${source} must accept a valid unreleased claim: ${live.stderr}`);
+      const releasePath = path.join(tmp, '.continuity', 'tasks', 'claim-releases', 'OMEGA_TEST_0001', '1');
+      fs.mkdirSync(releasePath, {recursive: true});
+      const released = invoke();
+      assert.equal(released.status, 1, `${source} must reject the released generation`);
+      assert.match(released.stderr, /KCT_CLAIM_GENERATION_RELEASED/);
+      fs.rmSync(releasePath, {recursive: true, force: true});
+      assert.equal(invoke().status, 0, `${source} must still accept an unreleased valid claim`);
+    });
+  }
+});
+
 test('both operational workflow hooks enforce the same active KCT authority as the P0 renderer', () => {
   for (const source of ['integrated-factory', 'runner-loss-recover']) {
     withPublicationGuardFixture(source, ({tmp, cwd, remote, leasePath, admittedSha, env}) => {

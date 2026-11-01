@@ -674,6 +674,14 @@ try {
     if (claim?.taskId !== lease.missionId) deny('LEASE_MISSION_IDENTITY_MISMATCH');
     if (!Number.isSafeInteger(claim.fencingToken) || claim.fencingToken < 1 || claim.fencingToken !== lease.leaseFence) deny('STALE_LEASE_FENCE_REJECTED');
     if (!Number.isFinite(claim.expiresAt) || claim.expiresAt <= Date.now()) deny('KCT_LEASE_EXPIRED');
+    // KCT release markers are immutable per fencing generation. A claim file
+    // may remain after release; it is not sufficient publication authority.
+    const releasePath = path.join(path.dirname(kctAuthorityDirectory), 'claim-releases', encodeURIComponent(lease.missionId), String(lease.leaseFence));
+    try { fs.statSync(releasePath); deny('KCT_CLAIM_GENERATION_RELEASED'); }
+    catch (error) {
+      if (error?.wolfReason === 'KCT_CLAIM_GENERATION_RELEASED') throw error;
+      if (error?.code !== 'ENOENT') deny('KCT_AUTHORITY_INACCESSIBLE');
+    }
   }
   // P0-A: Fence authority from external KCT/DBOS state - the same process cannot
   // self-authorize by overwriting a sidecar file. Cross-check against the
