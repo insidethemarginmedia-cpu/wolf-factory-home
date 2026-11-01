@@ -1,0 +1,179 @@
+{
+  "schema": 2,
+  "status": "NOT_READY_FOR_FACTORY_INTEGRATION",
+  "base_repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "base_commit": "061d9ffd05dc4b7f528087761755ca01468e324c",
+  "upstream_ruflo_commit": "66df9b95e1ab79d7263e491d23b20464f2906eec",
+  "upstream_version": "3.67.0",
+  "upstream_archive_sha256": "598aa22534a1ae8fe4a063568331a8b5460281755dfd8efd5af58b3d9d77bc71",
+  "upstream_v3_lock_sha256": "c64b8fd88fe5b10caef563ef0fb64e7f5e5de72f376eda35b781887d6a13c3b9",
+  "dependency_versions": "wolf-ruflo/pnpm-lock.yaml (active frozen workspace lock; exact versions and SRI); dependency-lock.json is historical root npm inventory",
+  "package_manager": "pnpm 8.15.0 via corepack 0.34.6",
+  "environment": {
+    "os": "Linux x86_64",
+    "node": "22.22.3",
+    "python": "3.11.2",
+    "npm_historical": "10.9.8"
+  },
+  "environment_variables": {
+    "RUFLO_DAEMON_AUTOSTART": "0 (set by installer and gateway)",
+    "WOLF_RUFLO_CLI": "absolute CLI path for actual MCP integration test; no secrets",
+    "PATH": "node, corepack, python3, pgrep, curl, sha256sum, tar and bash",
+    "HOME": "isolated for CLI smoke and MCP gateway"
+  },
+  "changed_files": [
+    {
+      "path": "tests/test_ruflo_contracts.py",
+      "sha256": "8665f1e8f3ee92728fce4cd8ac496745c3b584c09fec8911089db39ba78e62c4"
+    },
+    {
+      "path": "tests/test_ruflo_memory.py",
+      "sha256": "170469fb5fe7a2e86dc694e0e8c6e30cb8ff7020c3d142febebe24681f078983"
+    },
+    {
+      "path": "wolf-ruflo/INSTALL.md",
+      "sha256": "acc56fde38d6e046ee57dc042a111030e8f52d8742ff0978448a321f3d031491"
+    },
+    {
+      "path": "wolf-ruflo/ROLLBACK.md",
+      "sha256": "aed486584de21db46b3f4045117a71d033ae2e45394a42970683f03d4ecc6f66"
+    },
+    {
+      "path": "wolf-ruflo/TEST-RESULTS.md",
+      "sha256": "bd91df5e6e56defd78c171f37edbaefd8a4e9566e507a4aacd4b0ba98f6a7323"
+    },
+    {
+      "path": "wolf-ruflo/dependency-lock.json",
+      "sha256": "c72f3c32fed932ff61136e0f5492a5248f1c238357d4e780116e212821973089"
+    },
+    {
+      "path": "wolf-ruflo/evidence/adapter-tests.log",
+      "sha256": "c3e8b16ca66be1d4ec9fc5c142513cb408d1cc7e6ce19593c474ee337ce73ad4"
+    },
+    {
+      "path": "wolf-ruflo/evidence/build.log",
+      "sha256": "5826adf8e79fc7076b2bc8767e4db68fe9d3bd25525b7ffc1954381858456a84"
+    },
+    {
+      "path": "wolf-ruflo/evidence/mcp-probe.log",
+      "sha256": "6625ef411dfacbe47c01226cf32ea8200f64d924501d911e5dc11856de29de5a"
+    },
+    {
+      "path": "wolf-ruflo/evidence/npm-ci.log",
+      "sha256": "5684151e9f2bb25e912c83a5b0ba6d98b850a32db39ccfd2e29a95d9d31add3e"
+    },
+    {
+      "path": "wolf-ruflo/evidence/npm-ls-summary.log",
+      "sha256": "71fb69388b305bd85f6b96bf5c224ec1545dfbcc4bde410b9e0d2cdf48ef53b4"
+    },
+    {
+      "path": "wolf-ruflo/evidence/p1-adapter-tests.log",
+      "sha256": "273a2b8d415eead84b83e5417a41e2767ab2a0176fe39282be69f7ba2bea7bce"
+    },
+    {
+      "path": "wolf-ruflo/evidence/p1-install-build.log",
+      "sha256": "fed48baec4541ceaa121679227f0774130bb0ba7c9261105711608a5fc65eca6"
+    },
+    {
+      "path": "wolf-ruflo/evidence/p1-upstream-rvf.log",
+      "sha256": "1dba4db8f744fb46127a42f78ca9c4f5b4e45cb3d853bd44da12bbefd34c00ee"
+    },
+    {
+      "path": "wolf-ruflo/evidence/p1-upstream-security-basic.log",
+      "sha256": "157858436ba39b0bf3275c581660b668a963f69ec30693f84b758f31466739c8"
+    },
+    {
+      "path": "wolf-ruflo/evidence/p1-upstream-security.log",
+      "sha256": "8f257725c50a7e9c33a5fe0e64e1453d535dc31a8714fca1a97e92f2e6f51c49"
+    },
+    {
+      "path": "wolf-ruflo/evidence/p1-verify.log",
+      "sha256": "e6e16e0f5acb882a9d31da77efa20b84b7462bb6c8233e2a45c5a00e93141aaa"
+    },
+    {
+      "path": "wolf-ruflo/evidence/rollback.log",
+      "sha256": "b1b4c678a1649cb14934474649c4828193f627995b64eea522cc4975902bae2b"
+    },
+    {
+      "path": "wolf-ruflo/evidence/upstream-rvf.log",
+      "sha256": "e351621f1898b4bc83add6a1e18283978adbef5b28bcebeb3b0f27651dd89c05"
+    },
+    {
+      "path": "wolf-ruflo/evidence/wolf-tests.log",
+      "sha256": "f64d149878eb129604e964f6e67e5a0658797b79683f194f0448e980c9a2b208"
+    },
+    {
+      "path": "wolf-ruflo/guard.py",
+      "sha256": "7b5232fa69c3a080f5918a9a866178a4967bc6742a2498c09277827f1786d0bd"
+    },
+    {
+      "path": "wolf-ruflo/install.sh",
+      "sha256": "d35c6f7b2577ab24aee53a5aa7e80be602eaf8c3e68d4b3772cc418f41be91ad"
+    },
+    {
+      "path": "wolf-ruflo/mcp_gateway.py",
+      "sha256": "c3e40d51964dc45a8eed80e74bd53b07e5de42f93ea88e8de5db1f5451f6120b"
+    },
+    {
+      "path": "wolf-ruflo/mcp_probe.py",
+      "sha256": "953051a166b4f75c9712a6d3e675f17878c2a7b1d832836698490d4fe0694d80"
+    },
+    {
+      "path": "wolf-ruflo/memory.py",
+      "sha256": "ef28c52c060d9f0ccdb099bf55fdef33782d8bcecc8f7e36fd77a5c2d5db97d3"
+    },
+    {
+      "path": "wolf-ruflo/pnpm-lock.yaml",
+      "sha256": "c64b8fd88fe5b10caef563ef0fb64e7f5e5de72f376eda35b781887d6a13c3b9"
+    },
+    {
+      "path": "wolf-ruflo/rollback.sh",
+      "sha256": "73ddc4b7496af44b178d30658b9cb93597226e97a7a6290e5f437a332cca7c1e"
+    },
+    {
+      "path": "wolf-ruflo/ruflo_memory.py",
+      "sha256": "878ab1339470966b08ac8a94e64ff9a98142a8fe7b9dc509062ad339172c1f95"
+    },
+    {
+      "path": "wolf-ruflo/verify.sh",
+      "sha256": "0d35c800ffd955f035448e121a6f2619a2b59ec5c00af85949bffbc60f8ac1bb"
+    },
+    {
+      "path": "wolf-ruflo/worker_contract.py",
+      "sha256": "fc81e6881f9335f009af19e853734711b938cdb37d86b2e97bb7b14883233aff"
+    },
+    {
+      "path": "wolf-ruflo/INTEGRATION-MANIFEST.json",
+      "sha256": "omitted to avoid self-reference"
+    }
+  ],
+  "tests": {
+    "./wolf-ruflo/install.sh /home/user/ruflo-p1-repro": "PASS exit 0 (frozen install and targeted build; warnings remain)",
+    "pnpm list --filter @claude-flow/cli --depth 0": "PASS exit 0, not comprehensive tree validation",
+    "root npm ls --all": "FAIL historical lock mismatches",
+    "tsc -p cli-core/security/neural/memory and tsc -b cli --force": "PASS exit 0 (fresh source installer)",
+    "upstream rvf-backend.test.ts": "PASS 3 tests, mocks native RVF",
+    "upstream security focused tests": "PASS 101 tests",
+    "WOLF_RUFLO_CLI=<fresh-cli> ./wolf-ruflo/verify.sh": "PASS 14 Python and 184 Node",
+    "MCP gateway real server": "PASS bounded agent_list only; deny other calls; no auth or network sandbox",
+    "executor replacement": "NOT VERIFIED",
+    "worker/DBOS/KCT real integration": "BLOCKED",
+    "dummy isolated rollback and local snapshot restore": "PASS local only"
+  },
+  "compatibility_constraints": [
+    "Node >=20 upstream; Node 22.22.3 pnpm 8.15.0 tested",
+    "SQLite DELETE journal on trusted local POSIX filesystem only",
+    "MemoryEntry subset; not full IMemoryBackend or RVF integration",
+    "MCP gateway experimental, not KCT authorization or network sandbox"
+  ],
+  "known_blockers": [
+    "full transitive/native dependency graph not verified; missing workspace and agentdb bin warnings",
+    "private Factory and branch inaccessible HTTP 404",
+    "Composio unsupported; historical 403 cause unknown",
+    "no independently demonstrated cross-executor persistent store",
+    "no real KCT/DBOS/worker wiring, reconciliation or publication integration"
+  ],
+  "install": "wolf-ruflo/INSTALL.md",
+  "rollback": "wolf-ruflo/ROLLBACK.md",
+  "results": "wolf-ruflo/TEST-RESULTS.md"
+}

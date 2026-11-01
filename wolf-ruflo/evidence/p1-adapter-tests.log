@@ -1,0 +1,19 @@
+test_fail_closed_recovery_and_economics (test_ruflo_contracts.ContractTests.test_fail_closed_recovery_and_economics) ... ok
+test_memory_entry_bridge (test_ruflo_contracts.ContractTests.test_memory_entry_bridge) ... ok
+test_targets_and_authority_identity (test_ruflo_contracts.ContractTests.test_targets_and_authority_identity) ... ok
+test_real_server_allowlist_lifecycle_and_no_secret (test_ruflo_contracts.GatewayTests.test_real_server_allowlist_lifecycle_and_no_secret) ... ok
+test_guards (test_ruflo_memory.GuardTests.test_guards) ... ok
+test_backup_and_incompatible_corruption (test_ruflo_memory.MemoryTests.test_backup_and_incompatible_corruption) ... ok
+test_concurrent_processes (test_ruflo_memory.MemoryTests.test_concurrent_processes) ... ok
+test_duplicate_stale_and_conflict (test_ruflo_memory.MemoryTests.test_duplicate_stale_and_conflict) ... ok
+test_hot_journal_recovers_on_copy_only (test_ruflo_memory.MemoryTests.test_hot_journal_recovers_on_copy_only) ... ok
+test_lost_response_after_commit_and_snapshot_restore (test_ruflo_memory.MemoryTests.test_lost_response_after_commit_and_snapshot_restore) ... ok
+test_no_overwrite_and_input (test_ruflo_memory.MemoryTests.test_no_overwrite_and_input) ... ok
+test_process_killed_during_uncommitted_write (test_ruflo_memory.MemoryTests.test_process_killed_during_uncommitted_write) ... ok
+test_restart_and_isolation (test_ruflo_memory.MemoryTests.test_restart_and_isolation) ... ok
+test_wal_files_fail_closed (test_ruflo_memory.MemoryTests.test_wal_files_fail_closed) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 1.548s
+
+OK

@@ -1,0 +1,11 @@
+10:59:26 AM [vite] warning: `esbuild` option was specified by "vitest" plugin. This option is deprecated, please use `oxc` instead.
+
+ RUN  v3.2.6 /home/user/ruflo-recovery/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec
+
+ ✓ v3/@claude-flow/memory/src/rvf-backend.test.ts (3 tests) 12ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  10:59:26
+   Duration  445ms (transform 110ms, setup 0ms, collect 113ms, tests 12ms, environment 0ms, prepare 89ms)
+

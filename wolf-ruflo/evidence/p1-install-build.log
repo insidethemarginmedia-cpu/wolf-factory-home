@@ -1,0 +1,89 @@
+v22.22.3
+8.15.0
+/home/user/ruflo-p1-repro/source.tar.gz: OK
+pnpm-lock.yaml: OK
+Scope: 10 of 25 workspace projects
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+.                                        |    +1319 ++++++++++++++++++++++++++++
+Progress: resolved 1319, reused 493, downloaded 0, added 0
+Progress: resolved 1319, reused 1230, downloaded 0, added 0
+Progress: resolved 1319, reused 1230, downloaded 0, added 267
+Progress: resolved 1319, reused 1230, downloaded 0, added 458
+Progress: resolved 1319, reused 1230, downloaded 0, added 961
+Progress: resolved 1319, reused 1230, downloaded 0, added 1259
+Progress: resolved 1319, reused 1230, downloaded 0, added 1299
+Progress: resolved 1319, reused 1230, downloaded 0, added 1319, done
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/node_modules/.pnpm/midstreamer@0.3.1_@types+node@20.19.27/node_modules/midstreamer/node_modules/.bin/agentdb. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/node_modules/.pnpm/agentic-flow@2.0.12-fix.8_@types+node@20.19.27/node_modules/agentic-flow/dist/agentdb/cli/agentdb-cli.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/cli/node_modules/.bin/claude-flow-core. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/cli-core/dist/src/index.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/cli/node_modules/.bin/claude-flow-codex. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/codex/dist/cli.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/cli/node_modules/.bin/ruflo-federation. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/plugin-agent-federation/dist/bin.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/plugin-agent-federation/node_modules/.bin/agentdb. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/node_modules/.pnpm/agentic-flow@2.0.12-fix.8_@types+node@20.19.27/node_modules/agentic-flow/dist/agentdb/cli/agentdb-cli.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/guidance/node_modules/.bin/claude-flow-hooks. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/hooks/dist/cli/guidance-cli.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/guidance/node_modules/.bin/guidance. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/hooks/dist/cli/guidance-cli.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/plugins/node_modules/.bin/claude-flow-hooks. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/hooks/dist/cli/guidance-cli.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/plugins/node_modules/.bin/guidance. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/hooks/dist/cli/guidance-cli.js'
+ WARN  Failed to create bin at /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/browser/node_modules/.bin/agentdb. ENOENT: no such file or directory, open '/home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/node_modules/.pnpm/agentic-flow@2.0.13_@types+node@20.19.27/node_modules/agentic-flow/dist/agentdb/cli/agentdb-cli.js'
+Done in 8.6s
+building=cli-core
+building=security
+building=neural
+building=memory
+Legend: production dependency, optional only, dev only
+
+@claude-flow/cli@3.67.0 /home/user/ruflo-p1-repro/ruflo-66df9b95e1ab79d7263e491d23b20464f2906eec/v3/@claude-flow/cli
+
+dependencies:
+@claude-flow/cli-core link:../cli-core
+@claude-flow/codex link:../codex
+@claude-flow/mcp link:../mcp
+@claude-flow/neural link:../neural
+@claude-flow/plugin-agent-federation link:../plugin-agent-federation
+@claude-flow/security link:../security
+@claude-flow/shared link:../shared
+@electron/asar 4.3.1
+@iarna/toml 2.2.5
+@metaharness/router 0.4.0
+@noble/ed25519 2.3.0
+@ruvector/rabitq-wasm 0.1.0
+@ruvector/typesafe 0.1.0
+ajv 8.20.0
+bcryptjs 3.0.3
+chalk 5.6.2
+commander 12.1.0
+cors 2.8.6
+express 5.2.1
+express-rate-limit 8.6.2
+fast-uri 3.1.7
+fs-extra 11.3.3
+helmet 7.2.0
+inquirer 9.3.8
+metaharness 0.4.1
+semver 7.7.3
+sql.js 1.14.1
+typescript 5.9.3
+ws 8.21.1
+yaml 2.8.2
+zod 3.25.76
+
+devDependencies:
+tsx 4.21.0
+vitest 4.1.8
+
+optionalDependencies:
+@agntcy/slim-bindings 2.1.1
+@claude-flow/aidefence link:../aidefence
+@claude-flow/memory link:../memory
+@metaharness/darwin 0.12.1
+@metaharness/flywheel 0.1.10
+@metaharness/radio 0.1.0
+@metaharness/turn-credit 0.1.0
+@napi-rs/keyring 1.3.0
+agentdb 3.0.0
+agentic-flow 3.0.0
+better-sqlite3 12.9.0
+nostr-tools 2.25.2
+ruvector 0.2.41
+nostr-tools=2.25.2
+CLI help exit=0; lifecycle scripts disabled; warnings and optional capabilities require review
+install_exit=0

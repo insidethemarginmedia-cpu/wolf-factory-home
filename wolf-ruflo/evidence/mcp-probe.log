@@ -1,0 +1,6 @@
+{"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2024-11-05", "serverInfo": {"name": "ruflo", "version": "3.0.0"}, "capabilities": {"tools": {"listChanged": true}, "resources": {}}}}
+{"jsonrpc": "2.0", "id": 2, "result": {"tools": [{"name": "agent_list", "description": "List every Ruflo-tracked agent in the registry with its type, model, status, and taskCount. Use when native Task tool is wrong because you need to see the swarm-wide agent inventory across turns (which agents exist, their roles, their cost-tracking handles) rather than spawn a new one-shot Task. Filter by status/domain/agentType if needed. For starting a fresh single-shot subagent, native Task is fine.", "inputSchema": {"type": "object", "properties": {"status": {"type": "string", "description": "Filter by status"}, "domain": {"type": "string", "description": "Filter by domain"}, "agentType": {"type": "string", "description": "Filter by agent type"}, "includeTerminated": {"type": "boolean", "description": "Include terminated agents"}}}}]}}
+{"jsonrpc": "2.0", "id": 3, "result": {"content": [{"type": "text", "text": "{\n  \"agents\": [],\n  \"total\": 0,\n  \"filters\": {}\n}"}], "isError": false}}
+process_exit -15
+stderr [2026-11-01T11:01:29.397Z] INFO [claude-flow-mcp] (mcp-1793530889397-1ac910aa) Starting in stdio mode
+

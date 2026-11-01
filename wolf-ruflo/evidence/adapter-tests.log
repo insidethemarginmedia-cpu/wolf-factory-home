@@ -1,0 +1,12 @@
+test_guards (test_ruflo_memory.GuardTests.test_guards) ... ok
+test_backup_and_incompatible_corruption (test_ruflo_memory.MemoryTests.test_backup_and_incompatible_corruption) ... ok
+test_concurrent_processes (test_ruflo_memory.MemoryTests.test_concurrent_processes) ... ok
+test_duplicate_stale_and_conflict (test_ruflo_memory.MemoryTests.test_duplicate_stale_and_conflict) ... ok
+test_no_overwrite_and_input (test_ruflo_memory.MemoryTests.test_no_overwrite_and_input) ... ok
+test_process_killed_during_uncommitted_write (test_ruflo_memory.MemoryTests.test_process_killed_during_uncommitted_write) ... ok
+test_restart_and_isolation (test_ruflo_memory.MemoryTests.test_restart_and_isolation) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.285s
+
+OK
