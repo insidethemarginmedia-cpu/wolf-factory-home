@@ -1,0 +1,1114 @@
+TAP version 13
+# Subtest: missing service credential blocks before network or source loading
+ok 1 - missing service credential blocks before network or source loading
+  ---
+  duration_ms: 3.04225
+  type: 'test'
+  ...
+# Subtest: diagnostic returns only permitted evidence and never invokes execution
+ok 2 - diagnostic returns only permitted evidence and never invokes execution
+  ---
+  duration_ms: 0.329423
+  type: 'test'
+  ...
+# Subtest: incomplete service receipts never pass
+ok 3 - incomplete service receipts never pass
+  ---
+  duration_ms: 0.476689
+  type: 'test'
+  ...
+# Subtest: unknown create reconciliation is read-only, exact-label scoped and never authorizes replay
+ok 4 - unknown create reconciliation is read-only, exact-label scoped and never authorizes replay
+  ---
+  duration_ms: 28.292717
+  type: 'test'
+  ...
+# Subtest: an empty listing preserves uncertainty and never converts absence into permission to recreate
+ok 5 - an empty listing preserves uncertainty and never converts absence into permission to recreate
+  ---
+  duration_ms: 0.813149
+  type: 'test'
+  ...
+# Subtest: duplicate matching labels remain reconciliation-required
+ok 6 - duplicate matching labels remain reconciliation-required
+  ---
+  duration_ms: 0.74571
+  type: 'test'
+  ...
+# Subtest: invalid label and missing credential fail before provider IO
+ok 7 - invalid label and missing credential fail before provider IO
+  ---
+  duration_ms: 0.449943
+  type: 'test'
+  ...
+# Subtest: HTTP errors and malformed listings never become a confirmed outcome
+ok 8 - HTTP errors and malformed listings never become a confirmed outcome
+  ---
+  duration_ms: 1.263085
+  type: 'test'
+  ...
+# Subtest: reconciliation response stops reading beyond configured limit
+ok 9 - reconciliation response stops reading beyond configured limit
+  ---
+  duration_ms: 1.244125
+  type: 'test'
+  ...
+# Subtest: private source response stops reading beyond configured limit
+ok 10 - private source response stops reading beyond configured limit
+  ---
+  duration_ms: 1.077004
+  type: 'test'
+  ...
+# Subtest: remote transport loader enforces a streaming byte limit before parsing or import
+ok 11 - remote transport loader enforces a streaming byte limit before parsing or import
+  ---
+  duration_ms: 8.8051
+  type: 'test'
+  ...
+# Subtest: bounded cross-job input defaults false and is confined to manual PR branch
+ok 12 - bounded cross-job input defaults false and is confined to manual PR branch
+  ---
+  duration_ms: 3.482524
+  type: 'test'
+  ...
+# Subtest: Job A publishes durable NEXT_READY and Job B restores before automatic continuation
+ok 13 - Job A publishes durable NEXT_READY and Job B restores before automatic continuation
+  ---
+  duration_ms: 0.511008
+  type: 'test'
+  ...
+# Subtest: fresh B selects its existing SSH transport before fetching the advanced private checkpoint
+ok 14 - fresh B selects its existing SSH transport before fetching the advanced private checkpoint
+  ---
+  duration_ms: 0.252719
+  type: 'test'
+  ...
+# Subtest: post-recovery regression installs the existing Mastra lockfile dependencies in the fresh B runner
+ok 15 - post-recovery regression installs the existing Mastra lockfile dependencies in the fresh B runner
+  ---
+  duration_ms: 0.258764
+  type: 'test'
+  ...
+# Subtest: economic denial prevents private source loading and inference
+ok 16 - economic denial prevents private source loading and inference
+  ---
+  duration_ms: 2.632463
+  type: 'test'
+  ...
+# Subtest: existing adapter receives only exact authorized model and bounded diagnostic task
+ok 17 - existing adapter receives only exact authorized model and bounded diagnostic task
+  ---
+  duration_ms: 0.822348
+  type: 'test'
+  ...
+# Subtest: paid, missing and wrong-content receipts are rejected
+ok 18 - paid, missing and wrong-content receipts are rejected
+  ---
+  duration_ms: 1.042515
+  type: 'test'
+  ...
+# Subtest: private worker loader limits streamed bytes before dynamic import or inference
+ok 19 - private worker loader limits streamed bytes before dynamic import or inference
+  ---
+  duration_ms: 8.391181
+  type: 'test'
+  ...
+# Subtest: CLI retains the known HTTP 503 classification
+ok 20 - CLI retains the known HTTP 503 classification
+  ---
+  duration_ms: 2.113847
+  type: 'test'
+  ...
+# Subtest: next admission accepts a legitimate advanced HEAD while the first admission remains immutable
+ok 21 - next admission accepts a legitimate advanced HEAD while the first admission remains immutable
+  ---
+  duration_ms: 25.278196
+  type: 'test'
+  ...
+# Subtest: admission rejects foreign actors, refs, missing credentials and unknown costs before network access
+ok 22 - admission rejects foreign actors, refs, missing credentials and unknown costs before network access
+  ---
+  duration_ms: 1.064487
+  type: 'test'
+  ...
+# Subtest: admission rejects mismatched refs, tags, invalid SHAs, denied HTTP and malformed responses
+ok 23 - admission rejects mismatched refs, tags, invalid SHAs, denied HTTP and malformed responses
+  ---
+  duration_ms: 2.789165
+  type: 'test'
+  ...
+# Subtest: A/B and runner-loss C cannot share an admission and race against the same source pin
+ok 24 - A/B and runner-loss C cannot share an admission and race against the same source pin
+  ---
+  duration_ms: 0.262782
+  type: 'test'
+  ...
+# Subtest: network failure is sanitized and scheduled admission stays restricted to the existing main wakeup
+ok 25 - network failure is sanitized and scheduled admission stays restricted to the existing main wakeup
+  ---
+  duration_ms: 0.936536
+  type: 'test'
+  ...
+# Subtest: active KCT claims fence the generated guard against wrong mission, stale token, expiry and missing authority
+ok 26 - active KCT claims fence the generated guard against wrong mission, stale token, expiry and missing authority
+  ---
+  duration_ms: 244.77274
+  type: 'test'
+  ...
+# Subtest: released KCT generation cannot authorize publication in helper or either workflow hook
+ok 27 - released KCT generation cannot authorize publication in helper or either workflow hook
+  ---
+  duration_ms: 477.673172
+  type: 'test'
+  ...
+# Subtest: both operational workflow hooks enforce the same active KCT authority as the P0 renderer
+ok 28 - both operational workflow hooks enforce the same active KCT authority as the P0 renderer
+  ---
+  duration_ms: 144.659602
+  type: 'test'
+  ...
+# Subtest: recovery refuses proof from an unauthorized origin and leaves uncertainty unchanged
+ok 29 - recovery refuses proof from an unauthorized origin and leaves uncertainty unchanged
+  ---
+  duration_ms: 125.297634
+  type: 'test'
+  ...
+# Subtest: recovery respects an active publication journal lock without discarding its intent
+ok 30 - recovery respects an active publication journal lock without discarding its intent
+  ---
+  duration_ms: 125.916778
+  type: 'test'
+  ...
+# Subtest: the generated guard fails closed when a readable KCT authority has no valid positive fence
+ok 31 - the generated guard fails closed when a readable KCT authority has no valid positive fence
+  ---
+  duration_ms: 173.635197
+  type: 'test'
+  ...
+# Subtest: mission identity is checked by the actual generated guard before any Git lookup
+ok 32 - mission identity is checked by the actual generated guard before any Git lookup
+  ---
+  duration_ms: 88.784295
+  type: 'test'
+  ...
+# Subtest: a separate process reconciles exact Git readback without publishing or repeating the effect
+ok 33 - a separate process reconciles exact Git readback without publishing or repeating the effect
+  ---
+  duration_ms: 176.922768
+  type: 'test'
+  ...
+# Subtest: actual publication guards allow a mission code commit followed by its durable checkpoint without following unrelated remote advancement
+ok 34 - actual publication guards allow a mission code commit followed by its durable checkpoint without following unrelated remote advancement
+  ---
+  duration_ms: 1534.87669
+  type: 'test'
+  ...
+# Subtest: publication helper persists uncertainty before push and blocks replay when remote readback fails
+ok 35 - publication helper persists uncertainty before push and blocks replay when remote readback fails
+  ---
+  duration_ms: 93.697575
+  type: 'test'
+  ...
+# Subtest: uncertain publication and stale fencing do not advance the lease or retry external effects
+ok 36 - uncertain publication and stale fencing do not advance the lease or retry external effects
+  ---
+  duration_ms: 572.879073
+  type: 'test'
+  ...
+# Subtest: read-only credentials and missing auth are rejected safely as WRITE_ACCESS_DENIED
+ok 37 - read-only credentials and missing auth are rejected safely as WRITE_ACCESS_DENIED
+  ---
+  duration_ms: 0.567739
+  type: 'test'
+  ...
+# Subtest: SSH host verification, invalid SSH key, protected branch, shallow, non-fast-forward and timeout are distinguished
+ok 38 - SSH host verification, invalid SSH key, protected branch, shallow, non-fast-forward and timeout are distinguished
+  ---
+  duration_ms: 0.369182
+  type: 'test'
+  ...
+# Subtest: secret redaction prevents leakage of tokens, headers, Base64 credentials, SSH keys and temp paths
+ok 39 - secret redaction prevents leakage of tokens, headers, Base64 credentials, SSH keys and temp paths
+  ---
+  duration_ms: 0.36795
+  type: 'test'
+  ...
+# Subtest: SSH deploy key preparation normalizes CRLF, validates key via ssh-keygen, blocks duplicates and cleans up on error
+ok 40 - SSH deploy key preparation normalizes CRLF, validates key via ssh-keygen, blocks duplicates and cleans up on error
+  ---
+  duration_ms: 23.123431
+  type: 'test'
+  ...
+# Subtest: publication preflight rejects main, wrong branch, wrong remote and duplicate publication before network IO
+ok 41 - publication preflight rejects main, wrong branch, wrong remote and duplicate publication before network IO
+  ---
+  duration_ms: 37.028686
+  type: 'test'
+  ...
+# Subtest: real Git dry-run preflight authorizes fast-forward without mutating remote refs and detects CONCURRENT_BRANCH_ADVANCED
+ok 42 - real Git dry-run preflight authorizes fast-forward without mutating remote refs and detects CONCURRENT_BRANCH_ADVANCED
+  ---
+  duration_ms: 97.38083
+  type: 'test'
+  ...
+# Subtest: pinned admission rejects unexpected remote advancement even when a normal fast-forward push would succeed
+ok 43 - pinned admission rejects unexpected remote advancement even when a normal fast-forward push would succeed
+  ---
+  duration_ms: 117.825547
+  type: 'test'
+  ...
+# Subtest: workflow YAML inline publication preflight and SSH preparation blocks remain synchronized and syntax-valid
+ok 44 - workflow YAML inline publication preflight and SSH preparation blocks remain synchronized and syntax-valid
+  ---
+  duration_ms: 90.608164
+  type: 'test'
+  ...
+# Subtest: independent remote commit SHA verification succeeds on exact remote ref and fails closed on mismatch or main
+ok 45 - independent remote commit SHA verification succeeds on exact remote ref and fails closed on mismatch or main
+  ---
+  duration_ms: 61.996337
+  type: 'test'
+  ...
+# Subtest: synthetic engineering scope and receipt allowlist admit OMEGA and WOLF_WAKEUP missions and deny unauthorized paths
+ok 46 - synthetic engineering scope and receipt allowlist admit OMEGA and WOLF_WAKEUP missions and deny unauthorized paths
+  ---
+  duration_ms: 1.428709
+  type: 'test'
+  ...
+# Subtest: workflow enforces use_publication_deploy_key for integrated publication and reconciled wakeup journals preserve safety invariants
+ok 47 - workflow enforces use_publication_deploy_key for integrated publication and reconciled wakeup journals preserve safety invariants
+  ---
+  duration_ms: 2.282008
+  type: 'test'
+  ...
+# Subtest: resolveAdmittedPrivateSource resolves authorized HEAD, locks pre-admitted SHA, and rejects non-fast-forward or unauthorized sources
+ok 48 - resolveAdmittedPrivateSource resolves authorized HEAD, locks pre-admitted SHA, and rejects non-fast-forward or unauthorized sources
+  ---
+  duration_ms: 1.747521
+  type: 'test'
+  ...
+# Subtest: two sequential synthetic commits succeed without manual SHA updates while concurrent branch changes, stale fences, and unknown-effect replays fail closed
+ok 49 - two sequential synthetic commits succeed without manual SHA updates while concurrent branch changes, stale fences, and unknown-effect replays fail closed
+  ---
+  duration_ms: 586.370996
+  type: 'test'
+  ...
+# Subtest: P0-A: hook rejects push when KCT authority file is missing
+ok 50 - P0-A: hook rejects push when KCT authority file is missing
+  ---
+  duration_ms: 61.956523
+  type: 'test'
+  ...
+# Subtest: P0-A: hook rejects push when KCT authority file is corrupt
+ok 51 - P0-A: hook rejects push when KCT authority file is corrupt
+  ---
+  duration_ms: 55.507793
+  type: 'test'
+  ...
+# Subtest: P0-A: hook rejects push when lease fence is below KCT authority fence
+ok 52 - P0-A: hook rejects push when lease fence is below KCT authority fence
+  ---
+  duration_ms: 52.83975
+  type: 'test'
+  ...
+# Subtest: P0-A: hook rejects push with wrong mission identity
+ok 53 - P0-A: hook rejects push with wrong mission identity
+  ---
+  duration_ms: 52.112014
+  type: 'test'
+  ...
+# Subtest: P0-A: hook enforces restricted PATH execution
+ok 54 - P0-A: hook enforces restricted PATH execution
+  ---
+  duration_ms: 55.11226
+  type: 'test'
+  ...
+# Subtest: P0-B: publishCompareAndSwapCommit persists UNKNOWN_UNTIL_RECONCILED before push (crash before push)
+ok 55 - P0-B: publishCompareAndSwapCommit persists UNKNOWN_UNTIL_RECONCILED before push (crash before push)
+  ---
+  duration_ms: 70.633516
+  type: 'test'
+  ...
+# Subtest: P0-B: recoverPublicationUncertainty reconciles proven push on fresh process
+ok 56 - P0-B: recoverPublicationUncertainty reconciles proven push on fresh process
+  ---
+  duration_ms: 81.187915
+  type: 'test'
+  ...
+# Subtest: P0-B: recoverPublicationUncertainty does not auto-retry ambiguous outcomes
+ok 57 - P0-B: recoverPublicationUncertainty does not auto-retry ambiguous outcomes
+  ---
+  duration_ms: 55.686679
+  type: 'test'
+  ...
+# Subtest: P0-B: remote advancement after successful push is rejected
+ok 58 - P0-B: remote advancement after successful push is rejected
+  ---
+  duration_ms: 129.603222
+  type: 'test'
+  ...
+# Subtest: P0-C: zero-cost policy enforcement blocks paid fallback
+ok 59 - P0-C: zero-cost policy enforcement blocks paid fallback
+  ---
+  duration_ms: 0.305507
+  type: 'test'
+  ...
+# Subtest: P0-C: duplicate wakeup without duplicate effects (idempotent publication replay)
+ok 60 - P0-C: duplicate wakeup without duplicate effects (idempotent publication replay)
+  ---
+  duration_ms: 96.67444
+  type: 'test'
+  ...
+# Subtest: the ignore file is linked to its evidence and contains no comments-only suppression
+ok 61 - the ignore file is linked to its evidence and contains no comments-only suppression
+  ---
+  duration_ms: 1.560132
+  type: 'test'
+  ...
+# Subtest: every suppression is an exact immutable fingerprint with no wildcard or pattern allowlist
+ok 62 - every suppression is an exact immutable fingerprint with no wildcard or pattern allowlist
+  ---
+  duration_ms: 1.574579
+  type: 'test'
+  ...
+# Subtest: the ignore file and the review document are exactly one to one
+ok 63 - the ignore file and the review document are exactly one to one
+  ---
+  duration_ms: 1.399984
+  type: 'test'
+  ...
+# Subtest: the scanner configuration was not weakened and every finding is a reviewed non-credential
+ok 64 - the scanner configuration was not weakened and every finding is a reviewed non-credential
+  ---
+  duration_ms: 0.273053
+  type: 'test'
+  ...
+# Subtest: mission-digest findings are proven non-secret by recomputing their identity against the repository
+ok 65 - mission-digest findings are proven non-secret by recomputing their identity against the repository
+  ---
+  duration_ms: 1.827866
+  type: 'test'
+  ...
+# Subtest: private-key findings are validation literals, never a usable key
+ok 66 - private-key findings are validation literals, never a usable key
+  ---
+  duration_ms: 51.355973
+  type: 'test'
+  ...
+# Subtest: an unrelated new finding is never suppressed by these entries
+ok 67 - an unrelated new finding is never suppressed by these entries
+  ---
+  duration_ms: 0.346476
+  type: 'test'
+  ...
+# Subtest: an idle reservation records an explicit outcome instead of concluding silently
+ok 68 - an idle reservation records an explicit outcome instead of concluding silently
+  ---
+  duration_ms: 1.312378
+  type: 'test'
+  ...
+# Subtest: the skip receipt is durable, credential-free and creates no external effect
+ok 69 - the skip receipt is durable, credential-free and creates no external effect
+  ---
+  duration_ms: 0.39885
+  type: 'test'
+  ...
+# Subtest: the operational outcome is declared as a reusable-workflow output
+ok 70 - the operational outcome is declared as a reusable-workflow output
+  ---
+  duration_ms: 0.276543
+  type: 'test'
+  ...
+# Subtest: every reachable disposition resolves to a definite, machine-readable outcome
+ok 71 - every reachable disposition resolves to a definite, machine-readable outcome
+  ---
+  duration_ms: 0.376733
+  type: 'test'
+  ...
+# Subtest: the admitted flag still requires the quota gate, and suspension still follows a gate failure
+ok 72 - the admitted flag still requires the quota gate, and suspension still follows a gate failure
+  ---
+  duration_ms: 0.25401
+  type: 'test'
+  ...
+# Subtest: the recorded production defect cannot recur: a skipped quota gate always emits a receipt
+ok 73 - the recorded production defect cannot recur: a skipped quota gate always emits a receipt
+  ---
+  duration_ms: 0.274198
+  type: 'test'
+  ...
+# Subtest: disabled by default: no network request
+ok 74 - disabled by default: no network request
+  ---
+  duration_ms: 1.745769
+  type: 'test'
+  ...
+# Subtest: zero-cost gate is mandatory
+ok 75 - zero-cost gate is mandatory
+  ---
+  duration_ms: 0.255235
+  type: 'test'
+  ...
+# Subtest: unknown model is denied
+ok 76 - unknown model is denied
+  ---
+  duration_ms: 0.165273
+  type: 'test'
+  ...
+# Subtest: unreviewed 3b model is denied before network access
+ok 77 - unreviewed 3b model is denied before network access
+  ---
+  duration_ms: 0.234406
+  type: 'test'
+  ...
+# Subtest: 1.5b remains blocked without a pinned reviewed digest
+ok 78 - 1.5b remains blocked without a pinned reviewed digest
+  ---
+  duration_ms: 0.248498
+  type: 'test'
+  ...
+# Subtest: remote and credential-bearing endpoints are denied
+ok 79 - remote and credential-bearing endpoints are denied
+  ---
+  duration_ms: 0.475606
+  type: 'test'
+  ...
+# Subtest: synthetic receipt is parsed but does not claim Factory integration
+ok 80 - synthetic receipt is parsed but does not claim Factory integration
+  ---
+  duration_ms: 24.584716
+  type: 'test'
+  ...
+# Subtest: malformed or incomplete receipt is denied
+ok 81 - malformed or incomplete receipt is denied
+  ---
+  duration_ms: 2.962168
+  type: 'test'
+  ...
+# Subtest: oversized response fails closed
+ok 82 - oversized response fails closed
+  ---
+  duration_ms: 1.804238
+  type: 'test'
+  ...
+# Subtest: HTTP failure is not inference
+ok 83 - HTTP failure is not inference
+  ---
+  duration_ms: 0.939741
+  type: 'test'
+  ...
+# Subtest: nonempty Ollama error field fails closed despite valid-looking receipt
+ok 84 - nonempty Ollama error field fails closed despite valid-looking receipt
+  ---
+  duration_ms: 3.208209
+  type: 'test'
+  ...
+# Subtest: wrong marker cannot produce a validated state
+ok 85 - wrong marker cannot produce a validated state
+  ---
+  duration_ms: 0.657173
+  type: 'test'
+  ...
+# Subtest: post-pull digest must equal independently approved immutable digest
+ok 86 - post-pull digest must equal independently approved immutable digest
+  ---
+  duration_ms: 0.314824
+  type: 'test'
+  ...
+# Subtest: fetch ignoring abort cannot outlive the independent deadline
+ok 87 - fetch ignoring abort cannot outlive the independent deadline
+  ---
+  duration_ms: 25.549891
+  type: 'test'
+  ...
+# Subtest: reader ignoring abort cannot outlive the independent deadline
+ok 88 - reader ignoring abort cannot outlive the independent deadline
+  ---
+  duration_ms: 27.100377
+  type: 'test'
+  ...
+# Subtest: non-cooperative reader.cancel cannot suppress a valid receipt
+ok 89 - non-cooperative reader.cancel cannot suppress a valid receipt
+  ---
+  duration_ms: 0.944001
+  type: 'test'
+  ...
+# Subtest: timeout cannot exceed the fixed 30-second maximum
+ok 90 - timeout cannot exceed the fixed 30-second maximum
+  ---
+  duration_ms: 0.246451
+  type: 'test'
+  ...
+# Subtest: any present Ollama error property fails closed, including falsy values
+ok 91 - any present Ollama error property fails closed, including falsy values
+  ---
+  duration_ms: 3.708415
+  type: 'test'
+  ...
+# Subtest: candidate pins are fixed in source; mutable repo variables cannot choose another digest
+ok 92 - candidate pins are fixed in source; mutable repo variables cannot choose another digest
+  ---
+  duration_ms: 0.286742
+  type: 'test'
+  ...
+# Subtest: administrative review variable cannot authorize an unpinned digest
+ok 93 - administrative review variable cannot authorize an unpinned digest
+  ---
+  duration_ms: 0.19551
+  type: 'test'
+  ...
+# Subtest: direct probe denies mutable model digest mismatch before any fetch
+ok 94 - direct probe denies mutable model digest mismatch before any fetch
+  ---
+  duration_ms: 0.180671
+  type: 'test'
+  ...
+# Subtest: direct probe rejects observed post-pull digest mismatch before generate
+ok 95 - direct probe rejects observed post-pull digest mismatch before generate
+  ---
+  duration_ms: 1.412058
+  type: 'test'
+  ...
+# Subtest: direct probe rejects tag-only identity and ambiguous model records before generate
+ok 96 - direct probe rejects tag-only identity and ambiguous model records before generate
+  ---
+  duration_ms: 0.806616
+  type: 'test'
+  ...
+# Subtest: direct probe rejects error property on tags before generate
+ok 97 - direct probe rejects error property on tags before generate
+  ---
+  duration_ms: 2.827515
+  type: 'test'
+  ...
+# Subtest: valid source pins permit response checks without review flag
+ok 98 - valid source pins permit response checks without review flag
+  ---
+  duration_ms: 0.827883
+  type: 'test'
+  ...
+# Subtest: the four durable Mission B records are byte-identical to the sealed originals
+ok 99 - the four durable Mission B records are byte-identical to the sealed originals
+  ---
+  duration_ms: 1.717298
+  type: 'test'
+  ...
+# Subtest: the durable intent still declares INTENT, fence 1, an unreplayed persisted checkpoint A and the original owner
+ok 100 - the durable intent still declares INTENT, fence 1, an unreplayed persisted checkpoint A and the original owner
+  ---
+  duration_ms: 0.461119
+  type: 'test'
+  ...
+# Subtest: the fenced Git receipt still authenticates the preserved intent record it points at
+ok 101 - the fenced Git receipt still authenticates the preserved intent record it points at
+  ---
+  duration_ms: 0.264173
+  type: 'test'
+  ...
+# Subtest: the READY continuation keeps the original mission pending with a terminated origin and a sealed envelope
+ok 102 - the READY continuation keeps the original mission pending with a terminated origin and a sealed envelope
+  ---
+  duration_ms: 1.022069
+  type: 'test'
+  ...
+# Subtest: no new disposition record for the original run can appear unnoticed
+ok 103 - no new disposition record for the original run can appear unnoticed
+  ---
+  duration_ms: 9.361592
+  type: 'test'
+  ...
+# Subtest: no machine-readable surface asserts a terminal or negative-creation disposition for the original mission
+ok 104 - no machine-readable surface asserts a terminal or negative-creation disposition for the original mission
+  ---
+  duration_ms: 4.263544
+  type: 'test'
+  ...
+# Subtest: no workflow or script in the public runtime can target the original run or its execution identity
+ok 105 - no workflow or script in the public runtime can target the original run or its execution identity
+  ---
+  duration_ms: 9.299714
+  type: 'test'
+  ...
+# Subtest: zero-match reconciliation of the original label stays NO_MATCH_OBSERVED/UNKNOWN and authorizes no retry
+ok 106 - zero-match reconciliation of the original label stays NO_MATCH_OBSERVED/UNKNOWN and authorizes no retry
+  ---
+  duration_ms: 25.545944
+  type: 'test'
+  ...
+# Subtest: when history is available, the records are unchanged since their sealing commits
+ok 107 - when history is available, the records are unchanged since their sealing commits
+  ---
+  duration_ms: 16.94021
+  type: 'test'
+  ...
+# Subtest: missing credentials block before any network access
+ok 108 - missing credentials block before any network access
+  ---
+  duration_ms: 3.449413
+  type: 'test'
+  ...
+# Subtest: a public or different repository cannot pass private-source admission
+ok 109 - a public or different repository cannot pass private-source admission
+  ---
+  duration_ms: 1.107667
+  type: 'test'
+  ...
+# Subtest: wrong source branch or malformed commit cannot pass
+ok 110 - wrong source branch or malformed commit cannot pass
+  ---
+  duration_ms: 0.511001
+  type: 'test'
+  ...
+# Subtest: nonzero, unknown and non-free service limits are rejected
+ok 111 - nonzero, unknown and non-free service limits are rejected
+  ---
+  duration_ms: 0.851201
+  type: 'test'
+  ...
+# Subtest: exact free catalog identity is required
+ok 112 - exact free catalog identity is required
+  ---
+  duration_ms: 0.483126
+  type: 'test'
+  ...
+# Subtest: successful preflight exposes no private source hash, key metadata or credentials
+ok 113 - successful preflight exposes no private source hash, key metadata or credentials
+  ---
+  duration_ms: 0.377613
+  type: 'test'
+  ...
+# Subtest: network exceptions cannot expose a credential marker
+ok 114 - network exceptions cannot expose a credential marker
+  ---
+  duration_ms: 0.3631
+  type: 'test'
+  ...
+# Subtest: provider authentication works without repository token and never generates
+ok 115 - provider authentication works without repository token and never generates
+  ---
+  duration_ms: 1.44035
+  type: 'test'
+  ...
+# Subtest: provider diagnostic missing credential makes no requests
+ok 116 - provider diagnostic missing credential makes no requests
+  ---
+  duration_ms: 0.323497
+  type: 'test'
+  ...
+# Subtest: authenticated key with unknown or nonzero limit never gains economic admission
+ok 117 - authenticated key with unknown or nonzero limit never gains economic admission
+  ---
+  duration_ms: 0.582848
+  type: 'test'
+  ...
+# Subtest: provider diagnostic sanitizes transport errors and rejects denied authentication
+ok 118 - provider diagnostic sanitizes transport errors and rejects denied authentication
+  ---
+  duration_ms: 0.378496
+  type: 'test'
+  ...
+# Subtest: provider diagnostic rejects malformed metadata
+ok 119 - provider diagnostic rejects malformed metadata
+  ---
+  duration_ms: 0.179197
+  type: 'test'
+  ...
+# Subtest: economic diagnostic identifies unmet gates without disclosing metadata
+ok 120 - economic diagnostic identifies unmet gates without disclosing metadata
+  ---
+  duration_ms: 0.463301
+  type: 'test'
+  ...
+# Subtest: preflight denied requests retain safe stage and HTTP status without response body
+ok 121 - preflight denied requests retain safe stage and HTTP status without response body
+  ---
+  duration_ms: 0.573077
+  type: 'test'
+  ...
+# Subtest: malformed repository credentials are rejected without network or disclosure
+ok 122 - malformed repository credentials are rejected without network or disclosure
+  ---
+  duration_ms: 0.371742
+  type: 'test'
+  ...
+# Subtest: GitHub identity diagnostic exposes only authentication and owner-match booleans
+ok 123 - GitHub identity diagnostic exposes only authentication and owner-match booleans
+  ---
+  duration_ms: 0.451811
+  type: 'test'
+  ...
+# Subtest: GitHub identity diagnostic rejects missing, malformed, denied and invalid responses
+ok 124 - GitHub identity diagnostic rejects missing, malformed, denied and invalid responses
+  ---
+  duration_ms: 0.463309
+  type: 'test'
+  ...
+# Subtest: every declared price must be exact zero before model admission
+ok 125 - every declared price must be exact zero before model admission
+  ---
+  duration_ms: 7.360946
+  type: 'test'
+  ...
+# Subtest: duplicate exact model identities cannot select a favorable price
+ok 126 - duplicate exact model identities cannot select a favorable price
+  ---
+  duration_ms: 0.339496
+  type: 'test'
+  ...
+# Subtest: explicit zero ancillary prices retain the qualified model
+ok 127 - explicit zero ancillary prices retain the qualified model
+  ---
+  duration_ms: 0.20054
+  type: 'test'
+  ...
+# Subtest: malformed catalog envelopes fail with sanitized admission reason
+ok 128 - malformed catalog envelopes fail with sanitized admission reason
+  ---
+  duration_ms: 0.411097
+  type: 'test'
+  ...
+# Subtest: missing token fails closed without IO
+ok 129 - missing token fails closed without IO
+  ---
+  duration_ms: 1.083314
+  type: 'test'
+  ...
+# Subtest: mismatched ref never accesses archive
+ok 130 - mismatched ref never accesses archive
+  ---
+  duration_ms: 0.855643
+  type: 'test'
+  ...
+# Subtest: forbidden archive fails closed
+ok 131 - forbidden archive fails closed
+  ---
+  duration_ms: 1.256283
+  type: 'test'
+  ...
+# Subtest: source access verified but no source retrieved or published
+ok 132 - source access verified but no source retrieved or published
+  ---
+  duration_ms: 22.367758
+  type: 'test'
+  ...
+# Subtest: unexpected direct archive response denied
+ok 133 - unexpected direct archive response denied
+  ---
+  duration_ms: 0.410057
+  type: 'test'
+  ...
+# Subtest: archive redirect must match HTTPS codeload identity and exact pinned commit
+ok 134 - archive redirect must match HTTPS codeload identity and exact pinned commit
+  ---
+  duration_ms: 2.768955
+  type: 'test'
+  ...
+# Subtest: exact pinned codeload destination permits a single opaque archive token without disclosure or follow
+ok 135 - exact pinned codeload destination permits a single opaque archive token without disclosure or follow
+  ---
+  duration_ms: 0.38678
+  type: 'test'
+  ...
+# Subtest: bounded source parser accepts valid JSON at the exact byte limit
+ok 136 - bounded source parser accepts valid JSON at the exact byte limit
+  ---
+  duration_ms: 28.40741
+  type: 'test'
+  ...
+# Subtest: source parsing enforces actual bytes rather than Content-Length
+ok 137 - source parsing enforces actual bytes rather than Content-Length
+  ---
+  duration_ms: 1.216627
+  type: 'test'
+  ...
+# Subtest: oversized chunk cancels without draining additional untrusted source
+ok 138 - oversized chunk cancels without draining additional untrusted source
+  ---
+  duration_ms: 5.122267
+  type: 'test'
+  ...
+# Subtest: malformed JSON and invalid UTF-8 produce only a sanitized reason
+ok 139 - malformed JSON and invalid UTF-8 produce only a sanitized reason
+  ---
+  duration_ms: 1.347291
+  type: 'test'
+  ...
+# Subtest: non-cooperative read and cancellation cannot prevent timeout
+ok 140 - non-cooperative read and cancellation cannot prevent timeout
+  ---
+  duration_ms: 20.990214
+  type: 'test'
+  ...
+# Subtest: successful parsing does not await non-cooperative cancellation
+ok 141 - successful parsing does not await non-cooperative cancellation
+  ---
+  duration_ms: 0.87907
+  type: 'test'
+  ...
+# Subtest: invalid limits and missing streams fail closed
+ok 142 - invalid limits and missing streams fail closed
+  ---
+  duration_ms: 0.601688
+  type: 'test'
+  ...
+# Subtest: oversized or malformed length declarations deny and cancel before reading
+ok 143 - oversized or malformed length declarations deny and cancel before reading
+  ---
+  duration_ms: 2.869581
+  type: 'test'
+  ...
+# Subtest: stream chunks may split UTF-8 characters without corrupting source
+ok 144 - stream chunks may split UTF-8 characters without corrupting source
+  ---
+  duration_ms: 1.316813
+  type: 'test'
+  ...
+# Subtest: scheduled runtime pin equals GitHub authoritative called-workflow SHA and direct dispatch remains bound to its own HEAD
+ok 145 - scheduled runtime pin equals GitHub authoritative called-workflow SHA and direct dispatch remains bound to its own HEAD
+  ---
+  duration_ms: 25.551625
+  type: 'test'
+  ...
+# Subtest: runtime admission rejects source mismatch, mutable refs, foreign actors and unknown cost before effects
+ok 146 - runtime admission rejects source mismatch, mutable refs, foreign actors and unknown cost before effects
+  ---
+  duration_ms: 4.602279
+  type: 'test'
+  ...
+# Subtest: public pin validation precedes private admission and journal reservation; scheduled security tests use its immutable output
+ok 147 - public pin validation precedes private admission and journal reservation; scheduled security tests use its immutable output
+  ---
+  duration_ms: 0.4863
+  type: 'test'
+  ...
+# Subtest: existing caller can grant the callee Actions metadata read without expanding its write boundary
+ok 148 - existing caller can grant the callee Actions metadata read without expanding its write boundary
+  ---
+  duration_ms: 1.200429
+  type: 'test'
+  ...
+# Subtest: scheduled caller pins identical immutable callee and runtime input, and caller edits receive exact-HEAD CI
+ok 149 - scheduled caller pins identical immutable callee and runtime input, and caller edits receive exact-HEAD CI
+  ---
+  duration_ms: 0.400938
+  type: 'test'
+  ...
+# Subtest: manual caller diagnostic on the PR branch admits source only and cannot reserve or execute a wakeup
+ok 150 - manual caller diagnostic on the PR branch admits source only and cannot reserve or execute a wakeup
+  ---
+  duration_ms: 0.956056
+  type: 'test'
+  ...
+# Subtest: admitted main schedule reaches operational Factory and read-only service checks
+ok 151 - admitted main schedule reaches operational Factory and read-only service checks
+  ---
+  duration_ms: 1.783705
+  type: 'test'
+  ...
+# Subtest: suspended or failed admission cannot activate scheduled service checks or mission execution
+ok 152 - suspended or failed admission cannot activate scheduled service checks or mission execution
+  ---
+  duration_ms: 1.479045
+  type: 'test'
+  ...
+# Subtest: schedule cannot enable DBOS fixtures, OpenCode qualification or runner-loss diagnostics even with diagnostic flags
+ok 153 - schedule cannot enable DBOS fixtures, OpenCode qualification or runner-loss diagnostics even with diagnostic flags
+  ---
+  duration_ms: 1.263981
+  type: 'test'
+  ...
+# Subtest: operational and service jobs reject foreign repositories, actors, refs and untrusted triggers
+ok 154 - operational and service jobs reject foreign repositories, actors, refs and untrusted triggers
+  ---
+  duration_ms: 2.120017
+  type: 'test'
+  ...
+# Subtest: scheduled checks and execution fail closed when source or security admission fails
+ok 155 - scheduled checks and execution fail closed when source or security admission fails
+  ---
+  duration_ms: 2.615105
+  type: 'test'
+  ...
+# Subtest: optional OpenRouter does not gate a qualified scheduled Groq path
+ok 156 - optional OpenRouter does not gate a qualified scheduled Groq path
+  ---
+  duration_ms: 1.42946
+  type: 'test'
+  ...
+# Subtest: existing manual diagnostics remain available on their approved refs without scheduling them
+ok 157 - existing manual diagnostics remain available on their approved refs without scheduling them
+  ---
+  duration_ms: 2.025312
+  type: 'test'
+  ...
+# Subtest: explicit V1 reconciliation dispatch cannot reserve or execute a mission or a failure-injection diagnostic
+ok 158 - explicit V1 reconciliation dispatch cannot reserve or execute a mission or a failure-injection diagnostic
+  ---
+  duration_ms: 1.277111
+  type: 'test'
+  ...
+# Subtest: terminal publication is an explicit manual request and cannot reserve or execute a mission
+ok 159 - terminal publication is an explicit manual request and cannot reserve or execute a mission
+  ---
+  duration_ms: 1.496986
+  type: 'test'
+  ...
+# Subtest: a landed candidate superseded by later publications is confirmed, not left UNKNOWN
+ok 160 - a landed candidate superseded by later publications is confirmed, not left UNKNOWN
+  ---
+  duration_ms: 114.554588
+  type: 'test'
+  ...
+# Subtest: confirming the effect unblocks the mission without replaying the external effect
+ok 161 - confirming the effect unblocks the mission without replaying the external effect
+  ---
+  duration_ms: 116.168032
+  type: 'test'
+  ...
+# Subtest: rewritten history and absent refs still stay UNKNOWN and never claim an effect
+ok 162 - rewritten history and absent refs still stay UNKNOWN and never claim an effect
+  ---
+  duration_ms: 115.974703
+  type: 'test'
+  ...
+# Subtest: publishes only the sealed envelope with an immutable parent, non-forced ref update and exact SHA/content readback
+ok 163 - publishes only the sealed envelope with an immutable parent, non-forced ref update and exact SHA/content readback
+  ---
+  duration_ms: 29.507478
+  type: 'test'
+  ...
+# Subtest: denies main, base branch, foreign actor, unknown costs, plaintext, extra fields and wrong context before IO
+ok 164 - denies main, base branch, foreign actor, unknown costs, plaintext, extra fields and wrong context before IO
+  ---
+  duration_ms: 2.083416
+  type: 'test'
+  ...
+# Subtest: concurrent advancement, duplicate snapshots, uncertain writes and readback mismatches never trigger retry
+ok 165 - concurrent advancement, duplicate snapshots, uncertain writes and readback mismatches never trigger retry
+  ---
+  duration_ms: 5.86919
+  type: 'test'
+  ...
+# Subtest: duplicate JSON keys cannot hide plaintext in bytes submitted as an encrypted envelope
+ok 166 - duplicate JSON keys cannot hide plaintext in bytes submitted as an encrypted envelope
+  ---
+  duration_ms: 0.410772
+  type: 'test'
+  ...
+# Subtest: Job A and Job B are distinct GitHub Actions jobs and B only runs when A succeeded
+ok 167 - Job A and Job B are distinct GitHub Actions jobs and B only runs when A succeeded
+  ---
+  duration_ms: 1.172693
+  type: 'test'
+  ...
+# Subtest: the sealed checkpoint travels through durable Git at an immutable snapshot commit, never through runner-local artifacts
+ok 168 - the sealed checkpoint travels through durable Git at an immutable snapshot commit, never through runner-local artifacts
+  ---
+  duration_ms: 0.484186
+  type: 'test'
+  ...
+# Subtest: Job B re-fences from the recovered KCT admission and its guard rejects stale tokens and expired leases
+ok 169 - Job B re-fences from the recovered KCT admission and its guard rejects stale tokens and expired leases
+  ---
+  duration_ms: 0.580618
+  type: 'test'
+  ...
+# Subtest: Job B proves one Mission C execution, independent boot identity, then rejects a duplicate wakeup with zero new effects
+ok 170 - Job B proves one Mission C execution, independent boot identity, then rejects a duplicate wakeup with zero new effects
+  ---
+  duration_ms: 0.23595
+  type: 'test'
+  ...
+# Subtest: both jobs destroy their disposable database and runtime state and verify the destruction
+ok 171 - both jobs destroy their disposable database and runtime state and verify the destruction
+  ---
+  duration_ms: 0.302303
+  type: 'test'
+  ...
+# Subtest: concurrent runs serialize under one non-cancelling concurrency group
+ok 172 - concurrent runs serialize under one non-cancelling concurrency group
+  ---
+  duration_ms: 0.154745
+  type: 'test'
+  ...
+# Subtest: recovery missions use fresh per-run synthetic identities and can never address the protected original run
+ok 173 - recovery missions use fresh per-run synthetic identities and can never address the protected original run
+  ---
+  duration_ms: 0.449302
+  type: 'test'
+  ...
+# Subtest: both recovery jobs keep the zero-cost economic contract in their environment
+ok 174 - both recovery jobs keep the zero-cost economic contract in their environment
+  ---
+  duration_ms: 0.160185
+  type: 'test'
+  ...
+# Subtest: restores the real published envelope with one bounded pinned fetch and one exclusive byte-exact write
+ok 175 - restores the real published envelope with one bounded pinned fetch and one exclusive byte-exact write
+  ---
+  duration_ms: 24.968768
+  type: 'test'
+  ...
+# Subtest: accepts a fresh synthetic sealed envelope without depending on the historical artifact
+ok 176 - accepts a fresh synthetic sealed envelope without depending on the historical artifact
+  ---
+  duration_ms: 0.756384
+  type: 'test'
+  ...
+# Subtest: missing checkpoint (404) is RESTORE_CHECKPOINT_MISSING with no write and no retry
+ok 177 - missing checkpoint (404) is RESTORE_CHECKPOINT_MISSING with no write and no retry
+  ---
+  duration_ms: 0.759375
+  type: 'test'
+  ...
+# Subtest: server errors and network failures stay fail-closed with distinct reasons and a single attempt
+ok 178 - server errors and network failures stay fail-closed with distinct reasons and a single attempt
+  ---
+  duration_ms: 0.473285
+  type: 'test'
+  ...
+# Subtest: oversized payloads are refused with CHECKPOINT_LIMIT before parsing
+ok 179 - oversized payloads are refused with CHECKPOINT_LIMIT before parsing
+  ---
+  duration_ms: 4.425667
+  type: 'test'
+  ...
+# Subtest: corrupt envelopes are refused with RESTORE_CHECKPOINT_CORRUPT and never written
+ok 180 - corrupt envelopes are refused with RESTORE_CHECKPOINT_CORRUPT and never written
+  ---
+  duration_ms: 5.121542
+  type: 'test'
+  ...
+# Subtest: wrong source SHA, wrong run and wrong workflow identity are RESTORE_CHECKPOINT_IDENTITY_MISMATCH
+ok 181 - wrong source SHA, wrong run and wrong workflow identity are RESTORE_CHECKPOINT_IDENTITY_MISMATCH
+  ---
+  duration_ms: 1.615997
+  type: 'test'
+  ...
+# Subtest: scope, actor, event and economic gates deny before any fetch happens
+ok 182 - scope, actor, event and economic gates deny before any fetch happens
+  ---
+  duration_ms: 0.985281
+  type: 'test'
+  ...
+# Subtest: a duplicate restore into an existing target is RESTORE_TARGET_EXISTS and cannot double-write
+ok 183 - a duplicate restore into an existing target is RESTORE_TARGET_EXISTS and cannot double-write
+  ---
+  duration_ms: 0.793697
+  type: 'test'
+  ...
+# Subtest: minimal promotion applies to the exact main caller and changes routing without expanding schedule or actor scope
+ok 184 - minimal promotion applies to the exact main caller and changes routing without expanding schedule or actor scope
+  ---
+  duration_ms: 9.516418
+  type: 'test'
+  ...
+1..184
+# tests 184
+# suites 0
+# pass 184
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7519.881359

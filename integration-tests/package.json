@@ -1,0 +1,18 @@
+{
+  "name": "wolf-ruflo-integration-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Project Wolf - Ruflo integration tests",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:rvf": "node --test --test-concurrency=1 tests/rvf-durable-memory.test.mjs",
+    "test:mcp": "node --test --test-concurrency=1 tests/mcp-safety.test.mjs",
+    "test:wolf-adapter": "node --test --test-concurrency=1 tests/wolf-adapter-contracts.test.mjs"
+  },
+  "dependencies": {
+    "@claude-flow/cli": "3.67.0",
+    "@metaharness/router": "0.4.0",
+    "ruflo": "3.67.0"
+  },
+  "devDependencies": {}
+}

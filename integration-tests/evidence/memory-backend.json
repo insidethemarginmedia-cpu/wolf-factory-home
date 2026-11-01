@@ -1,0 +1,6 @@
+{
+  "sqlJsFallbackWarning": true,
+  "nativeBridgeActive": false,
+  "persistenceWarning": true,
+  "invalidPragmaSeen": true
+}

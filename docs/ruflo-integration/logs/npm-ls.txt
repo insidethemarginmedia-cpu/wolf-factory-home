@@ -1,0 +1,48 @@
+wolf-ruflo-integration-tests@1.0.0 /home/user/wolf-factory-home/integration-tests
++-- @claude-flow/cli@3.67.0
++-- @emnapi/runtime@1.11.3 extraneous
++-- @img/sharp-libvips-linux-x64@1.0.4 extraneous
++-- @img/sharp-libvips-linuxmusl-x64@1.0.4 extraneous
++-- @img/sharp-linux-x64@0.33.5 extraneous
++-- @img/sharp-linuxmusl-x64@0.33.5 extraneous
++-- @img/sharp-wasm32@0.35.5 extraneous
++-- @metaharness/router@0.4.0
++-- @peculiar/asn1-schema@2.11.1 extraneous
++-- @peculiar/json-schema@1.1.12 extraneous
++-- @peculiar/utils@2.0.3 extraneous
++-- @peculiar/webcrypto@1.7.2 extraneous
++-- @ruvector/router-linux-x64-gnu@0.1.32 extraneous
++-- @ruvector/ruvllm-linux-x64-gnu@2.0.1 extraneous
++-- @ruvector/tiny-dancer-linux-x64-gnu@0.1.22 extraneous
++-- @ruvector/tiny-dancer-linux-x64-musl@0.1.22 extraneous
++-- asn1js@3.1.0 extraneous
++-- bindings@1.5.0 extraneous
++-- chownr@1.1.4 extraneous
++-- decompress-response@6.0.0 extraneous
++-- deep-extend@0.6.0 extraneous
++-- detect-libc@2.1.2 extraneous
++-- end-of-stream@1.4.5 extraneous
++-- expand-template@2.0.3 extraneous
++-- file-uri-to-path@1.0.0 extraneous
++-- fs-constants@1.0.0 extraneous
++-- github-from-package@0.0.0 extraneous
++-- ini@1.3.8 extraneous
++-- mimic-response@3.1.0 extraneous
++-- minimist@1.2.8 extraneous
++-- mkdirp-classic@0.5.3 extraneous
++-- napi-build-utils@2.0.0 extraneous
++-- node-abi@3.101.0 extraneous
++-- prebuild-install@7.1.3 extraneous
++-- pump@3.0.4 extraneous
++-- pvtsutils@1.3.6 extraneous
++-- pvutils@1.2.0 extraneous
++-- rc@1.2.8 extraneous
++-- ruflo@3.67.0
++-- simple-concat@1.0.1 extraneous
++-- simple-get@4.0.1 extraneous
++-- strip-json-comments@2.0.1 extraneous
++-- tar-fs@2.1.5 extraneous
++-- tar-stream@2.2.0 extraneous
++-- tunnel-agent@0.6.0 extraneous
+`-- webcrypto-core@1.9.2 extraneous
+

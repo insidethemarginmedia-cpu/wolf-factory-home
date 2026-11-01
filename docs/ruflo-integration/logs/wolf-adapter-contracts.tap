@@ -1,0 +1,107 @@
+TAP version 13
+# Subtest: Wolf adapter contracts
+    # Subtest: lease: second owner is refused while lease is live
+    ok 1 - lease: second owner is refused while lease is live
+      ---
+      duration_ms: 13.751997
+      type: 'test'
+      ...
+    # Subtest: lease: expired lease can be taken over and fence strictly increases
+    ok 2 - lease: expired lease can be taken over and fence strictly increases
+      ---
+      duration_ms: 7.02097
+      type: 'test'
+      ...
+    # Subtest: fencing: stale fence is rejected after takeover (restart in between)
+    ok 3 - fencing: stale fence is rejected after takeover (restart in between)
+      ---
+      duration_ms: 7.57827
+      type: 'test'
+      ...
+    # Subtest: idempotency: duplicate key runs the operation once, replays stored result after restart
+    ok 4 - idempotency: duplicate key runs the operation once, replays stored result after restart
+      ---
+      duration_ms: 5.978426
+      type: 'test'
+      ...
+    # Subtest: idempotency: failed operation is not recorded, so a retry may run
+    ok 5 - idempotency: failed operation is not recorded, so a retry may run
+      ---
+      duration_ms: 4.695708
+      type: 'test'
+      ...
+    # Subtest: verification: executor cannot verify its own work
+    ok 6 - verification: executor cannot verify its own work
+      ---
+      duration_ms: 3.102925
+      type: 'test'
+      ...
+    # Subtest: publication: refused without an independent PASS, allowed with one
+    ok 7 - publication: refused without an independent PASS, allowed with one
+      ---
+      duration_ms: 7.219785
+      type: 'test'
+      ...
+    # Subtest: publication: blocked by an unreconciled UNKNOWN external effect
+    ok 8 - publication: blocked by an unreconciled UNKNOWN external effect
+      ---
+      duration_ms: 16.199608
+      type: 'test'
+      ...
+    # Subtest: unknown effect: stays UNKNOWN without evidence; reconciled only by a matching receipt
+    ok 9 - unknown effect: stays UNKNOWN without evidence; reconciled only by a matching receipt
+      ---
+      duration_ms: 5.408401
+      type: 'test'
+      ...
+    # Subtest: economic admission: zero-cost policy
+    ok 10 - economic admission: zero-cost policy
+      ---
+      duration_ms: 0.460293
+      type: 'test'
+      ...
+    # Subtest: interrupted write: a leftover temp file never replaces the committed state
+    ok 11 - interrupted write: a leftover temp file never replaces the committed state
+      ---
+      duration_ms: 2.201655
+      type: 'test'
+      ...
+    # Subtest: corruption detection: truncated committed file is refused, not reset
+    ok 12 - corruption detection: truncated committed file is refused, not reset
+      ---
+      duration_ms: 0.902838
+      type: 'test'
+      ...
+    # Subtest: schema compatibility: unknown version is refused
+    ok 13 - schema compatibility: unknown version is refused
+      ---
+      duration_ms: 0.980332
+      type: 'test'
+      ...
+    # Subtest: concurrency: 3 OS processes x 5 locked writes -> 15 durable entries, no lost updates
+    ok 14 - concurrency: 3 OS processes x 5 locked writes -> 15 durable entries, no lost updates
+      ---
+      duration_ms: 80.066677
+      type: 'test'
+      ...
+    # Subtest: authority: adapter has no scheduler, timer or loop
+    ok 15 - authority: adapter has no scheduler, timer or loop
+      ---
+      duration_ms: 0.465968
+      type: 'test'
+      ...
+    1..15
+ok 1 - Wolf adapter contracts
+  ---
+  duration_ms: 164.123526
+  type: 'suite'
+  ...
+1..1
+# tests 15
+# suites 1
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 227.404355

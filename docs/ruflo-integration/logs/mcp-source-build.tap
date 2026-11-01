@@ -1,0 +1,924 @@
+TAP version 13
+# Subtest: MCP safety (Ruflo stdio server)
+    # Subtest: setup scratch directory
+    ok 1 - setup scratch directory
+      ---
+      duration_ms: 5.716115
+      type: 'test'
+      ...
+    # Subtest: 1. startup answers initialize and shutdown on stdin close exits 0
+    ok 2 - 1. startup answers initialize and shutdown on stdin close exits 0
+      ---
+      duration_ms: 236.226366
+      type: 'test'
+      ...
+    # Subtest: 2. SIGTERM terminates the server (controlled termination)
+    ok 3 - 2. SIGTERM terminates the server (controlled termination)
+      ---
+      duration_ms: 290.803115
+      type: 'test'
+      ...
+    # Subtest: 3. no child processes are spawned by the server
+    ok 4 - 3. no child processes are spawned by the server
+      ---
+      duration_ms: 251.655814
+      type: 'test'
+      ...
+    # Subtest: 4. no listening TCP sockets in stdio mode
+    ok 5 - 4. no listening TCP sockets in stdio mode
+      ---
+      duration_ms: 210.281876
+      type: 'test'
+      ...
+    # Subtest: 5a. default start advertises the full upstream catalogue (documented, not Wolf-restricted)
+    ok 6 - 5a. default start advertises the full upstream catalogue (documented, not Wolf-restricted)
+      ---
+      duration_ms: 207.956178
+      type: 'test'
+      ...
+    # Subtest: 5b. Wolf allowlist (CLAUDE_FLOW_MCP_TOOLS) restricts the advertised surface exactly
+    ok 7 - 5b. Wolf allowlist (CLAUDE_FLOW_MCP_TOOLS) restricts the advertised surface exactly
+      ---
+      duration_ms: 207.901767
+      type: 'test'
+      ...
+    # Subtest: 5c. default start must not expose tools beyond the Wolf allowlist
+    not ok 8 - 5c. default start must not expose tools beyond the Wolf allowlist
+      ---
+      duration_ms: 215.869836
+      type: 'test'
+      location: '/home/user/wolf-factory-home/integration-tests/tests/mcp-safety.test.mjs:185:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        375 tools outside the Wolf allowlist are advertised by default
+        + actual - expected
+        
+        + [
+        +   'agent_spawn',
+        +   'agent_execute',
+        +   'agent_terminate',
+        +   'agent_pool',
+        +   'agent_health',
+        +   'agent_update',
+        +   'agent_logs',
+        +   'swarm_init',
+        +   'swarm_pheromone_update',
+        +   'swarm_pheromone_status',
+        +   'swarm_status',
+        +   'swarm_shutdown',
+        +   'swarm_health',
+        +   'memory_search',
+        +   'memory_delete',
+        +   'memory_stats',
+        +   'memory_migrate',
+        +   'memory_import_claude',
+        +   'memory_bridge_status',
+        +   'memory_search_unified',
+        +   'memory_detailed-stats',
+        +   'memory_cleanup',
+        +   'memory_compress',
+        +   'memory_export',
+        +   'memory_import',
+        +   'config_get',
+        +   'config_set',
+        +   'config_list',
+        +   'config_reset',
+        +   'config_export',
+        +   'config_import',
+        +   'hooks_intelligence_unified-stats',
+        +   'hooks_teammate-idle',
+        +   'hooks_task-completed',
+        +   'hooks_pre-edit',
+        +   'hooks_post-edit',
+        +   'hooks_pre-command',
+        +   'hooks_post-command',
+        +   'hooks_route',
+        +   'hooks_metrics',
+        +   'hooks_list',
+        +   'hooks_pre-task',
+        +   'hooks_post-task',
+        +   'hooks_explain',
+        +   'hooks_pretrain',
+        +   'hooks_build-agents',
+        +   'hooks_transfer',
+        +   'hooks_session-start',
+        +   'hooks_session-end',
+        +   'hooks_session-restore',
+        +   'hooks_notify',
+        +   'hooks_init',
+        +   'hooks_intelligence',
+        +   'hooks_intelligence-reset',
+        +   'hooks_intelligence_trajectory-start',
+        +   'hooks_intelligence_trajectory-step',
+        +   'hooks_intelligence_trajectory-end',
+        +   'hooks_intelligence_verified-ingest',
+        +   'hooks_intelligence_pattern-store',
+        +   'hooks_intelligence_pattern-search',
+        +   'hooks_intelligence_stats',
+        +   'hooks_intelligence_learn',
+        +   'hooks_intelligence_attention',
+        +   'hooks_worker-list',
+        +   'hooks_worker-dispatch',
+        +   'hooks_worker-status',
+        +   'hooks_worker-detect',
+        +   'hooks_worker-cancel',
+        +   'hooks_model-route',
+        +   'hooks_model-outcome',
+        +   'hooks_model-stats',
+        +   'hooks_model-verify',
+        +   'hooks_codemod',
+        +   'task_create',
+        +   'task_status',
+        +   'task_list',
+        +   'task_complete',
+        +   'task_update',
+        +   'task_assign',
+        +   'task_cancel',
+        +   'task_retry',
+        +   'session_save',
+        +   'session_restore',
+        +   'session_list',
+        +   'session_delete',
+        +   'session_info',
+        +   'session_current',
+        +   'session_export',
+        +   'session_import',
+        +   'hive-mind_spawn',
+        +   'hive-mind_init',
+        +   'hive-mind_status',
+        +   'hive-mind_join',
+        +   'hive-mind_leave',
+        +   'hive-mind_consensus',
+        +   'hive-mind_broadcast',
+        +   'hive-mind_shutdown',
+        +   'hive-mind_memory',
+        +   'hive-mind_optimize-memory',
+        +   'workflow_run',
+        +   'workflow_create',
+        +   'workflow_execute',
+        +   'workflow_status',
+        +   'workflow_list',
+        +   'workflow_pause',
+        +   'workflow_resume',
+        +   'workflow_cancel',
+        +   'workflow_delete',
+        +   'workflow_template',
+        +   'workflow_stop',
+        +   'workflow_validate',
+        +   'analyze_diff',
+        +   'analyze_diff-risk',
+        +   'analyze_diff-classify',
+        +   'analyze_diff-reviewers',
+        +   'analyze_file-risk',
+        +   'analyze_diff-stats',
+        +   'progress_check',
+        +   'progress_sync',
+        +   'progress_summary',
+        +   'progress_watch',
+        +   'embeddings_init',
+        +   'embeddings_generate',
+        +   'embeddings_compare',
+        +   'embeddings_search',
+        +   'embeddings_neural',
+        +   'embeddings_hyperbolic',
+        +   'embeddings_status',
+        +   'embeddings_rabitq_build',
+        +   'embeddings_rabitq_search',
+        +   'embeddings_rabitq_status',
+        +   'claims_claim',
+        +   'claims_release',
+        +   'claims_handoff',
+        +   'claims_accept-handoff',
+        +   'claims_status',
+        +   'claims_list',
+        +   'claims_mark-stealable',
+        +   'claims_steal',
+        +   'claims_stealable',
+        +   'claims_load',
+        +   'claims_board',
+        +   'claims_rebalance',
+        +   'policy_evaluate',
+        +   'policy_status',
+        +   'aidefence_scan',
+        +   'aidefence_analyze',
+        +   'aidefence_stats',
+        +   'aidefence_learn',
+        +   'aidefence_is_safe',
+        +   'aidefence_has_pii',
+        +   'transfer_detect-pii',
+        +   'transfer_ipfs-resolve',
+        +   'transfer_store-search',
+        +   'transfer_store-info',
+        +   'transfer_store-download',
+        +   'transfer_store-featured',
+        +   'transfer_store-trending',
+        +   'transfer_plugin-search',
+        +   'transfer_plugin-info',
+        +   'transfer_plugin-featured',
+        +   'transfer_plugin-official',
+        +   'system_status',
+        +   'system_metrics',
+        +   'system_health',
+        +   'system_info',
+        +   'system_reset',
+        +   'mcp_status',
+        +   'task_summary',
+        +   'mcp_start',
+        +   'mcp_stop',
+        +   'terminal_create',
+        +   'terminal_execute',
+        +   'terminal_list',
+        +   'terminal_close',
+        +   'terminal_history',
+        +   'neural_train',
+        +   'neural_predict',
+        +   'neural_patterns',
+        +   'neural_compress',
+        +   'neural_status',
+        +   'neural_optimize',
+        +   'performance_report',
+        +   'performance_bottleneck',
+        +   'performance_benchmark',
+        +   'performance_profile',
+        +   'performance_optimize',
+        +   'performance_metrics',
+        +   'github_repo_analyze',
+        +   'github_pr_manage',
+        +   'github_issue_track',
+        +   'github_workflow',
+        +   'github_metrics',
+        +   'daa_agent_create',
+        +   'daa_agent_adapt',
+        +   'daa_workflow_create',
+        +   'daa_workflow_execute',
+        +   'daa_knowledge_share',
+        +   'daa_learning_status',
+        +   'daa_cognitive_pattern',
+        +   'daa_performance_metrics',
+        +   'coordination_topology',
+        +   'coordination_load_balance',
+        +   'coordination_sync',
+        +   'coordination_node',
+        +   'coordination_consensus',
+        +   'coordination_orchestrate',
+        +   'coordination_metrics',
+        +   'rure_extract_asar',
+        +   'rure_analyze_js_app',
+        +   'rure_find_feature',
+        +   'rure_analyze_binary',
+        +   'rure_analyze_dotnet',
+        +   'rure_analyze_evm',
+        +   'rure_analyze_cuda',
+        +   'rure_cuda_launch_plan',
+        +   'browser_session_record',
+        +   'browser_session_end',
+        +   'browser_session_replay',
+        +   'browser_template_apply',
+        +   'browser_cookie_use',
+        +   'browser_act',
+        +   'agentdb_health',
+        +   'agentdb_controllers',
+        +   'agentdb_pattern-store',
+        +   'agentdb_pattern-search',
+        +   'agentdb_feedback',
+        +   'agentdb_causal-edge',
+        +   'agentdb_causal-edge-delete',
+        +   'agentdb_causal-node-delete',
+        +   'agentdb_route',
+        +   'agentdb_session-start',
+        +   'agentdb_session-end',
+        +   'agentdb_hierarchical-store',
+        +   'agentdb_hierarchical-recall',
+        +   'agentdb_hierarchical-delete',
+        +   'agentdb_consolidate',
+        +   'agentdb_batch',
+        +   'agentdb_context-synthesize',
+        +   'agentdb_semantic-route',
+        +   'agentdb_graph-query',
+        +   'agentdb_graph-pathfinder',
+        +   'ruvllm_status',
+        +   'ruvllm_hnsw_create',
+        +   'ruvllm_hnsw_add',
+        +   'ruvllm_hnsw_route',
+        +   'ruvllm_sona_create',
+        +   'ruvllm_sona_adapt',
+        +   'ruvllm_microlora_create',
+        +   'ruvllm_microlora_adapt',
+        +   'ruvllm_chat_format',
+        +   'ruvllm_generate_config',
+        +   'wasm_agent_create',
+        +   'wasm_agent_prompt',
+        +   'wasm_agent_tool',
+        +   'wasm_agent_list',
+        +   'wasm_agent_terminate',
+        +   'wasm_agent_files',
+        +   'wasm_agent_export',
+        +   'wasm_gallery_list',
+        +   'wasm_gallery_search',
+        +   'wasm_gallery_create',
+        +   'wasm_agent_compose',
+        +   'wasm_agent_state',
+        +   'wasm_agent_todos',
+        +   'wasm_agent_tools',
+        +   'wasm_agent_turn_count',
+        +   'wasm_agent_is_stopped',
+        +   'wasm_agent_reset',
+        +   'wasm_gallery_load_rvf',
+        +   'wasm_gallery_configure',
+        +   'wasm_gallery_categories',
+        +   'wasm_gallery_list_by_category',
+        +   'wasm_gallery_add_custom',
+        +   'wasm_gallery_remove_custom',
+        +   'wasm_gallery_import',
+        +   'wasm_gallery_export',
+        +   'wasm_gallery_active',
+        +   'wasm_gallery_config',
+        +   'managed_agent_capabilities',
+        +   'managed_agent_learning',
+        +   'managed_agent_control',
+        +   'managed_agent_create',
+        +   'managed_agent_prompt',
+        +   'managed_agent_status',
+        +   'managed_agent_events',
+        +   'managed_agent_list',
+        +   'managed_agent_interrupt',
+        +   'managed_agent_terminate',
+        +   'guidance_brain',
+        +   'guidance_capabilities',
+        +   'guidance_recommend',
+        +   'guidance_discover',
+        +   'guidance_workflow',
+        +   'guidance_quickref',
+        +   'autopilot_status',
+        +   'autopilot_enable',
+        +   'autopilot_disable',
+        +   'autopilot_config',
+        +   'autopilot_reset',
+        +   'autopilot_log',
+        +   'autopilot_progress',
+        +   'autopilot_learn',
+        +   'autopilot_history',
+        +   'autopilot_predict',
+        +   'hooks_coverage-route',
+        +   'hooks_coverage-suggest',
+        +   'hooks_coverage-gaps',
+        +   'metaharness_score',
+        +   'metaharness_genome',
+        +   'metaharness_mcp_scan',
+        +   'metaharness_threat_model',
+        +   'metaharness_oia_audit',
+        +   'metaharness_audit_list',
+        +   'metaharness_similarity',
+        +   'metaharness_drift_from_history',
+        +   'metaharness_audit_trend',
+        +   'metaharness_evolve',
+        +   'metaharness_security_bench',
+        +   'metaharness_bench',
+        +   'metaharness_redblue',
+        +   'metaharness_learn',
+        +   'metaharness_gepa',
+        +   'metaharness_flywheel',
+        +   'agenticow_branch',
+        +   'agenticow_ingest',
+        +   'agenticow_query',
+        +   'agenticow_diff',
+        +   'agenticow_lineage',
+        +   'agenticow_status',
+        +   'agenticow_checkpoint',
+        +   'agenticow_rollback',
+        +   'agenticow_promote',
+        +   'agenticow_speculate',
+        +   'federation_bbs_register',
+        +   'federation_bbs_publish',
+        +   'federation_bbs_watch',
+        +   'federation_bbs_human_join',
+        +   'federation_bbs_identity',
+        +   'federation_bbs_peer_add',
+        +   'federation_bbs_peers',
+        +   'federation_bbs_serve',
+        +   'federation_bbs_sync',
+        +   'x_federation_sync',
+        +   'x_federation_roster',
+        +   'x_federation_claims',
+        +   'x_federation_registry',
+        +   'x_federation_publish',
+        +   'x_federation_invite_mint',
+        +   'x_federation_admit',
+        +   'seraphina_guidance',
+        +   'x_federation_join',
+        +   'x_federation_channel_create',
+        +   'x_federation_channel_grant',
+        +   'x_federation_channel_accept',
+        +   'x_federation_channel_publish',
+        +   'x_federation_channel_read',
+        +   'x_federation_channel_list',
+        +   'business_pod_validate',
+        +   'business_pod_route_backend',
+        +   'http_fetch',
+        +   'mission_create',
+        +   'mission_plan',
+        +   'mission_get',
+        +   'mission_events',
+        +   'mission_request_action',
+        +   'team_create',
+        +   'team_spawn',
+        +   'team_send',
+        +   'team_inbox',
+        +   'team_broadcast',
+        +   'team_plan',
+        +   'team_status',
+        +   'team_on_stop',
+        +   'team_shutdown'
+        + ]
+        - []
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+      actual:
+        0: 'agent_spawn'
+        1: 'agent_execute'
+        2: 'agent_terminate'
+        3: 'agent_pool'
+        4: 'agent_health'
+        5: 'agent_update'
+        6: 'agent_logs'
+        7: 'swarm_init'
+        8: 'swarm_pheromone_update'
+        9: 'swarm_pheromone_status'
+        10: 'swarm_status'
+        11: 'swarm_shutdown'
+        12: 'swarm_health'
+        13: 'memory_search'
+        14: 'memory_delete'
+        15: 'memory_stats'
+        16: 'memory_migrate'
+        17: 'memory_import_claude'
+        18: 'memory_bridge_status'
+        19: 'memory_search_unified'
+        20: 'memory_detailed-stats'
+        21: 'memory_cleanup'
+        22: 'memory_compress'
+        23: 'memory_export'
+        24: 'memory_import'
+        25: 'config_get'
+        26: 'config_set'
+        27: 'config_list'
+        28: 'config_reset'
+        29: 'config_export'
+        30: 'config_import'
+        31: 'hooks_intelligence_unified-stats'
+        32: 'hooks_teammate-idle'
+        33: 'hooks_task-completed'
+        34: 'hooks_pre-edit'
+        35: 'hooks_post-edit'
+        36: 'hooks_pre-command'
+        37: 'hooks_post-command'
+        38: 'hooks_route'
+        39: 'hooks_metrics'
+        40: 'hooks_list'
+        41: 'hooks_pre-task'
+        42: 'hooks_post-task'
+        43: 'hooks_explain'
+        44: 'hooks_pretrain'
+        45: 'hooks_build-agents'
+        46: 'hooks_transfer'
+        47: 'hooks_session-start'
+        48: 'hooks_session-end'
+        49: 'hooks_session-restore'
+        50: 'hooks_notify'
+        51: 'hooks_init'
+        52: 'hooks_intelligence'
+        53: 'hooks_intelligence-reset'
+        54: 'hooks_intelligence_trajectory-start'
+        55: 'hooks_intelligence_trajectory-step'
+        56: 'hooks_intelligence_trajectory-end'
+        57: 'hooks_intelligence_verified-ingest'
+        58: 'hooks_intelligence_pattern-store'
+        59: 'hooks_intelligence_pattern-search'
+        60: 'hooks_intelligence_stats'
+        61: 'hooks_intelligence_learn'
+        62: 'hooks_intelligence_attention'
+        63: 'hooks_worker-list'
+        64: 'hooks_worker-dispatch'
+        65: 'hooks_worker-status'
+        66: 'hooks_worker-detect'
+        67: 'hooks_worker-cancel'
+        68: 'hooks_model-route'
+        69: 'hooks_model-outcome'
+        70: 'hooks_model-stats'
+        71: 'hooks_model-verify'
+        72: 'hooks_codemod'
+        73: 'task_create'
+        74: 'task_status'
+        75: 'task_list'
+        76: 'task_complete'
+        77: 'task_update'
+        78: 'task_assign'
+        79: 'task_cancel'
+        80: 'task_retry'
+        81: 'session_save'
+        82: 'session_restore'
+        83: 'session_list'
+        84: 'session_delete'
+        85: 'session_info'
+        86: 'session_current'
+        87: 'session_export'
+        88: 'session_import'
+        89: 'hive-mind_spawn'
+        90: 'hive-mind_init'
+        91: 'hive-mind_status'
+        92: 'hive-mind_join'
+        93: 'hive-mind_leave'
+        94: 'hive-mind_consensus'
+        95: 'hive-mind_broadcast'
+        96: 'hive-mind_shutdown'
+        97: 'hive-mind_memory'
+        98: 'hive-mind_optimize-memory'
+        99: 'workflow_run'
+        100: 'workflow_create'
+        101: 'workflow_execute'
+        102: 'workflow_status'
+        103: 'workflow_list'
+        104: 'workflow_pause'
+        105: 'workflow_resume'
+        106: 'workflow_cancel'
+        107: 'workflow_delete'
+        108: 'workflow_template'
+        109: 'workflow_stop'
+        110: 'workflow_validate'
+        111: 'analyze_diff'
+        112: 'analyze_diff-risk'
+        113: 'analyze_diff-classify'
+        114: 'analyze_diff-reviewers'
+        115: 'analyze_file-risk'
+        116: 'analyze_diff-stats'
+        117: 'progress_check'
+        118: 'progress_sync'
+        119: 'progress_summary'
+        120: 'progress_watch'
+        121: 'embeddings_init'
+        122: 'embeddings_generate'
+        123: 'embeddings_compare'
+        124: 'embeddings_search'
+        125: 'embeddings_neural'
+        126: 'embeddings_hyperbolic'
+        127: 'embeddings_status'
+        128: 'embeddings_rabitq_build'
+        129: 'embeddings_rabitq_search'
+        130: 'embeddings_rabitq_status'
+        131: 'claims_claim'
+        132: 'claims_release'
+        133: 'claims_handoff'
+        134: 'claims_accept-handoff'
+        135: 'claims_status'
+        136: 'claims_list'
+        137: 'claims_mark-stealable'
+        138: 'claims_steal'
+        139: 'claims_stealable'
+        140: 'claims_load'
+        141: 'claims_board'
+        142: 'claims_rebalance'
+        143: 'policy_evaluate'
+        144: 'policy_status'
+        145: 'aidefence_scan'
+        146: 'aidefence_analyze'
+        147: 'aidefence_stats'
+        148: 'aidefence_learn'
+        149: 'aidefence_is_safe'
+        150: 'aidefence_has_pii'
+        151: 'transfer_detect-pii'
+        152: 'transfer_ipfs-resolve'
+        153: 'transfer_store-search'
+        154: 'transfer_store-info'
+        155: 'transfer_store-download'
+        156: 'transfer_store-featured'
+        157: 'transfer_store-trending'
+        158: 'transfer_plugin-search'
+        159: 'transfer_plugin-info'
+        160: 'transfer_plugin-featured'
+        161: 'transfer_plugin-official'
+        162: 'system_status'
+        163: 'system_metrics'
+        164: 'system_health'
+        165: 'system_info'
+        166: 'system_reset'
+        167: 'mcp_status'
+        168: 'task_summary'
+        169: 'mcp_start'
+        170: 'mcp_stop'
+        171: 'terminal_create'
+        172: 'terminal_execute'
+        173: 'terminal_list'
+        174: 'terminal_close'
+        175: 'terminal_history'
+        176: 'neural_train'
+        177: 'neural_predict'
+        178: 'neural_patterns'
+        179: 'neural_compress'
+        180: 'neural_status'
+        181: 'neural_optimize'
+        182: 'performance_report'
+        183: 'performance_bottleneck'
+        184: 'performance_benchmark'
+        185: 'performance_profile'
+        186: 'performance_optimize'
+        187: 'performance_metrics'
+        188: 'github_repo_analyze'
+        189: 'github_pr_manage'
+        190: 'github_issue_track'
+        191: 'github_workflow'
+        192: 'github_metrics'
+        193: 'daa_agent_create'
+        194: 'daa_agent_adapt'
+        195: 'daa_workflow_create'
+        196: 'daa_workflow_execute'
+        197: 'daa_knowledge_share'
+        198: 'daa_learning_status'
+        199: 'daa_cognitive_pattern'
+        200: 'daa_performance_metrics'
+        201: 'coordination_topology'
+        202: 'coordination_load_balance'
+        203: 'coordination_sync'
+        204: 'coordination_node'
+        205: 'coordination_consensus'
+        206: 'coordination_orchestrate'
+        207: 'coordination_metrics'
+        208: 'rure_extract_asar'
+        209: 'rure_analyze_js_app'
+        210: 'rure_find_feature'
+        211: 'rure_analyze_binary'
+        212: 'rure_analyze_dotnet'
+        213: 'rure_analyze_evm'
+        214: 'rure_analyze_cuda'
+        215: 'rure_cuda_launch_plan'
+        216: 'browser_session_record'
+        217: 'browser_session_end'
+        218: 'browser_session_replay'
+        219: 'browser_template_apply'
+        220: 'browser_cookie_use'
+        221: 'browser_act'
+        222: 'agentdb_health'
+        223: 'agentdb_controllers'
+        224: 'agentdb_pattern-store'
+        225: 'agentdb_pattern-search'
+        226: 'agentdb_feedback'
+        227: 'agentdb_causal-edge'
+        228: 'agentdb_causal-edge-delete'
+        229: 'agentdb_causal-node-delete'
+        230: 'agentdb_route'
+        231: 'agentdb_session-start'
+        232: 'agentdb_session-end'
+        233: 'agentdb_hierarchical-store'
+        234: 'agentdb_hierarchical-recall'
+        235: 'agentdb_hierarchical-delete'
+        236: 'agentdb_consolidate'
+        237: 'agentdb_batch'
+        238: 'agentdb_context-synthesize'
+        239: 'agentdb_semantic-route'
+        240: 'agentdb_graph-query'
+        241: 'agentdb_graph-pathfinder'
+        242: 'ruvllm_status'
+        243: 'ruvllm_hnsw_create'
+        244: 'ruvllm_hnsw_add'
+        245: 'ruvllm_hnsw_route'
+        246: 'ruvllm_sona_create'
+        247: 'ruvllm_sona_adapt'
+        248: 'ruvllm_microlora_create'
+        249: 'ruvllm_microlora_adapt'
+        250: 'ruvllm_chat_format'
+        251: 'ruvllm_generate_config'
+        252: 'wasm_agent_create'
+        253: 'wasm_agent_prompt'
+        254: 'wasm_agent_tool'
+        255: 'wasm_agent_list'
+        256: 'wasm_agent_terminate'
+        257: 'wasm_agent_files'
+        258: 'wasm_agent_export'
+        259: 'wasm_gallery_list'
+        260: 'wasm_gallery_search'
+        261: 'wasm_gallery_create'
+        262: 'wasm_agent_compose'
+        263: 'wasm_agent_state'
+        264: 'wasm_agent_todos'
+        265: 'wasm_agent_tools'
+        266: 'wasm_agent_turn_count'
+        267: 'wasm_agent_is_stopped'
+        268: 'wasm_agent_reset'
+        269: 'wasm_gallery_load_rvf'
+        270: 'wasm_gallery_configure'
+        271: 'wasm_gallery_categories'
+        272: 'wasm_gallery_list_by_category'
+        273: 'wasm_gallery_add_custom'
+        274: 'wasm_gallery_remove_custom'
+        275: 'wasm_gallery_import'
+        276: 'wasm_gallery_export'
+        277: 'wasm_gallery_active'
+        278: 'wasm_gallery_config'
+        279: 'managed_agent_capabilities'
+        280: 'managed_agent_learning'
+        281: 'managed_agent_control'
+        282: 'managed_agent_create'
+        283: 'managed_agent_prompt'
+        284: 'managed_agent_status'
+        285: 'managed_agent_events'
+        286: 'managed_agent_list'
+        287: 'managed_agent_interrupt'
+        288: 'managed_agent_terminate'
+        289: 'guidance_brain'
+        290: 'guidance_capabilities'
+        291: 'guidance_recommend'
+        292: 'guidance_discover'
+        293: 'guidance_workflow'
+        294: 'guidance_quickref'
+        295: 'autopilot_status'
+        296: 'autopilot_enable'
+        297: 'autopilot_disable'
+        298: 'autopilot_config'
+        299: 'autopilot_reset'
+        300: 'autopilot_log'
+        301: 'autopilot_progress'
+        302: 'autopilot_learn'
+        303: 'autopilot_history'
+        304: 'autopilot_predict'
+        305: 'hooks_coverage-route'
+        306: 'hooks_coverage-suggest'
+        307: 'hooks_coverage-gaps'
+        308: 'metaharness_score'
+        309: 'metaharness_genome'
+        310: 'metaharness_mcp_scan'
+        311: 'metaharness_threat_model'
+        312: 'metaharness_oia_audit'
+        313: 'metaharness_audit_list'
+        314: 'metaharness_similarity'
+        315: 'metaharness_drift_from_history'
+        316: 'metaharness_audit_trend'
+        317: 'metaharness_evolve'
+        318: 'metaharness_security_bench'
+        319: 'metaharness_bench'
+        320: 'metaharness_redblue'
+        321: 'metaharness_learn'
+        322: 'metaharness_gepa'
+        323: 'metaharness_flywheel'
+        324: 'agenticow_branch'
+        325: 'agenticow_ingest'
+        326: 'agenticow_query'
+        327: 'agenticow_diff'
+        328: 'agenticow_lineage'
+        329: 'agenticow_status'
+        330: 'agenticow_checkpoint'
+        331: 'agenticow_rollback'
+        332: 'agenticow_promote'
+        333: 'agenticow_speculate'
+        334: 'federation_bbs_register'
+        335: 'federation_bbs_publish'
+        336: 'federation_bbs_watch'
+        337: 'federation_bbs_human_join'
+        338: 'federation_bbs_identity'
+        339: 'federation_bbs_peer_add'
+        340: 'federation_bbs_peers'
+        341: 'federation_bbs_serve'
+        342: 'federation_bbs_sync'
+        343: 'x_federation_sync'
+        344: 'x_federation_roster'
+        345: 'x_federation_claims'
+        346: 'x_federation_registry'
+        347: 'x_federation_publish'
+        348: 'x_federation_invite_mint'
+        349: 'x_federation_admit'
+        350: 'seraphina_guidance'
+        351: 'x_federation_join'
+        352: 'x_federation_channel_create'
+        353: 'x_federation_channel_grant'
+        354: 'x_federation_channel_accept'
+        355: 'x_federation_channel_publish'
+        356: 'x_federation_channel_read'
+        357: 'x_federation_channel_list'
+        358: 'business_pod_validate'
+        359: 'business_pod_route_backend'
+        360: 'http_fetch'
+        361: 'mission_create'
+        362: 'mission_plan'
+        363: 'mission_get'
+        364: 'mission_events'
+        365: 'mission_request_action'
+        366: 'team_create'
+        367: 'team_spawn'
+        368: 'team_send'
+        369: 'team_inbox'
+        370: 'team_broadcast'
+        371: 'team_plan'
+        372: 'team_status'
+        373: 'team_on_stop'
+        374: 'team_shutdown'
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///home/user/wolf-factory-home/integration-tests/tests/mcp-safety.test.mjs:190:12)
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+      ...
+    # Subtest: 5d. allowlist is enforced at call time: non-allowlisted registered tool is refused
+    not ok 9 - 5d. allowlist is enforced at call time: non-allowlisted registered tool is refused
+      ---
+      duration_ms: 272.75857
+      type: 'test'
+      location: '/home/user/wolf-factory-home/integration-tests/tests/mcp-safety.test.mjs:193:3'
+      failureType: 'testCodeFailure'
+      error: 'system_info executed although it is not allowlisted: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"{\\n  \\"version\\": \\"3.67.0\\",\\n  \\"nodeVersion\\": \\"v22.22.3\\",\\n  \\"platform\\": \\"linux\\",\\n  \\"arch\\": \\"x64\\",\\n  \\"pid\\": 36506,'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///home/user/wolf-factory-home/integration-tests/tests/mcp-safety.test.mjs:198:12)
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+      ...
+    # Subtest: 5e. Wolf allowlist proxy: tools/list advertises exactly the allowlist
+    ok 10 - 5e. Wolf allowlist proxy: tools/list advertises exactly the allowlist
+      ---
+      duration_ms: 241.966329
+      type: 'test'
+      ...
+    # Subtest: 5f. Wolf allowlist proxy: non-allowlisted tool is refused and not executed
+    ok 11 - 5f. Wolf allowlist proxy: non-allowlisted tool is refused and not executed
+      ---
+      duration_ms: 249.048577
+      type: 'test'
+      ...
+    # Subtest: 5g. Wolf allowlist proxy: startup, shutdown and invalid-argument rejection still work
+    ok 12 - 5g. Wolf allowlist proxy: startup, shutdown and invalid-argument rejection still work
+      ---
+      duration_ms: 258.361014
+      type: 'test'
+      ...
+    # Subtest: 6. invalid tool name is rejected
+    ok 13 - 6. invalid tool name is rejected
+      ---
+      duration_ms: 194.635842
+      type: 'test'
+      ...
+    # Subtest: 7. invalid arguments are rejected by schema validation
+    ok 14 - 7. invalid arguments are rejected by schema validation
+      ---
+      duration_ms: 210.987778
+      type: 'test'
+      ...
+    # Subtest: 8. secrets in the environment never appear in stderr/stdout
+    ok 15 - 8. secrets in the environment never appear in stderr/stdout
+      ---
+      duration_ms: 227.396894
+      type: 'test'
+      ...
+    # Subtest: 9. repeated startup/shutdown cycles are stable and leave no children
+    ok 16 - 9. repeated startup/shutdown cycles are stable and leave no children
+      ---
+      duration_ms: 677.375984
+      type: 'test'
+      ...
+    # Subtest: 10. no autonomous mission admission: fresh server creates no agents and no memory db
+    ok 17 - 10. no autonomous mission admission: fresh server creates no agents and no memory db
+      ---
+      duration_ms: 254.084718
+      type: 'test'
+      ...
+    # Subtest: 11. autostart disabled: default-location workspace gets no detached daemon
+    ok 18 - 11. autostart disabled: default-location workspace gets no detached daemon
+      ---
+      duration_ms: 5599.806615
+      type: 'test'
+      ...
+    # Subtest: 12. default configuration (autostart unset): daemon must not start (upstream default is ON)
+    ok 19 - 12. default configuration (autostart unset): daemon must not start (upstream default is ON)
+      ---
+      duration_ms: 6174.293912
+      type: 'test'
+      ...
+    # Subtest: cleanup
+    ok 20 - cleanup
+      ---
+      duration_ms: 1.402236
+      type: 'test'
+      ...
+    1..20
+not ok 1 - MCP safety (Ruflo stdio server)
+  ---
+  duration_ms: 15991.560443
+  type: 'suite'
+  location: '/home/user/wolf-factory-home/integration-tests/tests/mcp-safety.test.mjs:123:1'
+  failureType: 'subtestsFailed'
+  error: '2 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 20
+# suites 1
+# pass 18
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16057.011643

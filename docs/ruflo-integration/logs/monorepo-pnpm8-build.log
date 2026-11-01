@@ -1,0 +1,48 @@
+Scope: 24 of 25 workspace projects
+@claude-flow/aidefence build$ tsc
+@claude-flow/browser build$ tsc
+@claude-flow/claims build$ tsc
+@claude-flow/cli-core build$ tsc
+@claude-flow/aidefence build: Done
+@claude-flow/embeddings build$ tsc
+@claude-flow/cli-core build: Done
+@claude-flow/integration build$ tsc
+@claude-flow/embeddings build: Done
+@claude-flow/mcp build$ tsc
+@claude-flow/integration build: Done
+@claude-flow/performance build$ tsc
+@claude-flow/browser build: Done
+@claude-flow/plugins build$ tsc -p tsconfig.json
+@claude-flow/claims build: Done
+@claude-flow/providers build$ tsc
+@claude-flow/performance build: Done
+@claude-flow/security build$ tsc && node scripts/verify-oauth-exports.mjs
+@claude-flow/providers build: Done
+@claude-flow/shared build$ tsc
+@claude-flow/mcp build: Done
+@claude-flow/swarm build$ tsc
+@claude-flow/security build: OAuth export surface verified (10 exports)
+@claude-flow/security build: Done
+@claude-flow/shared build: Done
+@claude-flow/swarm build: Done
+@claude-flow/plugins build: Done
+@claude-flow/codex build$ tsc
+@claude-flow/deployment build$ tsc
+@claude-flow/memory build$ tsc
+@claude-flow/plugin-agent-federation build$ tsc
+@claude-flow/deployment build: Done
+@claude-flow/plugin-iot-cognitum build$ tsc
+@claude-flow/plugin-agent-federation build: Done
+@claude-flow/memory build: Done
+@claude-flow/plugin-iot-cognitum build: Done
+@claude-flow/codex build: Done
+@claude-flow/neural build$ tsc
+@claude-flow/testing build$ tsc
+@claude-flow/neural build: Done
+@claude-flow/testing build: Done
+@claude-flow/cli build$ tsc
+@claude-flow/hooks build$ tsc -p tsconfig.json
+@claude-flow/hooks build: Done
+@claude-flow/cli build: Done
+@claude-flow/guidance build$ tsc -p tsconfig.json
+@claude-flow/guidance build: Done

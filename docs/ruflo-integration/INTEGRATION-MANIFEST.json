@@ -1,0 +1,220 @@
+{
+  "schema": "WolfRufloIntegrationManifest/v1",
+  "generatedAtUtc": "2026-11-01T12:53:32Z",
+  "verdict": "NOT READY FOR FACTORY INTEGRATION",
+  "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+  "branch": "arena/3f5e2ca6-wolf-factory-home",
+  "baseCommit": "061d9ffd05dc4b7f528087761755ca01468e324c",
+  "upstream": {
+    "repo": "ruvnet/claude-flow",
+    "commit": "66df9b95e1ab79d7263e491d23b20464f2906eec",
+    "version": "3.67.0"
+  },
+  "npmPackage": {
+    "name": "ruflo",
+    "version": "3.67.0",
+    "integrity": "sha512-D4VcL6WVO8DIStPclHDaaAvCix2iC4k+StlzWw3ZtC56Z5KfVTUgjHir90SHa7wrp1N/7L6YrjSbW4hOprWgmQ=="
+  },
+  "toolchain": {
+    "nodeUsed": "v22.22.3",
+    "npmUsed": "10.9.8",
+    "pnpmDeclaredByUpstream": "8.15.0",
+    "pnpmDriftObserved": "12.16.1"
+  },
+  "testRuns": {
+    "integration-tests npm test (final, after npm ci)": {
+      "exit": 1,
+      "tests": 47,
+      "pass": 43,
+      "fail": 4,
+      "log": "docs/ruflo-integration/logs/final-npm-test.tap",
+      "failures": [
+        "mcp:5c default advertised surface exceeds Wolf allowlist (upstream)",
+        "mcp:5d allowlist not enforced at call time (upstream)",
+        "mcp:12 default configuration starts detached daemon (npm ruflo@3.67.0)",
+        "rvf:5 concurrent writers lose updates (Ruflo memory CLI)"
+      ]
+    },
+    "wolf-adapter-contracts": {
+      "exit": 0,
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "log": "docs/ruflo-integration/logs/wolf-adapter-contracts.tap"
+    },
+    "mcp-safety (npm build)": {
+      "exit": 1,
+      "tests": 20,
+      "pass": 17,
+      "fail": 3,
+      "log": "docs/ruflo-integration/logs/mcp-safety.tap"
+    },
+    "mcp-safety (upstream source build)": {
+      "exit": 1,
+      "tests": 20,
+      "pass": 18,
+      "fail": 2,
+      "log": "docs/ruflo-integration/logs/mcp-source-build.tap"
+    },
+    "rvf-durable-memory": {
+      "exit": 1,
+      "tests": 12,
+      "pass": 11,
+      "fail": 1,
+      "log": "docs/ruflo-integration/logs/rvf-durable-memory.tap"
+    },
+    "public-runtime (repo root, unchanged code)": {
+      "exit": 0,
+      "tests": 184,
+      "pass": 184,
+      "fail": 0,
+      "log": "docs/ruflo-integration/logs/public-runtime-tests.txt"
+    }
+  },
+  "buildRuns": {
+    "upstream frozen install pnpm@8.15.0": {
+      "exit": 0,
+      "log": "docs/ruflo-integration/logs/pnpm8-frozen-install.log"
+    },
+    "upstream monorepo pnpm@8.15.0 -r build": {
+      "exit": 0,
+      "tsErrors": 0,
+      "log": "docs/ruflo-integration/logs/monorepo-pnpm8-build.log"
+    },
+    "upstream cli pnpm@8.15.0 run build": {
+      "exit": 0,
+      "log": "docs/ruflo-integration/logs/cli-build-pnpm8.log"
+    },
+    "upstream frozen install pnpm 12.16.1 (drift, unsupported)": {
+      "exit": 1,
+      "log": "docs/ruflo-integration/logs/pnpm12-frozen-install-FAILED.log"
+    },
+    "integration-tests npm ci BEFORE @metaharness/router pin": {
+      "exit": 1,
+      "log": "docs/ruflo-integration/logs/npm-ci-BEFORE-fix-FAILED.log"
+    },
+    "integration-tests npm ci AFTER @metaharness/router pin": {
+      "exit": 0,
+      "log": "docs/ruflo-integration/logs/npm-ci-after-fix.log"
+    }
+  },
+  "packageArtifacts": {
+    "zip": "docs/ruflo-integration/wolf-ruflo-integration.zip",
+    "patch": "docs/ruflo-integration/wolf-ruflo-integration.patch",
+    "patchAppliesCleanlyToBase": true,
+    "excludes": [
+      "integration-tests/node_modules/"
+    ]
+  },
+  "blockers": [
+    "Private Factory donraposo1-source/project-wolf: REST 404, git 403 (token lacks repository access). Owner must grant access; not bypassed.",
+    "Composio: unsupported in Arena.",
+    "Previous package (wolf-ruflo-integration.zip/.patch, TEST-RESULTS.md, INSTALL.md, ROLLBACK.md, INTEGRATION-MANIFEST.json, SHA256SUMS) absent from the workspace; not reconstructed.",
+    "Ruflo memory CLI runs on sql.js fallback; no RVF or native backend exercised.",
+    "Upstream MCP allowlist not enforced at call time; mitigated only by the Wolf proxy.",
+    "Upstream CLI default starts a detached daemon in Ruflo projects (npm build); Wolf sets RUFLO_DAEMON_AUTOSTART=0.",
+    "DBOS/KCT, CEZAR/OpenCode, OpenHands, Qwen Code, Groq/Flint/Ollama not exercised."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/ruflo-integration/INSTALL.md",
+      "bytes": 3060,
+      "sha256": "523ccb637361ba66217ee69202364d8192e4892e16e182c2f64a9f54141d65c2"
+    },
+    {
+      "path": "docs/ruflo-integration/ROLLBACK.md",
+      "bytes": 1447,
+      "sha256": "fbbc94ea54ecc306d93f1f86867d784e56092f603c81b2b005db9ea2b9679c5e"
+    },
+    {
+      "path": "docs/ruflo-integration/TEST-RESULTS.md",
+      "bytes": 15593,
+      "sha256": "3959131c2fdab72660eb7dd9129ee5e748a77ed7f4f27df147f254b7d4f5396e"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/cli-build-pnpm12-run.log",
+      "bytes": 90,
+      "sha256": "c16c4d893361d749fc55702214b81141de602405d48bc7399a96442277a68e13"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/cli-build-pnpm8.log",
+      "bytes": 90,
+      "sha256": "c16c4d893361d749fc55702214b81141de602405d48bc7399a96442277a68e13"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/exit-codes.txt",
+      "bytes": 74,
+      "sha256": "51fdb33e3d3315c23288c70c9ba0a9c27bad27de33b0f3e5c40adcf7a3112882"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/final-npm-test.tap",
+      "bytes": 39980,
+      "sha256": "07bd4eee0d331416ce5e68609c5ef32d1908ca56e04b33bb3c2c897975480c9d"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/mcp-safety.tap",
+      "bytes": 32494,
+      "sha256": "5a83777088d9c2d01fe2140e255e1c4dd58c7ba8fbdc76b932a4247dc44f8c96"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/mcp-source-build.tap",
+      "bytes": 31765,
+      "sha256": "9fe6d36fe411edabcf8a72294408ba87080edd4e171513c8cb360469dde94ddc"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/monorepo-pnpm8-build.log",
+      "bytes": 1756,
+      "sha256": "0bb14117fb8375e10ed709e1a036f741c4fef7843dff47c0c318acda0d8c0671"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/npm-ci-BEFORE-fix-FAILED.log",
+      "bytes": 1307,
+      "sha256": "2f665baee394834182a4f877c404151e83f2b31fee60b2ddc3ad6a903351ca33"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/npm-ci-after-fix.log",
+      "bytes": 702,
+      "sha256": "5e22d579e5611a95e54839329eaf1d3f99c0c5977b269c741dcbb62ead5afbbf"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/npm-ls.txt",
+      "bytes": 1779,
+      "sha256": "3ff12830f61f3e8fe982b475d6d296b7586ce722fff4c6cd0906ec2deda227db"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/pnpm12-frozen-install-FAILED.log",
+      "bytes": 503,
+      "sha256": "b0af9f3b7db808a43e836a55133f732343a1b4f8566f643568a904d6cad376c5"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/pnpm8-frozen-install.log",
+      "bytes": 1129,
+      "sha256": "fb8df5fae417bcc01a912ebfa7ff0063ed909e8dc1000ac66eb9c59341f43773"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/public-runtime-tests.txt",
+      "bytes": 42228,
+      "sha256": "41f4eb4999eba7d821523413fe46e7f33d7895347fc1c32ebbeddc69ad418da5"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/rvf-durable-memory.tap",
+      "bytes": 3948,
+      "sha256": "5fe6e8f6f8d65de2874c86fbd2d92fcf82454df980f8a09b75748046d390d5ed"
+    },
+    {
+      "path": "docs/ruflo-integration/logs/wolf-adapter-contracts.tap",
+      "bytes": 3601,
+      "sha256": "4142f65c87e1d9ff3c25dea6477f5eda317af86f482fa04f3f3178ae8938d4ff"
+    },
+    {
+      "path": "docs/ruflo-integration/wolf-ruflo-integration.patch",
+      "bytes": 441088,
+      "sha256": "1013c52a77c39e7eb69ec174a2a80c938a5da039fe2c60de8fd4d356d86902bf"
+    },
+    {
+      "path": "docs/ruflo-integration/wolf-ruflo-integration.zip",
+      "bytes": 97985,
+      "sha256": "5a867824f289d58bc9595a5a4fb4993b55a549f81381204f23ed7c3e54b6fbc5"
+    }
+  ]
+}

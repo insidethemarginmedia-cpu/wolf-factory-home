@@ -1,0 +1,3 @@
+wolf-adapter-contracts exit=0
+mcp-safety exit=1
+rvf-durable-memory exit=1

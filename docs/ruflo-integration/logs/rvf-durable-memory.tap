@@ -1,0 +1,109 @@
+TAP version 13
+# Subtest: Ruflo memory durability (CLI, sql.js fallback)
+    # Subtest: backend disclosure: which storage path is active
+    ok 1 - backend disclosure: which storage path is active
+      ---
+      duration_ms: 1121.266789
+      type: 'test'
+      ...
+    # Subtest: 1. durable write then read (same process boundary)
+    ok 2 - 1. durable write then read (same process boundary)
+      ---
+      duration_ms: 1689.235366
+      type: 'test'
+      ...
+    # Subtest: 2. restart recovery: value survives after all prior processes exited
+    ok 3 - 2. restart recovery: value survives after all prior processes exited
+      ---
+      duration_ms: 757.664289
+      type: 'test'
+      ...
+    # Subtest: 3. independent-file recovery: export from store A, import into store B (same host)
+    ok 4 - 3. independent-file recovery: export from store A, import into store B (same host)
+      ---
+      duration_ms: 3112.987414
+      type: 'test'
+      ...
+    # Subtest: 4. interrupted write: a truncated store file is refused, not silently read
+    ok 5 - 4. interrupted write: a truncated store file is refused, not silently read
+      ---
+      duration_ms: 2066.955886
+      type: 'test'
+      ...
+    # Subtest: 5. concurrent writers (3 processes x 5 writes): no lost writes
+    not ok 6 - 5. concurrent writers (3 processes x 5 writes): no lost writes
+      ---
+      duration_ms: 10483.634351
+      type: 'test'
+      location: '/home/user/wolf-factory-home/integration-tests/tests/rvf-durable-memory.test.mjs:112:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        expected 15 persisted, got 12; CLI reported 15 successes
+        
+        12 !== 15
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 15
+      actual: 12
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///home/user/wolf-factory-home/integration-tests/tests/rvf-durable-memory.test.mjs:136:12)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+      ...
+    # Subtest: 6. idempotent upsert: second write replaces, does not duplicate
+    ok 7 - 6. idempotent upsert: second write replaces, does not duplicate
+      ---
+      duration_ms: 3156.25997
+      type: 'test'
+      ...
+    # Subtest: 7. mission namespace isolation: same key in two namespaces stays separate
+    ok 8 - 7. mission namespace isolation: same key in two namespaces stays separate
+      ---
+      duration_ms: 3158.279447
+      type: 'test'
+      ...
+    # Subtest: 8. corruption detection: garbage file is reported as an error
+    ok 9 - 8. corruption detection: garbage file is reported as an error
+      ---
+      duration_ms: 533.434479
+      type: 'test'
+      ...
+    # Subtest: 9. snapshot/backup: export count matches store, import restores all entries
+    ok 10 - 9. snapshot/backup: export count matches store, import restores all entries
+      ---
+      duration_ms: 7960.859939
+      type: 'test'
+      ...
+    # Subtest: 10. schema compatibility: legacy-style write and read round-trip
+    ok 11 - 10. schema compatibility: legacy-style write and read round-trip
+      ---
+      duration_ms: 1543.476597
+      type: 'test'
+      ...
+    # Subtest: 11. append-only (immutable) writes: require native writer, fail closed on fallback
+    ok 12 - 11. append-only (immutable) writes: require native writer, fail closed on fallback
+      ---
+      duration_ms: 359.548039
+      type: 'test'
+      ...
+    1..12
+not ok 1 - Ruflo memory durability (CLI, sql.js fallback)
+  ---
+  duration_ms: 36861.042629
+  type: 'suite'
+  location: '/home/user/wolf-factory-home/integration-tests/tests/rvf-durable-memory.test.mjs:45:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 12
+# suites 1
+# pass 11
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 36955.793789

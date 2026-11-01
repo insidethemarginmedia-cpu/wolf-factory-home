@@ -1,0 +1,9 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 5 workspace projects
+Error: ERR_PNPM_LOCKFILE_CONFIG_MISMATCH
+
+  × installing dependencies
+  ╰─▶ Cannot proceed with the frozen installation. The current "overrides"
+      configuration doesn't match the value found in the lockfile
+  help: Update your lockfile using "pnpm install --no-frozen-lockfile"
+

@@ -1,0 +1,8 @@
+node_modules/
+# Ruflo runtime state written into the working directory by the CLI
+.claude-flow/
+.claude/
+.swarm/
+*.rvf
+*.rvf.lock
+*.rvf.idmap.json

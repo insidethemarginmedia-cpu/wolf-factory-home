@@ -1,0 +1,13 @@
+Scope: all 25 workspace projects
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +139
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 139, reused 2, downloaded 31, added 26
+Progress: resolved 139, reused 2, downloaded 58, added 72
+Progress: resolved 139, reused 2, downloaded 97, added 114
+Progress: resolved 139, reused 2, downloaded 109, added 139, done
+ WARN  Failed to create bin at /home/user/claude-flow-source/v3/@claude-flow/browser/node_modules/.bin/agentdb. ENOENT: no such file or directory, open '/home/user/claude-flow-source/v3/node_modules/.pnpm/agentic-flow@2.0.13_@types+node@20.19.27/node_modules/agentic-flow/dist/agentdb/cli/agentdb-cli.js'
+ WARN  Failed to create bin at /home/user/claude-flow-source/v3/@claude-flow/plugin-agent-federation/node_modules/.bin/agentdb. ENOENT: no such file or directory, open '/home/user/claude-flow-source/v3/node_modules/.pnpm/agentic-flow@2.0.12-fix.8_@types+node@20.19.27/node_modules/agentic-flow/dist/agentdb/cli/agentdb-cli.js'
+
+Done in 5.3s

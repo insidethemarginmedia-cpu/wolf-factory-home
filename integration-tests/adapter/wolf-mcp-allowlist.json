@@ -1,0 +1,4 @@
+{
+  "description": "Wolf minimal MCP tool surface. Source of truth for adapter/mcp-allowlist-proxy.mjs and tests/mcp-safety.test.mjs. Edit deliberately.",
+  "tools": ["agent_list", "agent_status", "memory_store", "memory_retrieve", "memory_list"]
+}

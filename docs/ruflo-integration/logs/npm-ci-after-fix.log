@@ -1,0 +1,8 @@
+npm warn deprecated koa-router@14.0.0: Please use @koa/router instead, starting from v9! 
+npm warn deprecated prebuild-install@7.1.3: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
+npm warn deprecated @opentelemetry/sdk-trace-node@2.9.0: Use @opentelemetry/sdk-trace package
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+npm warn deprecated @opentelemetry/propagator-jaeger@2.9.0: Package no longer supported. See https://github.com/open-telemetry/opentelemetry-js/pull/7077
+npm warn deprecated @opentelemetry/sdk-trace-base@2.9.0: Use @opentelemetry/sdk-trace package
+
+added 395 packages in 21s
