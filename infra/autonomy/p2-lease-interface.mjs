@@ -163,6 +163,16 @@ export function createFactoryLeaseAdapter({ module, sourceIdentity, clock = () =
       deny(P2_CODES.LEASE_CLAIM_INVALID, 'factory assertMissionClaim returned a falsy verdict');
     }
     if (result && typeof result === 'object') {
+      // Canonical Factory denies with { state: 'LEASE_INVALID', reason }.
+      // Object truthiness must never imply valid mission authority.
+      if (result.state !== undefined && result.state !== 'LEASE_VALID') {
+        const reason = String(result.reason ?? '');
+        const code = reason === 'LEASE_EXPIRED' ? P2_CODES.LEASE_EXPIRED
+          : reason === 'FENCING_TOKEN_MISMATCH' ? P2_CODES.FENCE_STALE
+          : reason === 'CLAIM_MISSING' || reason === 'ALREADY_RELEASED' ? P2_CODES.LEASE_RELEASED
+          : P2_CODES.LEASE_CLAIM_INVALID;
+        deny(code, 'canonical Factory reported non-valid lease state');
+      }
       if (result.valid === false || result.released === true || result.expired === true) {
         deny(
           result.released === true
