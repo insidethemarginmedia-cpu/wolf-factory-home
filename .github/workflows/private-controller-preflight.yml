@@ -1223,7 +1223,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: ${{ env.WOLF_GROQ_CANDIDATE_SHA }}
+          ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 0
@@ -1231,6 +1231,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
+          git cat-file -e "$WOLF_GROQ_CANDIDATE_SHA^{commit}"
+          git switch --detach "$WOLF_GROQ_CANDIDATE_SHA"
           test "$(git rev-parse HEAD)" = "$WOLF_GROQ_CANDIDATE_SHA"
           test "$(git rev-parse HEAD^)" = "$WOLF_FACTORY_EXPECTED_SHA"
           test -z "$(git status --porcelain)"
