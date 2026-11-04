@@ -80,7 +80,7 @@ on:
 env:
   WOLF_FACTORY_REPOSITORY: donraposo1-source/project-wolf
   WOLF_FACTORY_SOURCE_BRANCH: feat/factory-real-worker-m1-20261006
-  WOLF_FACTORY_EXPECTED_SHA: d86e93b74085c8c770a9406ee5d8f37d62e390cb
+  WOLF_FACTORY_EXPECTED_SHA: a479ef18452a9ad7d9fd479f46364a540d95f528
 permissions:
   contents: read
 concurrency:
@@ -1213,7 +1213,7 @@ jobs:
     permissions:
       contents: read
     env:
-      WOLF_GROQ_CANDIDATE_SHA: 290dc49160978ff7e378eb16275aac62ab39a0a2
+      WOLF_GROQ_CANDIDATE_SHA: 989ac0b3c8f17b2633098aa18aad92a1f7d41b25
       EUR_SPEND: '0'
       COST_UNKNOWN: DENY
       PAID_FALLBACK: DENY
