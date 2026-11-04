@@ -16,7 +16,16 @@ export async function verifyPrivateSourceCheckout({env=process.env,fetchImpl=glo
  // The archive is never downloaded, unpacked or exported by this preflight.
  let archiveResponse;try{archiveResponse=await fetchImpl(archive,{headers:{authorization:`Bearer ${env.WOLF_FACTORY_REPO_TOKEN}`,'user-agent':'WolfPrivateSourceCheckout','accept':'application/vnd.github+json'},redirect:'manual',signal:AbortSignal.timeout(20000)});}catch{throw Error('PRIVATE_SOURCE_ARCHIVE_NETWORK_FAILED');}
  if(archiveResponse.status!==302)throw Error('PRIVATE_SOURCE_ARCHIVE_DENIED');
+ // A redirect alone is not archive authorization. Bind the destination to the
+ // expected GitHub codeload repository and immutable commit; never follow it.
+ let destination;
+ try{destination=new URL(archiveResponse.headers?.get('location'));}catch{throw Error('PRIVATE_SOURCE_ARCHIVE_REDIRECT_DENIED');}
+ // Private GitHub archives may carry an opaque access token. Accept that one
+ // query key only, never follow the URL and never include it in a receipt/log.
+ const query=[...destination.searchParams];
+ const queryAllowed=query.length===0||(query.length===1&&query[0][0]==='token'&&/^[A-Za-z0-9._~-]{1,4096}$/.test(query[0][1]));
+ if(destination.protocol!=='https:'||destination.hostname!=='codeload.github.com'||destination.port||destination.username||destination.password||destination.pathname!==`/${repo}/legacy.tar.gz/${env.WOLF_FACTORY_EXPECTED_SHA}`||destination.hash||!queryAllowed)throw Error('PRIVATE_SOURCE_ARCHIVE_REDIRECT_DENIED');
  return {state:'SOURCE_ACCESS_VERIFIED',sourceRefVerified:true,privateArchiveAuthorized:true,privateSourceFetched:false,missionExecutionVerified:false,publishingEnabled:false};
 }
 
-if(process.argv[1]&&import.meta.url===new URL('file://'+process.argv[1]).href){try{const result=await verifyPrivateSourceCheckout();console.log(JSON.stringify(result));if(result.state!=='SOURCE_ACCESS_VERIFIED')process.exitCode=78;}catch(error){const allowed=['SOURCE_CHECKOUT_CONFIGURATION_DENIED','PRIVATE_SOURCE_REF_NETWORK_FAILED','PRIVATE_SOURCE_REF_DENIED','PRIVATE_SOURCE_REF_INVALID','PRIVATE_SOURCE_REF_MISMATCH','PRIVATE_SOURCE_ARCHIVE_NETWORK_FAILED','PRIVATE_SOURCE_ARCHIVE_DENIED'];console.error(JSON.stringify({state:'FAILED',reason:allowed.includes(error?.message)?error.message:'PRIVATE_SOURCE_AUTHORIZATION_FAILED'}));process.exitCode=1;}}
+if(process.argv[1]&&import.meta.url===new URL('file://'+process.argv[1]).href){try{const result=await verifyPrivateSourceCheckout();console.log(JSON.stringify(result));if(result.state!=='SOURCE_ACCESS_VERIFIED')process.exitCode=78;}catch(error){const allowed=['SOURCE_CHECKOUT_CONFIGURATION_DENIED','PRIVATE_SOURCE_REF_NETWORK_FAILED','PRIVATE_SOURCE_REF_DENIED','PRIVATE_SOURCE_REF_INVALID','PRIVATE_SOURCE_REF_MISMATCH','PRIVATE_SOURCE_ARCHIVE_NETWORK_FAILED','PRIVATE_SOURCE_ARCHIVE_DENIED','PRIVATE_SOURCE_ARCHIVE_REDIRECT_DENIED'];console.error(JSON.stringify({state:'FAILED',reason:allowed.includes(error?.message)?error.message:'PRIVATE_SOURCE_AUTHORIZATION_FAILED'}));process.exitCode=1;}}

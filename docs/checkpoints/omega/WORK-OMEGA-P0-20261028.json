@@ -1,0 +1,587 @@
+{
+  "schema": "WolfWorkOmegaExecutionCheckpoint/v1",
+  "recordedAtUtc": "2026-10-28T02:39:20.826653+00:00",
+  "verdict": "BOUNDED_AB_AND_FRESH_RUNNER_C_VERIFIED_UNATTENDED_PATCHED_RUNTIME_NOT_VERIFIED",
+  "economicPolicy": {
+    "EUR_SPEND": "0",
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "observedProviderCostUsd": 0,
+    "independentBillingAudit": "NOT VERIFIED"
+  },
+  "repositories": {
+    "public": "insidethemarginmedia-cpu/wolf-factory-home",
+    "publicBaseBranch": "feat/public-runtime-probe-20261022",
+    "publicBaseHead": "a94588646b2d7d627b8e2103329b22ea3f29545d",
+    "publicFeatureBranch": "fix/omega-acceptance-ready-20261028",
+    "validatedCodeHead": "a2b207d8d365732ba16b41f6d0cda57164e9cdfd",
+    "publicSnapshotCommit": "59e322c80457696290f58b125706f730bf6d74c5",
+    "publicMainHead": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+    "mainAndSchedulerModified": false,
+    "private": "donraposo1-source/project-wolf",
+    "privateBranch": "feat/factory-real-worker-m1-20261006",
+    "privateInitialHead": "58127da11aa1628a5f6e53376449574b7e2cc20e",
+    "privateFinalHead": "484756f291dbb8bd4ad112af40a2f26a40c7703f",
+    "privateSourcePublished": false
+  },
+  "patch": {
+    "filename": "omega-acceptance-ready-a945886.patch (1).gz",
+    "compressedBytes": 18624,
+    "compressedSha256": "3ad0ace9e985d557bfff8fec7cf6a349ae3dbad4b54df0a8a96696a19cda641d",
+    "decompressedBytes": 88298,
+    "decompressedSha256": "7bc32e19c81685c9e8bf35d813c4f92bb27f46498f64538952374824d1473988",
+    "integrity": "VERIFIED",
+    "application": "VERIFIED",
+    "conflicts": 0,
+    "history": [
+      {
+        "original": "e63a34e37b2811271428fdad690e40ab82f5941c",
+        "applied": "8ac6b494d09b3c5a2dc771f731638e6a434a5803"
+      },
+      {
+        "original": "4efc151a98e92a720c6d41d9a1780be102d13a8a",
+        "applied": "b6bc940fcaef5c9193c4542247dbea00fd3fa3f8"
+      },
+      {
+        "original": "e9a5aafd79ea8008aee8cba7f51f51ab9c1f2201",
+        "applied": "bab8609370a395b5bf5c04317d45b83a274eb417"
+      }
+    ]
+  },
+  "validation": {
+    "publicTests": {
+      "state": "VERIFIED",
+      "passed": 73,
+      "failed": 0,
+      "command": "node --test tests/*.test.mjs"
+    },
+    "workflowValidation": {
+      "state": "VERIFIED",
+      "actionlintVersion": "1.7.12",
+      "externalShellcheckAndPyflakes": false,
+      "inlineNodeBlocks": 22,
+      "bashRunBlocks": 79
+    },
+    "privateRegressionAndBuild": {
+      "state": "VERIFIED",
+      "runs": [
+        40620484843,
+        40621309211
+      ]
+    },
+    "independentCodeReview": {
+      "state": "VERIFIED",
+      "criticalOrImportantFindingsRemaining": 0,
+      "duplicateJsonKeyDisclosureRegression": "VERIFIED_REJECTED_BEFORE_IO"
+    },
+    "publicPushCI": [
+      {
+        "runId": 40620367417,
+        "head": "cfe7420f8ab87f6a428eaa808a65f1e39522cdf9",
+        "conclusion": "success"
+      },
+      {
+        "runId": 40621267969,
+        "head": "a2b207d8d365732ba16b41f6d0cda57164e9cdfd",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "publication": {
+    "state": "VERIFIED",
+    "draft": true,
+    "pullRequest": 1,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/1",
+    "target": "feat/public-runtime-probe-20261022",
+    "testedAndPublishedCommitObjectsIdentical": true,
+    "forcePushUsed": false,
+    "transport": "EXISTING_AUTHENTICATED_GITHUB_CONNECTION"
+  },
+  "concurrency": {
+    "state": "VERIFIED",
+    "admission": "RESOLVE_EXACT_AUTHORIZED_BRANCH_HEAD_ONCE_THEN_IMMUTABLE_JOB_OUTPUT",
+    "abPinnedSource": "58127da11aa1628a5f6e53376449574b7e2cc20e",
+    "cPinnedSource": "85d1665ad8d26c1576566b1a5564cafc59a92f52",
+    "manualPrivateShaPinEditRequiredAfterAB": false,
+    "remoteAdvance": "REJECTED",
+    "overlappingABAndC": "REJECTED_BEFORE_IO",
+    "publication": "EXACT_PARENT_AND_REMOTE_HEAD_CHECKS_FAST_FORWARD_ONLY_SHA_READBACK",
+    "leaseFencingIdempotencyAndCommitJournal": "PRESERVED"
+  },
+  "missionReceipts": [
+    {
+      "missionId": "OMEGA_A_40620484843",
+      "checkpoint": {
+        "state": "PERSISTED",
+        "commitSha": "88c11abe65ca538936296aac973d598cbca8db8b",
+        "checkpointId": "wolf-cp-61001c07b0f4067049748bd00e53ff36dda1f320c48086f210236574a85b05c6",
+        "path": "docs/checkpoints/runtime/wolf-cp-61001c07b0f4067049748bd00e53ff36dda1f320c48086f210236574a85b05c6.json",
+        "replayed": false
+      },
+      "codeCommit": {
+        "state": "COMMITTED",
+        "missionId": "OMEGA_A_40620484843",
+        "executionId": "exec-27cc171fb4c61ffb0ce4941d4c7ae97d23437713906e1890184dde6d84a02207",
+        "baseSha": "58127da11aa1628a5f6e53376449574b7e2cc20e",
+        "commitSha": "ff19f088d23d85f24f0de091a99c1d684e8172a9",
+        "diffSha256": "dadcea361fd04c2e42c9d3808083a61444a7cf6a5dac9b31705bd45baf341731"
+      },
+      "verifier": {
+        "status": "PASS",
+        "authority": "INDEPENDENT_VERIFIER",
+        "executionId": "exec-27cc171fb4c61ffb0ce4941d4c7ae97d23437713906e1890184dde6d84a02207"
+      },
+      "provider": {
+        "provider": "Groq",
+        "model": "groq/openai/gpt-oss-120b",
+        "llmInvoked": true,
+        "generationId": "chatcmpl-7722e6f3-3ee2-4826-b912-92ad5005c4ea",
+        "observedCostUsd": 0,
+        "receiptKind": "GROQ_CHAT_COMPLETION_RESPONSE",
+        "costBasis": "VERIFIED_GROQ_FREE_PLAN"
+      },
+      "blobSha": "e9a90e5c68024a211b1539fa61762240ef88d23c",
+      "runId": 40620484843,
+      "runUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40620484843",
+      "independentLocalAndBoxxkitePass": true,
+      "automaticContinuation": false,
+      "nextReady": true,
+      "integratedReview": {
+        "opencode": {
+          "state": "PASS",
+          "missionId": "OMEGA_A_40620484843",
+          "sourceSha256": "4aa1bf4e3fa71a9a654d303a535c5b0a6e9396c23a69ca050f30b17798f7d2b6",
+          "sessionId": "ses_e7fac79efffejrmENhx2DEUjAt",
+          "tokensUsed": 2318,
+          "costUsd": 0,
+          "toolCalls": 0,
+          "costEventObserved": true,
+          "costBasis": "VERIFIED_GROQ_FREE_PLAN_NO_BILLING",
+          "modelCostEstimateUsd": 0.0004125,
+          "modelCostEstimateIsBilled": false,
+          "billingReceiptObserved": false,
+          "provider": "Groq",
+          "model": "groq/openai/gpt-oss-120b",
+          "independentProviderDiversity": false
+        },
+        "groq": {
+          "state": "PASS",
+          "missionId": "OMEGA_A_40620484843",
+          "sourceSha256": "4aa1bf4e3fa71a9a654d303a535c5b0a6e9396c23a69ca050f30b17798f7d2b6",
+          "model": "openai/gpt-oss-120b",
+          "receiptId": "chatcmpl-98601ec0-3fe3-45af-ae8a-9d597efb0cbb",
+          "requestId": "req_01m60573vqepqtcky26mtb2nex",
+          "usage": {
+            "queue_time": 0.243452012,
+            "prompt_tokens": 221,
+            "prompt_time": 0.008400075,
+            "completion_tokens": 212,
+            "completion_time": 0.445361446,
+            "total_tokens": 433,
+            "total_time": 0.453761521,
+            "completion_tokens_details": {
+              "reasoning_tokens": 145
+            }
+          },
+          "freePlanConfirmed": true,
+          "paidFallback": false
+        }
+      },
+      "executor": [
+        {
+          "jobId": "OMEGA_A_40620484843.initial.0",
+          "sandboxId": "555892a0-bdea-479f-999c-cf57e7a3e88e",
+          "passed": false,
+          "exitCode": 1
+        },
+        {
+          "jobId": "OMEGA_A_40620484843.regression.1",
+          "sandboxId": "555892a0-bdea-479f-999c-cf57e7a3e88e",
+          "passed": true,
+          "exitCode": 0
+        },
+        {
+          "jobId": "OMEGA_A_40620484843.independent.1",
+          "sandboxId": "555892a0-bdea-479f-999c-cf57e7a3e88e",
+          "passed": true,
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "missionId": "OMEGA_B_40620484843",
+      "checkpoint": {
+        "state": "PERSISTED",
+        "commitSha": "85d1665ad8d26c1576566b1a5564cafc59a92f52",
+        "checkpointId": "wolf-cp-6848031c1fbd5a43dda4641ab89c5ab86471f3d565c709f14618e81a88e73813",
+        "path": "docs/checkpoints/runtime/wolf-cp-6848031c1fbd5a43dda4641ab89c5ab86471f3d565c709f14618e81a88e73813.json",
+        "replayed": false
+      },
+      "codeCommit": {
+        "state": "COMMITTED",
+        "missionId": "OMEGA_B_40620484843",
+        "executionId": "exec-1de548dfc82251c573c85b51ba5593de7f99cef82c1d63e1a7bef9b9b499cd4b",
+        "baseSha": "88c11abe65ca538936296aac973d598cbca8db8b",
+        "commitSha": "9b370fa693cd56d211c8de32ee3052050fa1f225",
+        "diffSha256": "590852ed9f878604bf684cbcd1e48634976d2ada8655df430b3822034290e762"
+      },
+      "verifier": {
+        "status": "PASS",
+        "authority": "INDEPENDENT_VERIFIER",
+        "executionId": "exec-1de548dfc82251c573c85b51ba5593de7f99cef82c1d63e1a7bef9b9b499cd4b"
+      },
+      "provider": {
+        "provider": "Groq",
+        "model": "groq/openai/gpt-oss-120b",
+        "llmInvoked": true,
+        "generationId": "chatcmpl-a76258b8-9cb4-4b1b-bccc-c1da325cdd0c",
+        "observedCostUsd": 0,
+        "receiptKind": "GROQ_CHAT_COMPLETION_RESPONSE",
+        "costBasis": "VERIFIED_GROQ_FREE_PLAN"
+      },
+      "blobSha": "016960930d95318589f082f54767f03d766b6b78",
+      "runId": 40620484843,
+      "runUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40620484843",
+      "independentLocalAndBoxxkitePass": true,
+      "automaticContinuation": true,
+      "nextReady": true,
+      "integratedReview": {
+        "opencode": {
+          "state": "PASS",
+          "missionId": "OMEGA_B_40620484843",
+          "sourceSha256": "99a86f2872d4efd321f2a58c642565e39b6183c47b1890499bb1dfa9a47aa6bb",
+          "sessionId": "ses_e7fab8586ffe56XeBxa8aOoVzu",
+          "tokensUsed": 2614,
+          "costUsd": 0,
+          "toolCalls": 0,
+          "costEventObserved": true,
+          "costBasis": "VERIFIED_GROQ_FREE_PLAN_NO_BILLING",
+          "modelCostEstimateUsd": 0.00054915,
+          "modelCostEstimateIsBilled": false,
+          "billingReceiptObserved": false,
+          "provider": "Groq",
+          "model": "groq/openai/gpt-oss-120b",
+          "independentProviderDiversity": false
+        },
+        "groq": {
+          "state": "PASS",
+          "missionId": "OMEGA_B_40620484843",
+          "sourceSha256": "99a86f2872d4efd321f2a58c642565e39b6183c47b1890499bb1dfa9a47aa6bb",
+          "model": "openai/gpt-oss-120b",
+          "receiptId": "chatcmpl-5b1b91bd-488c-4f29-bf42-308c9cc4961a",
+          "requestId": "req_01m60591xgepzss36t31r6qbby",
+          "usage": {
+            "queue_time": 0.17668279,
+            "prompt_tokens": 311,
+            "prompt_time": 0.028481914,
+            "completion_tokens": 259,
+            "completion_time": 0.542458693,
+            "total_tokens": 570,
+            "total_time": 0.570940607,
+            "completion_tokens_details": {
+              "reasoning_tokens": 198
+            }
+          },
+          "freePlanConfirmed": true,
+          "paidFallback": false
+        }
+      },
+      "executor": [
+        {
+          "jobId": "OMEGA_B_40620484843.initial.0",
+          "sandboxId": "bd375caa-1416-4cf4-9ee7-53535a1c319f",
+          "passed": false,
+          "exitCode": 1
+        },
+        {
+          "jobId": "OMEGA_B_40620484843.regression.1",
+          "sandboxId": "bd375caa-1416-4cf4-9ee7-53535a1c319f",
+          "passed": true,
+          "exitCode": 0
+        },
+        {
+          "jobId": "OMEGA_B_40620484843.independent.1",
+          "sandboxId": "bd375caa-1416-4cf4-9ee7-53535a1c319f",
+          "passed": true,
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "missionId": "OMEGA_C_40621309211",
+      "checkpoint": {
+        "state": "PERSISTED",
+        "commitSha": "484756f291dbb8bd4ad112af40a2f26a40c7703f",
+        "checkpointId": "wolf-cp-e6499ed3e1f000aec46af28c1b4911ec451aa0050cbb947ddf1092cb6fdf4a88",
+        "path": "docs/checkpoints/runtime/wolf-cp-e6499ed3e1f000aec46af28c1b4911ec451aa0050cbb947ddf1092cb6fdf4a88.json",
+        "replayed": false
+      },
+      "codeCommit": {
+        "state": "COMMITTED",
+        "missionId": "OMEGA_C_40621309211",
+        "executionId": "exec-6317304d24049bbc6058822aa8e21df502e5d5d296621330b1a7fad97c090a6b",
+        "baseSha": "85d1665ad8d26c1576566b1a5564cafc59a92f52",
+        "commitSha": "35e75b181255cc6b8f94e69f21e90110c640f633",
+        "diffSha256": "b254680f60b0247ef01f58bb682318afa419e48f2a83cbb2c1ee888df3f7ca67"
+      },
+      "verifier": {
+        "status": "PASS",
+        "authority": "INDEPENDENT_VERIFIER",
+        "executionId": "exec-6317304d24049bbc6058822aa8e21df502e5d5d296621330b1a7fad97c090a6b"
+      },
+      "provider": {
+        "provider": "Groq",
+        "model": "groq/openai/gpt-oss-120b",
+        "llmInvoked": true,
+        "generationId": "chatcmpl-e16e51ff-0f93-4e99-8a04-192c5f355d9c",
+        "observedCostUsd": 0,
+        "receiptKind": "GROQ_CHAT_COMPLETION_RESPONSE",
+        "costBasis": "VERIFIED_GROQ_FREE_PLAN"
+      },
+      "blobSha": "7c5f73b58cba289f89d1cb3a60f48dc624fa06c3",
+      "runId": 40621309211,
+      "runUrl": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40621309211",
+      "independentLocalAndBoxxkitePass": true,
+      "automaticContinuationAfterRunnerLoss": true,
+      "nextReady": "NEXT_READY_DRAINED",
+      "integratedReview": {
+        "opencode": {
+          "state": "PASS",
+          "missionId": "OMEGA_C_40621309211",
+          "sourceSha256": "826f00e35567f124467caae95c17608c261efccf76097f95fc3a20020366a851",
+          "sessionId": "ses_e7fa455d7ffen7PYTW0PheWirC",
+          "tokensUsed": 2469,
+          "costUsd": 0,
+          "toolCalls": 0,
+          "costEventObserved": true,
+          "costBasis": "VERIFIED_GROQ_FREE_PLAN_NO_BILLING",
+          "modelCostEstimateUsd": 0.00048285,
+          "modelCostEstimateIsBilled": false,
+          "billingReceiptObserved": false,
+          "provider": "Groq",
+          "model": "groq/openai/gpt-oss-120b",
+          "independentProviderDiversity": false
+        },
+        "groq": {
+          "state": "PASS",
+          "missionId": "OMEGA_C_40621309211",
+          "sourceSha256": "826f00e35567f124467caae95c17608c261efccf76097f95fc3a20020366a851",
+          "model": "openai/gpt-oss-120b",
+          "receiptId": "chatcmpl-1475aaa5-f1be-4fc5-8afc-21e18f4f6b5e",
+          "requestId": "req_01m605qck3esesgn5c9bngkr3k",
+          "usage": {
+            "queue_time": 0.2200327,
+            "prompt_tokens": 263,
+            "prompt_time": 0.010862578,
+            "completion_tokens": 195,
+            "completion_time": 0.407969872,
+            "total_tokens": 458,
+            "total_time": 0.41883245,
+            "completion_tokens_details": {
+              "reasoning_tokens": 139
+            }
+          },
+          "freePlanConfirmed": true,
+          "paidFallback": false
+        }
+      },
+      "executor": [
+        {
+          "jobId": "OMEGA_C_40621309211.initial.0",
+          "sandboxId": "2b460815-abfc-4799-968e-e2d6f24dba55",
+          "passed": false,
+          "exitCode": 1
+        },
+        {
+          "jobId": "OMEGA_C_40621309211.regression.1",
+          "sandboxId": "2b460815-abfc-4799-968e-e2d6f24dba55",
+          "passed": true,
+          "exitCode": 0
+        },
+        {
+          "jobId": "OMEGA_C_40621309211.independent.1",
+          "sandboxId": "2b460815-abfc-4799-968e-e2d6f24dba55",
+          "passed": true,
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "restart": {
+    "state": "VERIFIED",
+    "workflowID": "wolf-omega-integrated-40620484843",
+    "oldPid": 9624,
+    "newPid": 10084,
+    "automaticMissionB": true
+  },
+  "runnerLoss": {
+    "state": "VERIFIED",
+    "snapshot": {
+      "state": "PERSISTED",
+      "commitSha": "59e322c80457696290f58b125706f730bf6d74c5",
+      "path": "docs/checkpoints/runner-loss/40621309211.json",
+      "encrypted": true,
+      "sha256": "7321e397d116ff8d1f64abca097a2944412311f40a7f53b0cfcd4239e50c5ee9"
+    },
+    "sourceAdmission": {
+      "repository": "donraposo1-source/project-wolf",
+      "branch": "feat/factory-real-worker-m1-20261006",
+      "sha": "85d1665ad8d26c1576566b1a5564cafc59a92f52"
+    },
+    "recovery": {
+      "state": "RUNNER_STATE_RESTORED",
+      "workflowID": "wolf-runner-loss-40621309211",
+      "payloadSha256": "2ce2bae9b6af8ffeeb8f930f4c50aa93a2783f1983e11ae2a8198188d08d2862",
+      "source": {
+        "bootId": "6532a1c3-7062-45c4-a455-9f0f75ffbb8e",
+        "runner": "GitHub Actions 1000000400",
+        "job": "runner-loss-prepare"
+      },
+      "recovery": {
+        "bootId": "35587e24-743b-4623-9a9d-08ca095388c3",
+        "runner": "GitHub Actions 1000000401",
+        "job": "runner-loss-recover"
+      },
+      "files": 8,
+      "databaseSha256": "3ee8853146d48bb17095981076bed69c96621c210514fc91d2d72645e0380ac4"
+    },
+    "fence": {
+      "state": "VERIFIED",
+      "oldFence": 1,
+      "newFence": 2,
+      "staleFenceRejected": true
+    },
+    "admissionCount": 1,
+    "duplicateWakeup": "VERIFIED_NO_NEW_EFFECTS",
+    "sameCommitAfterDuplicate": "484756f291dbb8bd4ad112af40a2f26a40c7703f"
+  },
+  "providers": {
+    "Groq": {
+      "state": "VERIFIED",
+      "model": "openai/gpt-oss-120b",
+      "paidFallback": false
+    },
+    "OpenCodeCezar": {
+      "state": "VERIFIED",
+      "independentProviderDiversity": false
+    },
+    "Ollama": {
+      "state": "VERIFIED",
+      "receipts": [
+        {
+          "state": "UNVERIFIED",
+          "advisory": true,
+          "code": "OLLAMA_CEZAR_REVIEW_NOT_VERIFIED"
+        },
+        {
+          "state": "PASS",
+          "advisory": true,
+          "missionId": "OMEGA_B_40620484843",
+          "sourceSha256": "99a86f2872d4efd321f2a58c642565e39b6183c47b1890499bb1dfa9a47aa6bb",
+          "model": "ollama/qwen2.5-coder:0.5b",
+          "modelDigest": "4ff64a7f502a08b7616edb8ca0a79eb1853fc363d842b7df4b46915d11a3fb09",
+          "sessionId": "ses_e7fab6ffaffeFsVpCLSPJ07lFk",
+          "tokensUsed": 220,
+          "costUsd": 0,
+          "toolCalls": 0
+        }
+      ]
+    },
+    "Flint": {
+      "state": "NOT VERIFIED",
+      "reason": "NOT_EXERCISED_BY_THIS_DIRECT_GROQ_ACCEPTANCE_PATH; historical field named flint contains Groq generation IDs"
+    }
+  },
+  "suspendedMissions": [
+    {
+      "runId": 40605467853,
+      "reconciliation": "VERIFIED",
+      "observedOutcome": "ALL_MISSION_JOBS_SKIPPED_NO_MISSION_EFFECTS",
+      "keepSuspended": true,
+      "replayed": false
+    },
+    {
+      "runId": 40606320022,
+      "reconciliation": "NOT VERIFIED",
+      "observedOutcome": "GROQ_SYNTHETIC_ENGINEERING_SCOPE_DENIED_BEFORE_REPORTED_LLM_INVOCATION",
+      "remaining": "HISTORICAL_EXTERNAL_EXECUTOR_EFFECT_AUDIT_UNAVAILABLE",
+      "keepSuspended": true,
+      "replayed": false
+    },
+    {
+      "runId": 40611540257,
+      "reconciliation": "NOT VERIFIED",
+      "observedOutcome": "CEZAR_REPAIR_INDEPENDENT_VERIFICATION_FAILED",
+      "remaining": "COMPLETE_EXTERNAL_EFFECT_RECEIPTS_UNAVAILABLE",
+      "keepSuspended": true,
+      "replayed": false
+    },
+    {
+      "runId": 40612336952,
+      "reconciliation": "VERIFIED",
+      "observedOutcome": "MISSION_CODE_AND_DURABLE_CHECKPOINT_PERSISTED_BEFORE_POST_MISSION_REGRESSION_FAILURE",
+      "codeCommit": "319608f72a1cd3b6989db61601f8cde5ffb55e25",
+      "checkpointId": "wolf-cp-e6ba7dc1d5c2485301986d398b4e41024304802ac955065601df7fcec038418d",
+      "checkpointPath": "docs/checkpoints/runtime/wolf-cp-e6ba7dc1d5c2485301986d398b4e41024304802ac955065601df7fcec038418d.json",
+      "independentVerifier": "PASS",
+      "providerGenerationId": "chatcmpl-9b61217b-c705-4071-a45d-5f8be76116f7",
+      "historicalExecutorAudit": "NOT VERIFIED",
+      "keepSuspended": true,
+      "replayed": false
+    }
+  ],
+  "preservedSuccessfulCheckpoint": {
+    "runId": 40613194518,
+    "checkpointId": "wolf-cp-2f859bf8538328f1eaae1c449013268084db59501ea66bfed6d51c2e23da388b",
+    "blobShaAtFinalPrivateHead": "128111c2205ba645689e097d8f6b58dbc7a4f322",
+    "state": "VERIFIED"
+  },
+  "nextReady": {
+    "state": "VERIFIED",
+    "boundedQueueState": "NEXT_READY_DRAINED",
+    "automaticBAndRecoveryC": true,
+    "unattendedPatchedRuntimeExecution": "NOT VERIFIED"
+  },
+  "unattendedWakeup": {
+    "eventObserved": "VERIFIED",
+    "runId": 40490440210,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40490440210",
+    "event": "schedule",
+    "runtimeWorkflowSha": "c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1",
+    "observedState": "STOPPED_RECONCILIATION_REQUIRED",
+    "missionJobs": "SKIPPED",
+    "patchedRuntimeAutonomousScheduledChain": "BLOCKED",
+    "schedulerChanged": false
+  },
+  "remainingBlockers": [
+    "Unattended patched-runtime execution is not proven. main scheduler remains pinned to the old runtime and its scheduled mission is suspended; changing main/scheduler requires separate authorization.",
+    "Complete historical external-effect audits remain unavailable for suspended missions 40606320022 and 40611540257. No replay or reset was performed.",
+    "Flint inference was not exercised by these direct-Groq missions."
+  ],
+  "supersedesReadinessInstructions": {
+    "file": "docs/checkpoints/night-shift/OMEGA-POST-40613194518-ACCEPTANCE-READINESS-20261028.json",
+    "manualPrivateShaAdvanceInstruction": "OBSOLETE_USE_NEW_ADMISSION_WITH_IMMUTABLE_SOURCE_PIN"
+  },
+  "gates": {
+    "patchIntegrity": "VERIFIED",
+    "safeDraftPublication": "VERIFIED",
+    "publicTestsAndWorkflowValidation": "VERIFIED",
+    "privateRegressionBuild": "VERIFIED",
+    "immutableAdmissionAndConcurrency": "VERIFIED",
+    "missionA": "VERIFIED",
+    "restartAndAutomaticMissionB": "VERIFIED",
+    "runnerLossRecoveryAndAutomaticMissionC": "VERIFIED",
+    "independentVerificationAndRemotePublication": "VERIFIED",
+    "durableCheckpointAndDuplicateEffectGuard": "VERIFIED",
+    "suspendedMissionReconciliationComplete": "NOT VERIFIED",
+    "boundedNextReady": "VERIFIED",
+    "realScheduledWakeupObserved": "VERIFIED",
+    "unattendedPatchedRuntimeContinuation": "BLOCKED",
+    "fullAutonomy": "NOT VERIFIED",
+    "kctAdmissionAndLeaseFencing": "VERIFIED",
+    "zeroCostPolicyAndNoPaidFallback": "VERIFIED",
+    "privateSourceAndCredentialDisclosureControls": "VERIFIED",
+    "FlintInference": "NOT VERIFIED"
+  }
+}

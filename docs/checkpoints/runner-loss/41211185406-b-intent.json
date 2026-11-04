@@ -1,0 +1,20 @@
+{
+  "schema": "WolfDurablePairExecutionIntent/v1",
+  "operationId": "WOLF_PAIR_41211185406_INTENT",
+  "state": "INTENT",
+  "runId": "41211185406",
+  "missionId": "OMEGA_B_41211185406",
+  "executionKey": "93bf3aefae9840d503f7129822c37130620e68922a0c7902952be7435e8ce5e9",
+  "continuationRevision": "23880faecd232a0ec79084e8b63e6dc1239e1f90",
+  "checkpointA": {
+    "state": "PERSISTED",
+    "commitSha": "db93638664cfaf28231dfa11187f53772fcff694",
+    "checkpointId": "wolf-cp-3ae16e00db88954131467002ea57b00eb2d6f7872eb61e41f2b99803326c81a9",
+    "path": "docs/checkpoints/runtime/wolf-cp-3ae16e00db88954131467002ea57b00eb2d6f7872eb61e41f2b99803326c81a9.json",
+    "replayed": false,
+    "missionId": "OMEGA_A_41211185406"
+  },
+  "authorityDigest": "63cecfacd2a3f5e6044aca3594219c47a7509e36f4e98ac9dd04691b2773cf04",
+  "fencingToken": 1,
+  "owner": "wolf-cross-job:41211185406:runner-loss-recover"
+}

@@ -1,0 +1,16 @@
+diff --git a/.github/workflows/night-shift-wakeup.yml b/.github/workflows/night-shift-wakeup.yml
+index b9140d1..254164f 100644
+--- a/.github/workflows/night-shift-wakeup.yml
++++ b/.github/workflows/night-shift-wakeup.yml
+@@ -13,8 +13,10 @@
+     if: github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu'
+     permissions:
+       contents: write
+-    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1
++      actions: read
++    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@def7570a4ac25241c2bf7bf70a5529ab24d292df
+     with:
++      public_runtime_sha: def7570a4ac25241c2bf7bf70a5529ab24d292df
+       night_shift: true
+     secrets:
+       WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}

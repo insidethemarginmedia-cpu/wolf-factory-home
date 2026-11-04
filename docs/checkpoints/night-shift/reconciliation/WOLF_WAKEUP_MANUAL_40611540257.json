@@ -1,0 +1,34 @@
+{
+  "schema": "WolfSuspendedMissionReconciliation/v1",
+  "missionId": "WOLF_WAKEUP_MANUAL_40611540257",
+  "state": "STEP22_VERIFIER_SCOPE_FAILURE_EXTERNAL_AUDIT_PENDING",
+  "decision": "KEEP_SUSPENDED_NO_AUTOMATIC_RETRY",
+  "scope": "Correlated GitHub workflow metadata and subsequent runtime commit febb77951cd26abf710a79f6e44847de0b65c8c1. Original SUSPENDED journal preserved without reset or replay.",
+  "originalJournal": {
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_40611540257.json",
+    "blob": "98326d6146edcfd395b75795ce08fc55ec90980e",
+    "state": "SUSPENDED",
+    "automaticRetry": false,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  },
+  "evidence": {
+    "runId": 40611540257,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/40611540257",
+    "event": "workflow_dispatch",
+    "headSha": "49e97eff21dbd8a78fd5a82197b57ab7b6b102fb",
+    "privateSourceSha": "9401e1a4b1137921acb793598ed9815aad351d22",
+    "failedJobId": 122564079916,
+    "failedJobName": "integrated-factory",
+    "failedStepNumber": 22,
+    "failedStepName": "Execute one KCT admitted bounded synthetic Factory self-repair",
+    "startedAt": "2026-10-28T00:55:35Z",
+    "completedAt": "2026-10-28T00:56:18Z",
+    "subsequentFixCommit": "febb77951cd26abf710a79f6e44847de0b65c8c1",
+    "missionOwnerInvoked": true,
+    "dbosServiceStarted": true,
+    "gitJournalEffectsPreserved": true
+  },
+  "journalReset": false,
+  "journalDeleted": false,
+  "missionReplayed": false
+}

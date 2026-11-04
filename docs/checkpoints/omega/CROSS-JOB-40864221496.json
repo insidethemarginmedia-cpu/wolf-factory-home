@@ -1,0 +1,95 @@
+{
+  "schema": "WolfBoundedCrossJobAcceptance/v1",
+  "state": "VERIFIED",
+  "scope": "MANUAL_SYNTHETIC_ONLY",
+  "event": "workflow_dispatch",
+  "runId": "40864221496",
+  "publicRuntimeSha": "b2992dd745fb6f79e408295329d64c4b222ab961",
+  "privateInitialSourceSha": "5fdab9c474f405d6f422dcee06793491afe813b1",
+  "jobs": {
+    "A": {
+      "id": "123414904040",
+      "state": "VERIFIED",
+      "nextReadyCommit": "3c92e39e459a413f67bee4cada85b052346c0abb",
+      "originalWorkerTerminated": true,
+      "databaseStopped": true,
+      "runtimeRootDestroyed": true
+    },
+    "B": {
+      "id": "123416391467",
+      "execution": "VERIFIED",
+      "sourceBootId": "0801d124-e1da-4d46-a60e-e4cf67b5af9b",
+      "recoveryBootId": "25c5fdb2-ab8c-4789-9289-9ebc79c834b6",
+      "stateRecoveredWithoutOriginalProcess": true,
+      "missionBAdmittedBeforeEffects": true,
+      "bIntentCommit": "967836de2a8344b3bee9d3ccb3ac212b84e7af3c",
+      "finalCommit": "1362b7c7205140781c383a14fbb7eda1757ee64d",
+      "duplicateState": "ALREADY_COMPLETED",
+      "duplicateExecutionAuthorized": false,
+      "databaseStopped": true,
+      "runtimeRootDestroyedBeforeDuplicate": true
+    }
+  },
+  "checkpoints": {
+    "A": {
+      "state": "PERSISTED",
+      "commitSha": "e705d555dece9f6743d7fedf3a0c07b504b2083e",
+      "checkpointId": "wolf-cp-a1e678c02e49bf8832824b9f0f956912b5833f6e8a1695a59ca7c98ae8c9be5f",
+      "path": "docs/checkpoints/runtime/wolf-cp-a1e678c02e49bf8832824b9f0f956912b5833f6e8a1695a59ca7c98ae8c9be5f.json",
+      "replayed": false,
+      "missionId": "OMEGA_A_40864221496"
+    },
+    "B": {
+      "state": "PERSISTED",
+      "commitSha": "17b62f60855b1798d16ede1ffec55021b6cac648",
+      "checkpointId": "wolf-cp-d95ab57a943deb6a850e1829d9b37582685da4ba9bc882bb3cb513929a2e4583",
+      "path": "docs/checkpoints/runtime/wolf-cp-d95ab57a943deb6a850e1829d9b37582685da4ba9bc882bb3cb513929a2e4583.json",
+      "replayed": false,
+      "missionId": "OMEGA_B_40864221496"
+    }
+  },
+  "cleanup": [
+    {
+      "state": "DESTROYED",
+      "missionId": "OMEGA_A_40864221496",
+      "session_id": "8fbd87ce-f7e8-4bc5-8579-272a86e965df",
+      "independentReadback": true,
+      "connectorReadback": "NOT_FOUND"
+    },
+    {
+      "state": "DESTROYED",
+      "missionId": "OMEGA_B_40864221496",
+      "session_id": "a733fc9d-5167-4d3f-bd0c-f1d694a993e9",
+      "independentReadback": true,
+      "connectorReadback": "NOT_FOUND"
+    }
+  ],
+  "independentReceiptId": "wolf-cross-job-independent-1ee81396c67706f97a1ff0ad4bdee0234ba2c1aed31480a0c343475a8dfec4a9",
+  "validation": {
+    "privatePreExecutionTests": 1241,
+    "privatePreExecutionFailures": 0,
+    "privatePreExecutionBuild": "VERIFIED",
+    "controllerSafetyTests": 42,
+    "groqClassifierTests": 23
+  },
+  "fullWorkflow": {
+    "conclusion": "failure",
+    "failureStep": "Verify tests and production build after recovered publication",
+    "postTestsReported": 1221,
+    "postTestsPassed": 1219,
+    "postTestsFailed": 2,
+    "cause": "Fresh Job B lacked the existing Mastra subpackage dependencies; both import failures were MODULE_NOT_FOUND, after the completed A/B and duplicate-denial receipts.",
+    "repair": "Install the existing Mastra lockfile dependencies before post-recovery regression. Verify with a regression-only dispatch; do not replay the accepted missions."
+  },
+  "v1State": "SUSPENDED",
+  "v1Mutated": false,
+  "liveSchedulerMutated": false,
+  "actualUnattendedSchedule": "NOT_VERIFIED",
+  "fullyAutonomous": "NOT_VERIFIED",
+  "economicPolicy": {
+    "EUR_SPEND": "0",
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY"
+  }
+}

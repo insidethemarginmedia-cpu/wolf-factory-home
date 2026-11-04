@@ -1,0 +1,55 @@
+{
+  "schema": "WolfMainSchedulerPromotionCandidate/v1",
+  "state": "BLOCKED",
+  "expectedMainSha": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+  "reviewedPrHead": "def7570a4ac25241c2bf7bf70a5529ab24d292df",
+  "reviewedControllerSha": "def7570a4ac25241c2bf7bf70a5529ab24d292df",
+  "files": [
+    {
+      "path": ".github/workflows/night-shift-wakeup.yml",
+      "expectedBlob": "b9140d1d8b101d6eaa4d8f92877c2ff7b22ab7e9",
+      "candidateBlob": "254164f6b0aec43df53931796904e8a30b19e0ac",
+      "beforeContent": "name: Wolf Factory Night Shift Wakeup\non:\n  workflow_dispatch:\n  schedule:\n    - cron: '23 0-6 * * *'\npermissions:\n  contents: read\nconcurrency:\n  group: wolf-night-shift-bootstrap\n  cancel-in-progress: false\njobs:\n  existing-factory:\n    if: github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu'\n    permissions:\n      contents: write\n    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@c6ddef9c2ae03a80fe698fcc5949ceb47adea1a1\n    with:\n      night_shift: true\n    secrets:\n      WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}\n      WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}\n      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}\n      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}\n      BOXXKITE_API_KEY: ${{ secrets.BOXXKITE_API_KEY }}\n"
+    }
+  ],
+  "patchSha256": "32e2e67aad7d520aaa7ef2fcafd14933d53dddc2c4e4447635a634988df7a624",
+  "changedLines": {
+    "added": 3,
+    "removed": 1
+  },
+  "privateVerifierSha": "57e619e4529878bd53c8ebd687f8d0d301dd9066",
+  "v1ExpectedBranchRevision": "a94588646b2d7d627b8e2103329b22ea3f29545d",
+  "v1ExpectedJournalBlob": "5c10913796ee2957d2b12319148ec9f81dd612f7",
+  "keepsCronAndRepositoryActorGuards": true,
+  "productionMutationAuthorized": false,
+  "expectedRoutingEffects": [
+    "Grant the existing caller Actions metadata read",
+    "Use the reviewed immutable reusable controller and matching public_runtime_sha",
+    "Keep existing cron, concurrency, secret references and bounded economic policy",
+    "Keep DBOS/OpenCode qualification and runner-loss diagnostics explicitly manual"
+  ],
+  "operationalBlockers": [
+    "Separate gate-A approval and a confirmed authoritative disposition are absent; V1 remains SUSPENDED.",
+    "One-use durable two-mission scheduled authority has not been approved or activated; the verified cross-job path remains explicitly manual.",
+    "This routing-only patch does not grant scheduled pair admission or prove unattended execution. Promote only after the separate gates and exact current-main CAS."
+  ],
+  "requiredSeparateApprovals": [
+    "Exact V1 failure disposition; no replay or V1 lease release/reset",
+    "Reviewed operational authority/publisher binding and bounded existing OMEGA A/B scheduled acceptance scope after V1 closure",
+    "Exact main caller promotion only after operational blockers are resolved"
+  ],
+  "acceptanceObservations": {
+    "syntheticManualRun": "40801743738",
+    "actualUnattendedSchedule": "NOT_VERIFIED",
+    "fullyAutonomous": "NOT_VERIFIED",
+    "currentManualAttempt": "40864221496",
+    "currentManualResult": "VERIFIED",
+    "missionACheckpoint": "e705d555dece9f6743d7fedf3a0c07b504b2083e",
+    "missionBCheckpoint": "17b62f60855b1798d16ede1ffec55021b6cac648",
+    "durableContinuationCommit": "1362b7c7205140781c383a14fbb7eda1757ee64d",
+    "sourceRegressionRun": "40866424497",
+    "sourceRegressionSha": "57e619e4529878bd53c8ebd687f8d0d301dd9066",
+    "privateTests": 1242,
+    "publicTests": 116
+  }
+}

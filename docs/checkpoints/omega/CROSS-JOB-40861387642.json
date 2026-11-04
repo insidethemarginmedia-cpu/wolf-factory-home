@@ -1,0 +1,22 @@
+{
+  "schema": "WolfBoundedCrossJobAttempt/v1",
+  "state": "BLOCKED",
+  "event": "workflow_dispatch",
+  "runId": "40861387642",
+  "jobId": "123405350761",
+  "publicRuntimeSha": "bd10c93cbb15a8a48cdd60c54f1b3e1c51875875",
+  "privateSourceSha": "e4e66d98fc51fdcd82b49fda898726749e9fad34",
+  "validation": {"privateTests": 1241, "privateFailures": 0, "safetyTests": 42, "groqTests": 23, "build": "VERIFIED"},
+  "missionA": {"state": "VERIFIED", "missionId": "OMEGA_A_40861387642", "codeCommit": "1789ccd8e3da8d353825d6563ec156523a031dab", "checkpointCommit": "7432bbd86e309f1bdc3ff743f7ac9b7204d59d62", "checkpointId": "wolf-cp-7fd542b28887d8c3eeb9cbfc1fc93c88c302e3d0eaf3d866d65d1213ff689a95", "sourceSha256": "ba1a531f581d2e6094e978ed6f7aca7a8d92eeb62c6e7ad73ee692f7f18bc772"},
+  "independentReadback": {"state": "VERIFIED", "receiptId": "wolf-pair-verifier-2dd925fd148b6d65f8031b4caf0c3b16de66bd22a16cd13652b1e400b6e6a7ca", "producer": "INDEPENDENT_IMMUTABLE_PAIR_CHECKPOINT_READBACK", "source": "AUTHENTICATED_GITHUB_CONNECTOR_SNAPSHOT", "inputSha256": "6d55fc05ea3efc95dbb4df89eac1b1b7840ec303dbcdec71055928d190d5e26e"},
+  "failure": "PAIR_VERIFIER_WORKER_VERIFICATION_REQUIRED",
+  "rootCause": "The new verifier incorrectly required costUsd on the existing Groq review receipt, which instead binds freePlanConfirmed=true and paidFallback=false. The corrected verifier also requires the exact qualified model and receipt identity.",
+  "sandbox": {"id": "04562b8e-f254-4914-94be-e5da4ff01d81", "cleanup": "VERIFIED", "jobReceipt": "DESTROYED", "independentReadback": "NOT_FOUND"},
+  "missionBStarted": false,
+  "durableContinuationPublished": false,
+  "dbosTransferArtifact": "NOT_VERIFIED",
+  "originalMissionReplayAuthorized": false,
+  "v1Mutated": false,
+  "schedulerMutated": false,
+  "unattendedAutonomy": "NOT_VERIFIED"
+}

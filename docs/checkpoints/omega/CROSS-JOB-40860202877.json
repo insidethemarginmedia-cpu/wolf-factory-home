@@ -1,0 +1,21 @@
+{
+  "schema": "WolfBoundedCrossJobAttempt/v1",
+  "state": "BLOCKED",
+  "event": "workflow_dispatch",
+  "runId": "40860202877",
+  "jobId": "123401355625",
+  "publicRuntimeSha": "f5b6628a1bc00cace0f44a07e91f0e4f11e27a13",
+  "privateSourceSha": "b1eca0b48f45f2f649ed0dfda0bb4a996e31f913",
+  "validation": {"privateTests": 1238, "privateFailures": 0, "safetyTests": 42, "groqTests": 23, "build": "VERIFIED"},
+  "failure": "CANONICAL_ADMISSION_DENIED:BLOCKED_EVIDENCE",
+  "rootCause": "Initial regression output changed the exact canonical reason after KCT pre-admission. The second admission correctly refused changed evidence.",
+  "workerInference": "NOT_VERIFIED",
+  "failureBeforeWorkerRoute": true,
+  "missionBStarted": false,
+  "durableContinuationPublished": false,
+  "sandbox": {"id": "8263539b-1fa4-4b16-8334-6c5eacc989cd", "cleanup": "VERIFIED", "jobReceipt": "DESTROYED", "independentReadback": "NOT_FOUND"},
+  "v1Mutated": false,
+  "schedulerMutated": false,
+  "unattendedAutonomy": "NOT_VERIFIED",
+  "repair": "Keep cross-job initial evidence stable, as already required for pre-admitted and runner-loss missions; add canonical re-admission regression."
+}

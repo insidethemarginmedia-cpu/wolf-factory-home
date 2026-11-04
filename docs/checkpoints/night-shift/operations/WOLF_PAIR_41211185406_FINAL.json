@@ -1,0 +1,26 @@
+{
+  "schema": "WolfFencedGitReceipt/v1",
+  "operationId": "WOLF_PAIR_41211185406_FINAL",
+  "phase": "CONFIRMED",
+  "expectedRevision": "34e7b51dbfb8681094a7792739a7ee5bc5034d3f",
+  "journalRevision": "5c10913796ee2957d2b12319148ec9f81dd612f7",
+  "recordDigest": "cf08bacb6883917b6902967ce31e4f434b0d3b78110594c6b61c84ac3be66049",
+  "recordPath": "docs/checkpoints/runner-loss/41211185406-final.json",
+  "fencingToken": 2,
+  "authorityTaskId": "OMEGA_PAIR_41211185406_runner_loss_recover",
+  "owner": "wolf-cross-job:41211185406:runner-loss-recover",
+  "authorityDigest": "6213eac00acf8d4c19bde7c48d456a72d429b2ca9456c6b29bb9f80809f1ba5c",
+  "intentCommit": "6d3722c186409abf0c633bc50cbc735366187e44",
+  "publishedCommit": "ba4e7e34c6686a18cb207a39c3b3fdccc837ffb2",
+  "verification": {
+    "state": "VERIFIED",
+    "producer": "INDEPENDENT_GIT_OBJECT_READBACK",
+    "commitSha": "ba4e7e34c6686a18cb207a39c3b3fdccc837ffb2",
+    "operationId": "WOLF_PAIR_41211185406_FINAL",
+    "recordPath": "docs/checkpoints/runner-loss/41211185406-final.json",
+    "digest": "cf08bacb6883917b6902967ce31e4f434b0d3b78110594c6b61c84ac3be66049",
+    "journalRevision": "5c10913796ee2957d2b12319148ec9f81dd612f7",
+    "receiptId": "wolf-git-verifier-992a2b19b6336fa854f8d93a8692e2030baf0c4e378f65ad1e75d21bf6dec65b"
+  },
+  "confirmationFence": 2
+}
