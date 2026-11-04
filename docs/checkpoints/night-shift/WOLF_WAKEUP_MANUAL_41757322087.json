@@ -1,0 +1,15 @@
+{
+  "schema": "WolfNightShiftWakeup/v1",
+  "identityDigest": "15d437cd0fd101c6f601f0449770bab41d2f4b02484bca25be9848f21f049fac",
+  "identity": {
+    "schema": "WolfNightShiftWakeup/v1",
+    "missionId": "WOLF_WAKEUP_MANUAL_41757322087",
+    "sourceSha": "1e04aedbe082b851c4b92d68b89e7a27d74fd090",
+    "kind": "FACTORY_SYNTHETIC_SELF_REPAIR",
+    "costBoundary": "EUR0"
+  },
+  "state": "CLAIMED",
+  "ownerRun": "41757322087",
+  "attemptBudget": 1,
+  "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+}
