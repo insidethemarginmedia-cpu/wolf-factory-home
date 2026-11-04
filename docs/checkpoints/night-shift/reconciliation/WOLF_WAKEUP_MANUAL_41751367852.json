@@ -1,0 +1,63 @@
+{
+  "schema": "WolfSuspendedMissionReconciliation/v1",
+  "missionId": "WOLF_WAKEUP_MANUAL_41751367852",
+  "state": "VERIFIED_NO_MISSION_EXECUTION_OBSERVED",
+  "decision": "KEEP_SUSPENDED_NO_AUTOMATIC_RETRY",
+  "scope": "Only this correlated GitHub workflow execution; no claim about account-wide API activity.",
+  "originalJournal": {
+    "path": "docs/checkpoints/night-shift/WOLF_WAKEUP_MANUAL_41751367852.json",
+    "blob": "266ee5adc227000ba70b76c588ac1fefc7ed9643",
+    "commit": "2ca0b74efcc15224a9f07a9d4ac4625cc94037ef",
+    "state": "SUSPENDED",
+    "automaticRetry": false,
+    "externalEffectState": "UNKNOWN_UNTIL_RECONCILED"
+  },
+  "evidence": {
+    "runId": 41751367852,
+    "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/41751367852",
+    "runAttempt": 1,
+    "event": "workflow_dispatch",
+    "headSha": "82a9860df3643999c3d98650f2d127d7ef36e80d",
+    "headBranch": "feat/public-runtime-probe-20261022",
+    "runConclusion": "failure",
+    "referencedWorkflows": [
+      {
+        "path": "insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@82a9860df3643999c3d98650f2d127d7ef36e80d",
+        "blob": "725dfc1ca7915a60310db011e9b54b98ea89028e",
+        "note": "This revision still pinned WOLF_FACTORY_EXPECTED_SHA to ee2d8ba15cd99d8788409c00c2fec3b1cd052370, an ancestor of the canonical branch head."
+      }
+    ],
+    "jobs": [
+      { "id": 126317125789, "name": "night-shift-admission", "conclusion": "success", "note": "Durable CLAIMED journal persisted through the Contents API CAS (commit 73546cb946e9d1316991921fc73473c26e810c0d)." },
+      { "id": 126317185989, "name": "security-tests", "conclusion": "success" },
+      { "id": 126317230717, "name": "service-access", "conclusion": "success" },
+      { "id": 126317230759, "name": "integrated-factory", "conclusion": "failure", "failingStep": "Verify authorized branch publication with no ref update" },
+      { "id": 126317232683, "name": "runner-loss-prepare", "conclusion": "skipped" },
+      { "id": 126317233368, "name": "opencode-runtime", "conclusion": "skipped" },
+      { "id": 126317233617, "name": "runner-loss-recover", "conclusion": "skipped" },
+      { "id": 126317233955, "name": "dbos-runtime", "conclusion": "skipped" }
+    ],
+    "missionOwnerInvoked": false,
+    "dbosServiceStarted": false,
+    "inferencePerformed": false,
+    "executorStarted": false,
+    "gitRefUpdated": false,
+    "publicationPerformed": false,
+    "reason": "MISSION_EXECUTION_STEPS_SKIPPED_AFTER_PUBLICATION_ADMISSION_FAILED",
+    "corroboration": {
+      "privateCanonicalHeadBeforeRun": "4c9726d2a964ad32b01263b4a5e3b9a7014660fe",
+      "privateCanonicalHeadAuthoredAt": "2026-11-03T23:22:24Z",
+      "runStartedAt": "2026-11-04T01:03:37Z",
+      "branchMovedDuringRun": false,
+      "artifactForMissionInPrivateTree": false,
+      "factoryAcceptanceArtifactInPublicTree": false
+    },
+    "stepLogAvailability": "UNAVAILABLE_TO_AUTOMATION_TOKEN",
+    "failureCodeDerivation": "The single failing step aborts only when the dry-run push exits non-zero. With HEAD exactly at ee2d8ba1 and the remote branch at its descendant 4c9726d2, Git reports a non-fast-forward rejection, which the historical classifier mapped to CONCURRENT_BRANCH_ADVANCED. The runtime string itself was not independently readable."
+  },
+  "journalReset": false,
+  "journalDeleted": false,
+  "journalMutated": false,
+  "missionReplayed": false,
+  "newPublicationAuthorityCreated": false
+}

@@ -66,6 +66,9 @@ on:
     branches: [feat/public-runtime-probe-20261022]
     paths:
       - '.github/workflows/private-controller-preflight.yml'
+      - 'scripts/wolf-factory-source-pin.mjs'
+      - 'tests/wolf-factory-source-pin.test.mjs'
+      - 'tests/private-controller-preflight-pin.test.mjs'
       - 'scripts/private-controller-preflight.mjs'
       - 'scripts/private-source-authorization.mjs'
       - 'tests/private-source-authorization.test.mjs'
@@ -74,14 +77,35 @@ on:
       - 'tests/existing-worker-qualification.test.mjs'
       - 'scripts/boxxkite-service-diagnostic.mjs'
       - 'tests/boxxkite-service-diagnostic.test.mjs'
+env:
+  WOLF_FACTORY_REPOSITORY: donraposo1-source/project-wolf
+  WOLF_FACTORY_SOURCE_BRANCH: feat/factory-real-worker-m1-20261006
+  WOLF_FACTORY_EXPECTED_SHA: 1e04aedbe082b851c4b92d68b89e7a27d74fd090
 permissions:
   contents: read
 concurrency:
   group: private-controller-preflight
   cancel-in-progress: false
 jobs:
+  source-pin-verification:
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Compare the pinned Factory SHA with the live canonical branch
+        env:
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        run: node scripts/wolf-factory-source-pin.mjs verify-remote
   night-shift-admission:
-    if: inputs.night_shift == true && github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
+    needs: source-pin-verification
+    if: needs.source-pin-verification.result == 'success' && inputs.night_shift == true && github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
       && github.actor == 'insidethemarginmedia-cpu' && ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') || (github.event_name
       == 'workflow_dispatch' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022'))
     runs-on: ubuntu-latest
@@ -91,7 +115,6 @@ jobs:
     outputs:
       ready: ${{ steps.reserve.outputs.ready == 'true' && steps.quota.outcome == 'success' }}
     env:
-      WOLF_FACTORY_EXPECTED_SHA: 25f135a052a1ba0b6a0a885305af94df282eb5bc
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
@@ -104,10 +127,16 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 25f135a052a1ba0b6a0a885305af94df282eb5bc
+        ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
+    - name: Assert the checkout is exactly the pinned canonical source
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
+        test -z "$(git status --porcelain)"
+        echo WOLF_FACTORY_SOURCE_PIN_ASSERTED=YES
     - name: Reserve one durable wakeup without external mission effects
       id: reserve
       env:
@@ -136,7 +165,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-          ref: ${{ inputs.night_shift == true && 'f13d1a3e0a2abb93890a0e36746f4eefb9c94f82' || github.sha }}
+          ref: ${{ github.sha }}
       - run: node --test tests/*.test.mjs
   dbos-runtime:
     needs: security-tests
@@ -171,14 +200,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6
+          ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6'
+          test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -313,14 +342,13 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.verify_private_source == true
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          WOLF_FACTORY_EXPECTED_SHA: ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6
         run: node scripts/private-source-authorization.mjs
       - name: Checkout private Factory at approved immutable SHA (read only)
         if: github.event_name == 'workflow_dispatch' && inputs.verify_private_checkout == true
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6
+          ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           path: private-factory
           persist-credentials: false
@@ -330,7 +358,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C private-factory rev-parse HEAD)" = 'ff0a29aae8179d9c4a0c57d5772ae58f282c5ea6'
+          test "$(git -C private-factory rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
           test -f private-factory/scripts/wolf-factory-boxxkite-acceptance.mjs
           test -f private-factory/infra/autonomy/authorized-git-publication.mjs
           test -f private-factory/infra/autonomy/engineering-commit-journal.mjs
@@ -348,7 +376,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 25f135a052a1ba0b6a0a885305af94df282eb5bc
+          ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           path: private-groq-observer
           persist-credentials: false
@@ -465,7 +493,6 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-integrated-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-manifest-${{ github.run_id }}.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 25f135a052a1ba0b6a0a885305af94df282eb5bc
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -480,14 +507,14 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: donraposo1-source/project-wolf
-          ref: 25f135a052a1ba0b6a0a885305af94df282eb5bc
+          ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '25f135a052a1ba0b6a0a885305af94df282eb5bc'
+          test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
           test -f scripts/wolf-dbos-outer-e2e.mjs
           test -f scripts/wolf-factory-boxxkite-acceptance.mjs
           test -z "$(git status --porcelain)"
@@ -649,21 +676,22 @@ jobs:
           git switch -c feat/factory-real-worker-m1-20261006
       
           git remote set-url origin git@github.com:donraposo1-source/project-wolf.git'
-      - name: Verify authorized branch publication with no ref update
+      - name: Pin the running preflight revision for the source admission guard
+        if: inputs.execute_integrated == true || inputs.night_shift == true
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: preflight-guard
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Admit publication only from the verified canonical source
         if: inputs.execute_integrated == true || inputs.night_shift == true
         env:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-        run: |
-          node --input-type=module <<'NODE'
-          import {spawnSync} from 'node:child_process';
-          const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
-          const text=String(p.stderr||'');
-          const safe=text.replace(/https?:\/\/[^\s]+/g,'[REDACTED_URL]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').split(process.env.WOLF_FACTORY_REPO_TOKEN||'\0').join('[REDACTED_TOKEN]').slice(0,4000);
-          console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
-          const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
-          console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
-          if(p.status!==0)throw Error(reason);
-          NODE
+        run: node preflight-guard/scripts/wolf-factory-source-pin.mjs admit-publication
+      - name: Discard the guard revision from the clean controller checkout
+        if: always() && (inputs.execute_integrated == true || inputs.night_shift == true)
+        run: rm -rf preflight-guard
       - name: Execute Mission A then restart existing controller for automatic Mission B
         if: inputs.execute_integrated == true
         env:
@@ -706,6 +734,40 @@ jobs:
           npm run build
       
           node scripts/wolf-night-shift-wakeup.mjs finish'
+      - name: Capture bounded redacted mission diagnostics
+        if: failure() && inputs.night_shift == true
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const out=path.join(process.env.RUNNER_TEMP,'wolf-diagnostics');fs.mkdirSync(out,{recursive:true,mode:0o700});
+          const scrub=value=>String(value)
+            .replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]')
+            .replace(/gsk_[A-Za-z0-9_-]+/g,'[REDACTED_TOKEN]')
+            .replace(/sk-or-v1-[A-Za-z0-9-]+/g,'[REDACTED_TOKEN]')
+            .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,'[REDACTED_KEY]')
+            .replace(/https?:\/\/[^\s"']+/g,'[REDACTED_URL]')
+            .slice(0,262144);
+          for(const name of ['wolf-c.log','wolf-first.log','wolf-recovery.log','wolf-duplicate.log']){
+            const source=path.join(process.env.RUNNER_TEMP,name);
+            if(!fs.existsSync(source))continue;
+            fs.writeFileSync(path.join(out,name),scrub(fs.readFileSync(source,'utf8')),{mode:0o600});
+          }
+          const root=process.env.WOLF_FACTORY_RUNTIME_ROOT;
+          if(root&&fs.existsSync(root))for(const name of fs.readdirSync(root).filter(n=>/\.json$/.test(n)).slice(0,40)){
+            const source=path.join(root,name);
+            try{if(fs.statSync(source).size>262144)continue;fs.writeFileSync(path.join(out,'runtime-'+name),scrub(fs.readFileSync(source,'utf8')),{mode:0o600});}catch{}
+          }
+          console.log('WOLF_MISSION_DIAGNOSTICS_WRITTEN='+fs.readdirSync(out).length);
+          NODE
+      - name: Upload bounded redacted mission diagnostics
+        if: failure() && inputs.night_shift == true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wolf-mission-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/wolf-diagnostics
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Suspend after failed repair; never retry unknown external effects
         if: failure() && inputs.night_shift == true
         env:
@@ -770,7 +832,6 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-runner-loss-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-runner-loss-${{ github.run_id }}/manifest.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 57dd1e11344af0f736a6b7b07c7e5e15c768cbcd
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -786,14 +847,14 @@ jobs:
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 57dd1e11344af0f736a6b7b07c7e5e15c768cbcd
+        ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
     - name: Assert immutable source and recovery fixture
       run: |
         set -euo pipefail
-        test "$(git rev-parse HEAD)" = '57dd1e11344af0f736a6b7b07c7e5e15c768cbcd'
+        test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
         test -f scripts/wolf-dbos-outer-e2e.mjs
         test -f scripts/wolf-factory-boxxkite-acceptance.mjs
         test -z "$(git status --porcelain)"
@@ -935,7 +996,6 @@ jobs:
       WOLF_FACTORY_RUNTIME_ROOT: /tmp/wolf-runner-loss-${{ github.run_id }}
       WOLF_FACTORY_ACCEPTANCE_MANIFEST: /tmp/wolf-runner-loss-${{ github.run_id }}/manifest.json
       WOLF_FACTORY_ACCEPTANCE_TRANSPORT: direct-service
-      WOLF_FACTORY_EXPECTED_SHA: 57dd1e11344af0f736a6b7b07c7e5e15c768cbcd
       GROQ_FREE_PLAN_CONFIRMED: 'true'
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
@@ -951,14 +1011,14 @@ jobs:
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: donraposo1-source/project-wolf
-        ref: 57dd1e11344af0f736a6b7b07c7e5e15c768cbcd
+        ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
         token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
         persist-credentials: false
         fetch-depth: 1
     - name: Assert immutable source and recovery fixture
       run: |
         set -euo pipefail
-        test "$(git rev-parse HEAD)" = '57dd1e11344af0f736a6b7b07c7e5e15c768cbcd'
+        test "$(git rev-parse HEAD)" = "$WOLF_FACTORY_EXPECTED_SHA"
         test -f scripts/wolf-dbos-outer-e2e.mjs
         test -f scripts/wolf-factory-boxxkite-acceptance.mjs
         test -z "$(git status --porcelain)"
@@ -1096,20 +1156,21 @@ jobs:
         set -euo pipefail
         git switch -c feat/factory-real-worker-m1-20261006
         git remote set-url origin git@github.com:donraposo1-source/project-wolf.git
-    - name: Verify authorized branch publication with no ref update
+    - name: Pin the running preflight revision for the source admission guard
+      if: always() && !cancelled()
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.sha }}
+        path: preflight-guard
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Admit publication only from the verified canonical source
       env:
         WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-      run: |
-        node --input-type=module <<'NODE'
-        import {spawnSync} from 'node:child_process';
-        const p=spawnSync('git',['push','--dry-run','origin','HEAD:refs/heads/feat/factory-real-worker-m1-20261006'],{encoding:'utf8',timeout:30000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
-        const text=String(p.stderr||'');
-          const safe=text.replace(/https?:\/\/[^\s]+/g,'[REDACTED_URL]').replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g,'[REDACTED_TOKEN]').split(process.env.WOLF_FACTORY_REPO_TOKEN||'\0').join('[REDACTED_TOKEN]').slice(0,4000);
-          console.log('WOLF_GIT_ORIGINAL_ERROR='+JSON.stringify({stderr:safe,signal:p.signal,errorCode:p.error?.code}));
-        const reason=/403|write access.*not granted|permission.*denied|authentication failed/i.test(text)?'WRITE_ACCESS_DENIED':/shallow/i.test(text)?'SHALLOW_HISTORY_DENIED':/non-fast-forward|fetch first|tip of your current branch is behind|rejected/i.test(text)?'CONCURRENT_BRANCH_ADVANCED':p.status===0?'AUTHORIZED':'GIT_PUBLICATION_PREFLIGHT_FAILED';
-        console.log('WOLF_GIT_PUBLICATION_DRY_RUN='+JSON.stringify({exitCode:p.status,reason,refUpdated:false}));
-        if(p.status!==0)throw Error(reason);
-        NODE
+      run: node preflight-guard/scripts/wolf-factory-source-pin.mjs admit-publication
+    - name: Discard the guard revision from the clean controller checkout
+      if: always()
+      run: rm -rf preflight-guard
     - name: Recover the existing DBOS workflow and execute Mission C automatically
       env: *id001
       shell: bash
