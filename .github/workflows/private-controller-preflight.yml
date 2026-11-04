@@ -1205,5 +1205,69 @@ jobs:
         npm test
         npm run build
 
-
-
+  groq-candidate-regression:
+    needs: source-pin-verification
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.ref == 'refs/heads/feat/public-runtime-probe-20261022' && github.actor == 'insidethemarginmedia-cpu' && inputs.verify_private_regression == true && inputs.execute_integrated != true && inputs.night_shift != true && needs.source-pin-verification.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      WOLF_GROQ_CANDIDATE_SHA: 290dc49160978ff7e378eb16275aac62ab39a0a2
+      EUR_SPEND: '0'
+      COST_UNKNOWN: DENY
+      PAID_FALLBACK: DENY
+      TRIAL_CREDIT: DENY
+    steps:
+      - name: Checkout pinned read-only private Groq candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: donraposo1-source/project-wolf
+          ref: ${{ env.WOLF_GROQ_CANDIDATE_SHA }}
+          token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Assert pinned commit, parent and exact permitted change scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$WOLF_GROQ_CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^)" = "$WOLF_FACTORY_EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+          actual="$(git diff --name-only "$WOLF_FACTORY_EXPECTED_SHA" "$WOLF_GROQ_CANDIDATE_SHA" | sort)"
+          expected="$(printf '%s\n' infra/worker-router/composio-seven-skill-bridge.test.mjs infra/worker-router/factory-service-transports.mjs infra/worker-router/groq-opencode-admission.mjs tests/wolf-boxxkite-jules-test-runner.test.mjs tests/wolf-groq-invocation-attribution.test.mjs | sort)"
+          test "$actual" = "$expected"
+          echo WOLF_P03_IMMUTABLE_SCOPE_PASS=YES
+      - name: Prepare pinned Node runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install dependencies using exact lockfiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund --prefix infra/worker-router/mastra-runtime
+      - name: Focused attribution, policy, Ollama safety and test cleanup validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/scan-secrets.mjs
+          node --test tests/wolf-groq-invocation-attribution.test.mjs tests/wolf-boxxkite-jules-test-runner.test.mjs tests/wolf-ollama-factory-review.test.mjs infra/worker-router/composio-seven-skill-bridge.test.mjs infra/worker-router/groq-opencode-admission.test.mjs
+      - name: Full source regression and worker-router validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          node --test infra/worker-router/*.test.mjs
+      - name: Build and verify no source mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          if test -d .continuity; then
+            test -z "$(git ls-files -- .continuity)"
+            mv .continuity "$RUNNER_TEMP/wolf-candidate-continuity"
+          fi
+          test -z "$(git status --porcelain)"
+          echo WOLF_GROQ_P03_FULL_CANDIDATE_ACCEPTANCE=PASS
