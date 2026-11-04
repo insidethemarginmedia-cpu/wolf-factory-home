@@ -80,7 +80,7 @@ on:
 env:
   WOLF_FACTORY_REPOSITORY: donraposo1-source/project-wolf
   WOLF_FACTORY_SOURCE_BRANCH: feat/factory-real-worker-m1-20261006
-  WOLF_FACTORY_EXPECTED_SHA: 30010bf811538209a448d01da78efff3a94a8415
+  WOLF_FACTORY_EXPECTED_SHA: 050992408b0aeab4764fc6e21c1e9387c89dccde
 permissions:
   contents: read
 concurrency:
