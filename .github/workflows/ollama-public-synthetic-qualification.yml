@@ -64,7 +64,7 @@ jobs:
 
         node --version
 
-        node --test tests/ollama-runner-probe.test.mjs
+        node --test tests/ollama-runner-probe.test.mjs tests/ollama-review-contract.test.mjs
 
         echo "BUILDER_TESTS_ONLY_NOT_INDEPENDENT_VERIFICATION"
 
