@@ -510,7 +510,8 @@ jobs:
           ref: ${{ env.WOLF_FACTORY_EXPECTED_SHA }}
           token: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           persist-credentials: false
-          fetch-depth: 1
+          # Historical checkpoint tests require the original commit trees.
+          fetch-depth: 0
       - name: Assert immutable source and recovery fixture
         run: |
           set -euo pipefail
