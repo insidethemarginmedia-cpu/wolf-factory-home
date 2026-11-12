@@ -584,7 +584,7 @@ jobs:
             if test -z "${!name:-}"; then echo "INTEGRATED_CONFIGURATION_REQUIRED=$name"; exit 78; fi
           done
       - name: Validate exact qualified model policy without provider requalification
-        if: inputs.night_shift == true
+        if: inputs.execute_integrated == true || inputs.night_shift == true
         run: |
           set -euo pipefail
           # Exact model admission and zero-cost receipts are enforced by the selected direct provider.
