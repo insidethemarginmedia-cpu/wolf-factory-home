@@ -180,11 +180,12 @@ registry.
 
 ## 8. Local verification
 
-`node --test tests/*.test.mjs` → **167 passing, 0 failing**, covering the bridge,
+`node --test tests/*.test.mjs` → **191 passing, 0 failing**, covering the bridge,
 probe, dispatch diagnosis, inventory, executor, workflow reader, schema
 provisioning, receipt publication, private status checks, durable journal,
 workflow pin resolution, workflow environment declaration, GitHub App
-authentication and the dispatch probe.
+authentication, the App manifest flow, the recovery ladder and the dispatch
+probe.
 
 ## 9. Zero-touch authentication
 
@@ -267,6 +268,17 @@ private receipt `PUBLISHED`, every privacy flag `false`.
 
 Both are honest blocked outcomes, not passes. The PAT's scope is unchanged and
 was **not** broadened to make the probe look green.
+
+### 9.6a Renewal, expiry and revocation
+
+`verify` previously reported VERIFIED while falling back, because it tested a
+field that does not exist. That false green is repaired and pinned by a test: a
+PAT run now returns `NOT_APPLICABLE` (exit 78) and only an App run that issued two
+distinct, fresh tokens per role returns `VERIFIED`.
+
+The recovery ladder distinguishes `FRESH` / `RENEW` / `EXPIRED` / `REVOKED` /
+`FALLBACK` / `NONE`, re-mints only when the state demands it, heals a `401`
+exactly once, and never treats a `403` as something a new token can fix.
 
 ### 9.7 Exactly what the Founder must supply
 
