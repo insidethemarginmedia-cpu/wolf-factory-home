@@ -33,3 +33,22 @@ test('diagnostics never publish source lines', () => {
   assert.equal(JSON.stringify(result).includes('private-source-marker'), false);
   fs.rmSync(root, {recursive: true, force: true});
 });
+
+test('the psql plan exposes structure, never file contents', async () => {
+  const {extractPsqlPlan, extractStepNames} = await import('../scripts/private-ci-diagnose.mjs');
+  const workflow = [
+    '    steps:',
+    '      - name: Start postgres',
+    '      - name: Apply schema',
+    '      - run: |',
+    '          psql -v ON_ERROR_STOP=1 -f supabase/tests/verify-a.sql',
+    '          psql -f "$UNEXPANDED.sql"',
+    '          psql -f RLS.sql',
+  ].join('\n');
+  assert.deepEqual(extractStepNames(workflow), ['Start postgres', 'Apply schema']);
+  const plan = extractPsqlPlan(workflow);
+  assert.equal(plan.length, 2, 'a variable path must be skipped');
+  assert.deepEqual(plan[0], {dir: 'supabase/tests', base: 'verify-a.sql', onErrorStop: true, flags: ['-v']});
+  assert.equal(plan[1].dir, '.');
+  assert.equal(JSON.stringify(plan).includes('ON_ERROR_STOP=1 -f supabase'), false, 'only structure is exposed');
+});

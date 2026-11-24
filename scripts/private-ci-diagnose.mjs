@@ -70,6 +70,43 @@ export function extractWorkflowUses(source) {
   return [...uses].sort();
 }
 
+// Ordered list of the psql -f targets with their directory, so the bootstrap
+// that the private workflow assumes can be identified from structure alone.
+export function extractPsqlPlan(source) {
+  const plan = [];
+  for (const raw of String(source ?? '').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const match = line.match(/(?:^|[\s;&|(])psql\s+(.*)$/);
+    if (!match) continue;
+    const args = match[1];
+    const target = args.match(/-f\s+(?:"([^"]+)"|'([^']+)'|(\S+))/);
+    if (!target) continue;
+    const file = (target[1] ?? target[2] ?? target[3] ?? '').trim();
+    if (!file || file.includes('$')) continue;
+    plan.push({
+      dir: file.split('/').slice(0, -1).join('/') || '.',
+      base: file.split('/').pop(),
+      onErrorStop: /ON_ERROR_STOP/.test(args),
+      // Exclude -f, whose value is already reported as the target file.
+      flags: [...args.matchAll(/(?:^|\s)(-[a-zA-Z]+)(?=\s|$)/g)].map(match => match[1]).filter(value => value !== '-f').sort(),
+    });
+    if (plan.length >= 80) break;
+  }
+  return plan;
+}
+
+// Non-secret service/setup facts: which step names precede the psql run block.
+export function extractStepNames(source) {
+  const names = [];
+  for (const line of String(source ?? '').split('\n')) {
+    const match = line.match(/^\s*- name:\s*(.+)$/);
+    if (match) names.push(match[1].trim().slice(0, 80));
+    if (names.length >= 40) break;
+  }
+  return names;
+}
+
 export function extractWorkflowConfig(source) {
   const text = String(source ?? '');
   const envKeys = new Set();
@@ -132,7 +169,7 @@ export function diagnosePrivateCi({root} = {}) {
   const migration = read('scripts/run-postgres-schema-verification.sh') ?? read('scripts/verify-postgres-price-history-store.mjs');
   const concurrency = read('scripts/measure-postgres-concurrency.mjs');
   const actionlint = read('scripts/run-actionlint.sh');
-  const workflowFiles = ['factory-dbos-outer-e2e.yml', 'postgres-schema.yml', 'postgres-concurrency-evidence.yml', 'test.yml', 'actionlint.yml'];
+  const workflowFiles = ['factory-dbos-outer-e2e.yml', 'postgres-schema.yml', 'postgres-concurrency-evidence.yml', 'test.yml', 'actionlint.yml', 'http-load-evidence.yml', 'ocr-tesseract.yml', 'ocr-paddle.yml'];
   const workflows = {};
   for (const file of workflowFiles) {
     const source = read(`.github/workflows/${file}`);
@@ -146,6 +183,14 @@ export function diagnosePrivateCi({root} = {}) {
     concurrency: concurrency ? {exitCodes: extractExitCodes(concurrency), envKeys: extractEnvKeys(concurrency), commands: extractCommands(concurrency)} : null,
     actionlint: actionlint ? {exitCodes: extractExitCodes(actionlint), envKeys: extractEnvKeys(actionlint), commands: extractCommands(actionlint)} : null,
     workflows,
+    concurrencyPlan: (() => {
+      const source = read('.github/workflows/postgres-concurrency-evidence.yml');
+      return source ? {steps: extractStepNames(source), psql: extractPsqlPlan(source)} : null;
+    })(),
+    schemaPlan: (() => {
+      const source = read('.github/workflows/postgres-schema.yml');
+      return source ? {steps: extractStepNames(source), psql: extractPsqlPlan(source)} : null;
+    })(),
     sqlTree: describeSqlTree(root),
     sourcePublished: false,
     logsPublished: false,
