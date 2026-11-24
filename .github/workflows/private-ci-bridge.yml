@@ -345,11 +345,17 @@ jobs:
           # Reader may come from the App or, until the App is installed, from the
           # PAT fallback. A non-zero exit is reported, never fatal: the deploy key
           # remains the working source path either way.
+          # Same convention as the dispatcher: exit 0 can mean "minted" or
+          # "fell back", so the token file is the authority.
+          reader_state=pat-fallback
           if node scripts/private-ci-app-auth-cli.mjs mint reader; then
-            echo PRIVATE_CI_READER_AUTH=app-or-fallback
+            if test -s "$WOLF_CI_TOKEN_FILE"; then
+              reader_state=app
+            fi
           else
-            echo PRIVATE_CI_READER_AUTH=unavailable
+            reader_state=unavailable
           fi
+          echo "PRIVATE_CI_READER_AUTH=$reader_state"
           if test -s "$WOLF_CI_TOKEN_FILE"; then
             cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"
             rm -f "$WOLF_CI_TOKEN_FILE"
@@ -427,11 +433,15 @@ jobs:
         run: |
           set -euo pipefail
           : "${WOLF_CI_DISPATCH_FILE:?DISPATCH_FILE_REQUIRED}"
-          if node scripts/private-ci-app-auth-cli.mjs mint dispatcher --out "$WOLF_CI_TOKEN_FILE"; then
+          # `mint` exits 0 both when it minted an App token and when it fell back
+          # to the PAT, so the file's presence - not the exit code - decides
+          # whether there is an App token to export. Sourcing a missing file
+          # under `set -e` was an outright defect.
+          if node scripts/private-ci-app-auth-cli.mjs mint dispatcher --out "$WOLF_CI_TOKEN_FILE" && test -s "$WOLF_CI_TOKEN_FILE"; then
             echo DISPATCHER_CREDENTIAL=app
             set -a; . "$WOLF_CI_TOKEN_FILE"; set +a
           else
-            echo DISPATCHER_CREDENTIAL=fell-back
+            echo DISPATCHER_CREDENTIAL=pat-fallback
           fi
           # A blocked capability exits 78, which is expected until the App is
           # installed; anything else is a genuine defect and fails the step.

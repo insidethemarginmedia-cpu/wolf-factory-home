@@ -292,3 +292,20 @@ test('renewal is proven from a cold start, as a restarted runner sees it', async
   assert.ok(report.renewal.every(entry => entry.renews), 'each role renews to a distinct token');
   assert.equal(minted, 4, 'two roles minted twice each');
 });
+
+test('mint leaves no token file when it falls back, so a caller cannot source a missing file', async () => {
+  const {runAppAuthCli} = await import('../scripts/private-ci-app-auth-cli.mjs');
+  const {existsSync, mkdtempSync} = await import('node:fs');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const file = join(mkdtempSync(join(tmpdir(), 'mint-fallback-')), 'token.env');
+  let printed = '';
+  const code = await runAppAuthCli(['mint', 'dispatcher'], {
+    env: {WOLF_FACTORY_REPO_TOKEN: 'ghp_reader', WOLF_CI_TOKEN_FILE: file, WOLF_CI_REPOSITORY: 'donraposo1-source/project-wolf'},
+    stdout: text => { printed += text; },
+  });
+  assert.equal(code, 0, 'a fallback is not an error');
+  assert.equal(existsSync(file), false, 'no file means the workflow must take the fallback branch');
+  assert.equal(printed.includes('ghp_reader'), false, 'the PAT must not reach stdout');
+  assert.match(printed, /FALLBACK/);
+});
