@@ -660,6 +660,23 @@ async function main(argv) {
           return {state: 'UNREADABLE'};
         }
       })(),
+      dispatchVerification: (() => {
+        const file = process.env.WOLF_CI_DISPATCH_FILE;
+        if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
+        try {
+          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+          return {
+            state: parsed.state,
+            reason: parsed.reason ?? null,
+            credentialSource: parsed.source ?? null,
+            duplicateSuppressed: parsed.duplicateSuppressed === true,
+            runsBefore: parsed.runsBefore ?? null,
+            runsAfter: parsed.runsAfter ?? null,
+          };
+        } catch {
+          return {state: 'UNREADABLE'};
+        }
+      })(),
       privateStatusCheck: (() => {
         const file = process.env.WOLF_CI_PRIVATE_STATUS_FILE;
         if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
