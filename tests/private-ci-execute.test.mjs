@@ -213,3 +213,27 @@ test('postgres failures publish a SQLSTATE and never the offending statement', a
   const structured = errorDetail('psql:file.sql:1: ERROR:  42P01: relation "x" does not exist');
   assert.equal(structured.sqlstate, '42P01');
 });
+
+test('each workflow result names the workflow step that produced it', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const {executePrivateCi} = await import('../scripts/private-ci-execute.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-ci-attrib-'));
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), {recursive: true});
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'test.yml'), [
+    'jobs:',
+    '  verify:',
+    '    steps:',
+    '      - name: Say hello',
+    '        run: echo hello-from-wolf',
+  ].join('\n'));
+  const receipt = executePrivateCi({root, sha: 'a'.repeat(40), checks: 'test', logDir: path.join(root, 'logs'), env: {}, runnerTemp: root});
+  assert.equal(receipt.state, 'VERIFIED');
+  const step = receipt.checks[0].steps[0];
+  assert.equal(step.workflowStep.stepName, 'Say hello');
+  assert.equal(step.workflowStep.workflow, '.github/workflows/test.yml');
+  assert.equal(step.workflowStep.stepIndex, 0);
+  assert.ok(fs.readFileSync(path.join(root, 'logs', 'test-1.log'), 'utf8').includes('hello-from-wolf'), 'workflow output reaches the private log');
+  fs.rmSync(root, {recursive: true, force: true});
+});

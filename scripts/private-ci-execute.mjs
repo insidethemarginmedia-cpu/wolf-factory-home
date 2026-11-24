@@ -232,6 +232,20 @@ export function platformProvisionScript() {
   ].join('\n');
 }
 
+export function platformProvisioningSteps({root, database}) {
+  // The platform surface is always provisioned; whether the repository's own
+  // migrations also run depends on the caller.
+  if (!listMigrations(root).length && !findBootstrap(root)) return [];
+  return [{
+    command: 'bash',
+    args: ['-c', platformProvisionScript()],
+    env: {PGDATABASE: database},
+    timeoutMs: 5 * 60 * 1000,
+    required: true,
+    label: 'platform-provisioning',
+  }];
+}
+
 export function schemaBootstrapSteps({root, database, useMigrations = true}) {
   const steps = [];
   const migrationFiles = useMigrations ? listMigrations(root) : [];
@@ -253,7 +267,7 @@ export function schemaBootstrapSteps({root, database, useMigrations = true}) {
       'applied=0',
       'failed=0',
       'while IFS= read -r file; do',
-      '  if psql -v ON_ERROR_STOP=1 -q -f "$file" >/dev/null 2>&1; then',
+      '  if psql -v ON_ERROR_STOP=1 -q -f "$file" >/dev/null; then',
       '    applied=$((applied+1))',
       '  else',
       '    failed=$((failed+1))',
@@ -343,6 +357,7 @@ export function workflowSteps({root, check, fromStepIndex = 0, database, extraEn
       timeoutMs: 20 * 60 * 1000,
       required: true,
       label: step.name ?? `step-${index}`,
+      workflowStep: {workflow: definition.workflow, stepName: step.name ?? null, stepIndex: index},
     });
   }
   return steps;
@@ -421,15 +436,19 @@ function buildPlan({root, checks, env}) {
   // The two Postgres checks run the original Wolf workflows' own commands. Both
   // assume a populated schema, so the ordered migrations are applied first and
   // a migration failure fails the check: it is never downgraded to advisory.
+  // When the workflow itself supplies schema steps (the "Build synthetic
+  // canonical database evidence" / schema-sequence steps) those ARE the
+  // bootstrap. Only the platform surface is provisioned first; mixing in the
+  // repository's migrations as well would change what the workflow measures.
   if (checks.includes('postgres-concurrency')) {
     plan.push({name: 'postgres-concurrency', steps: [
-      ...schemaBootstrapSteps({root, database: schemaDatabase}),
+      ...platformProvisioningSteps({root, database: schemaDatabase}),
       ...workflowSteps({root, check: 'postgres-concurrency', database: schemaDatabase}),
     ]});
   }
   if (checks.includes('postgres-schema')) {
     plan.push({name: 'postgres-schema', steps: [
-      ...schemaBootstrapSteps({root, database: schemaDatabase}),
+      ...platformProvisioningSteps({root, database: schemaDatabase}),
       ...workflowSteps({root, check: 'postgres-schema', database: schemaDatabase}),
     ]});
   }
@@ -473,6 +492,8 @@ export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = 
         durationMs: result.durationMs,
         logBytes: result.logBytes,
         status: passed ? 'success' : result.timedOut ? 'timeout' : 'failure',
+        ...(step.workflowStep ? {workflowStep: step.workflowStep} : {}),
+        ...(step.label ? {label: step.label} : {}),
         ...(result.status === 'success' ? {} : {errorClass: result.errorClass, errorLine: result.errorLine, sqlstate: result.sqlstate ?? null, sqlDetail: result.sqlDetail ?? null, logTail: redact(result.logTail).slice(0, 4000)}),
       });
       if (!passed && step.required) failure = `${group.name}:${steps.length}`;
