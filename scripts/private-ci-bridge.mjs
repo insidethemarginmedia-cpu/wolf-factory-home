@@ -88,7 +88,25 @@ export function summarizeCheckRuns(checkRuns = []) {
   }));
 }
 
-async function githubJson(url, {token, method = 'GET', body, fetchImpl = globalThis.fetch} = {}) {
+// The scope/permission headers GitHub returns describe what the credential is
+// actually allowed to do. They are recorded (never the token itself) so a
+// minimal fine-grained PAT can be distinguished from a broken one.
+export function credentialHeaders(headers) {
+  const read = name => (typeof headers?.get === 'function' ? headers.get(name) : null);
+  const accepted = read('x-accepted-github-permissions');
+  const oauth = read('x-oauth-scopes');
+  return {
+    // GitHub reports `contents=read; metadata=read`; normalize to individual
+    // permissions so a caller can reason about the minimum set.
+    acceptedPermissions: accepted
+      ? accepted.split(/[,;]/).map(value => value.trim()).filter(Boolean).sort()
+      : null,
+    oauthScopes: oauth === null ? null : oauth.split(',').map(value => value.trim()).filter(Boolean).sort(),
+    patType: /^github_pat_/.test(String(read('x-token-type') ?? '')) ? 'fine-grained' : read('x-oauth-scopes') === null ? null : 'classic',
+  };
+}
+
+async function githubJson(url, {token, method = 'GET', body, fetchImpl = globalThis.fetch, capture = null} = {}) {
   if (typeof token !== 'string' || !/^[\x21-\x7e]+$/.test(token)) throw Error('BRIDGE_CREDENTIAL_FORMAT_INVALID');
   const headers = {
     authorization: 'Bearer ' + token,
@@ -110,10 +128,12 @@ async function githubJson(url, {token, method = 'GET', body, fetchImpl = globalT
     const code = error?.cause?.code;
     throw Error(['ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'].includes(code) ? 'BRIDGE_NETWORK_' + code : 'BRIDGE_NETWORK_FAILED');
   }
+  if (capture) capture.credentialHeaders = credentialHeaders(response.headers);
   if (!response.ok) {
     try { await response.body?.cancel(); } catch {}
     const failure = Error('BRIDGE_HTTP_DENIED');
     failure.httpStatus = Number.isInteger(response.status) ? response.status : 0;
+    if (capture) failure.credentialHeaders = capture.credentialHeaders;
     throw failure;
   }
   try { return await response.json(); } catch { throw Error('BRIDGE_RESPONSE_INVALID'); }
@@ -174,15 +194,19 @@ export async function probePrivateRepository({token, repository, sha, pr, fetchI
   if (typeof token !== 'string' || !token.trim()) return {...base, state: 'BLOCKED', reason: 'WOLF_FACTORY_REPO_TOKEN_REQUIRED'};
   if (!/^[\x21-\x7e]+$/.test(token)) throw Error('BRIDGE_CREDENTIAL_FORMAT_INVALID');
   const result = {...base, observedAt: new Date().toISOString()};
-  let identity;
+  // Authorisation is decided by the private repository, not by /user. A
+  // fine-grained PAT scoped to one repository returns 403 on /user even when it
+  // is perfectly valid, so /user is only an identity hint.
+  let identityCapture = {};
   try {
-    identity = await githubJson(`${API}/user`, {token, fetchImpl});
+    const identity = await githubJson(`${API}/user`, {token, fetchImpl, capture: identityCapture});
     result.credentialIdentity = {login: typeof identity?.login === 'string' ? identity.login : null, type: identity?.type ?? null};
   } catch (error) {
-    result.credentialIdentity = {state: 'DENIED', httpStatus: error.httpStatus ?? 0};
+    result.credentialIdentity = {state: 'NOT_APPLICABLE', httpStatus: error.httpStatus ?? 0};
   }
+  let repoCapture = {};
   try {
-    const repositoryMetadata = await githubJson(`${API}/repos/${result.repository}`, {token, fetchImpl});
+    const repositoryMetadata = await githubJson(`${API}/repos/${result.repository}`, {token, fetchImpl, capture: repoCapture});
     result.repositoryMetadata = publicRepositoryView(repositoryMetadata);
     if (result.repositoryMetadata.fullName !== result.repository || result.repositoryMetadata.private !== true) {
       result.state = 'DENIED';
@@ -193,8 +217,14 @@ export async function probePrivateRepository({token, repository, sha, pr, fetchI
     result.state = 'DENIED';
     result.reason = 'PRIVATE_REPOSITORY_DENIED';
     result.httpStatus = error.httpStatus ?? 0;
+    result.detail = null;
     return result;
   }
+  // The repository read succeeded: the credential is authorised for source.
+  result.credential = {
+    authorisedForRepository: true,
+    ...(repoCapture.credentialHeaders ?? {}),
+  };
   try {
     const commit = await githubJson(`${API}/repos/${result.repository}/commits/${result.sha}`, {token, fetchImpl});
     result.commit = {sha: commit?.sha === result.sha ? result.sha : null, present: commit?.sha === result.sha};
@@ -265,6 +295,72 @@ export async function createCheckRun({token, repository, sha, name, conclusion =
     },
   };
   return githubJson(`${API}/repos/${normalizePublicRepository(repository)}/check-runs`, {token, method: 'POST', body, fetchImpl});
+}
+
+// Diagnostic for the dispatch path. It performs the cheapest possible probe of
+// each capability the dispatcher needs and reports the exact HTTP status plus
+// the permissions GitHub says are required, so a minimal credential can be
+// requested instead of broadening an existing one.
+export async function diagnoseDispatch({token, repository, workflowId, fetchImpl = globalThis.fetch} = {}) {
+  const result = {
+    state: 'DIAGNOSED',
+    repository: null,
+    capabilities: {},
+    requiredPermissions: [],
+    refUpdated: false,
+    privateSourceFetched: false,
+    inferencePerformed: false,
+  };
+  let normalized;
+  try {
+    normalized = normalizeRepository(repository);
+  } catch {
+    return {...result, state: 'DENIED', reason: 'BRIDGE_REPOSITORY_DENIED'};
+  }
+  result.repository = normalized;
+  const capture = {};
+  const probe = async (url, {method = 'GET', body} = {}) => {
+    try {
+      const payload = await githubJson(url, {token, method, body, fetchImpl, capture});
+      return {ok: true, httpStatus: 200, payload};
+    } catch (error) {
+      return {ok: false, httpStatus: error.httpStatus ?? 0};
+    }
+  };
+
+  const repo = await probe(`${API}/repos/${normalized}`);
+  result.capabilities.repositoryRead = {ok: repo.ok, httpStatus: repo.httpStatus};
+  result.credentialPermissions = capture.credentialHeaders ?? null;
+
+  const workflows = await probe(`${API}/repos/${normalized}/actions/workflows?per_page=100`);
+  result.capabilities.workflowsRead = {ok: workflows.ok, httpStatus: workflows.httpStatus};
+  const listed = Array.isArray(workflows.payload?.workflows) ? workflows.payload.workflows : [];
+  result.capabilities.workflowCount = listed.length;
+  const target = listed.find(workflow => workflow.id === workflowId) ?? null;
+  result.capabilities.workflowIdPresent = Boolean(target);
+  if (target) result.capabilities.workflowPath = target.path;
+
+  const runs = await probe(`${API}/repos/${normalized}/actions/runs?per_page=1`);
+  result.capabilities.runsRead = {ok: runs.ok, httpStatus: runs.httpStatus};
+
+  // A read-only Contents credential cannot dispatch: the endpoint needs the
+  // Actions permission. This probe records the observable status only; it never
+  // attempts a write.
+  if (workflowId) {
+    const dispatch = await probe(`${API}/repos/${normalized}/actions/workflows/${workflowId}/dispatches`, {
+      method: 'POST',
+      body: {ref: 'main', inputs: {probe: 'false'}},
+    });
+    result.capabilities.dispatchWrite = {ok: dispatch.ok, httpStatus: dispatch.httpStatus, attempted: true};
+  } else {
+    result.capabilities.dispatchWrite = {ok: false, httpStatus: null, attempted: false, reason: 'WORKFLOW_ID_REQUIRED'};
+  }
+
+  if (!result.capabilities.dispatchWrite.ok) {
+    result.requiredPermissions = ['actions: write'];
+    result.reason = 'ACTIONS_WRITE_REQUIRED';
+  }
+  return result;
 }
 
 // Dispatch the private-side executor. The target workflow is addressed by its
@@ -355,6 +451,16 @@ async function main(argv) {
     }
     process.stdout.write(JSON.stringify(result) + '\n');
     return result.state === 'PROBED' ? BRIDGE_EXIT.OK : BRIDGE_EXIT.DENIED;
+  }
+  if (command === 'diagnose-dispatch') {
+    const result = await diagnoseDispatch({
+      token: process.env.WOLF_FACTORY_REPO_TOKEN,
+      repository: process.env.WOLF_CI_REPOSITORY,
+      workflowId: Number(process.env.WOLF_CI_WORKFLOW_ID) || 0,
+    });
+    if (process.env.WOLF_CI_PROBE_OUTPUT) writeProbeOutput(result);
+    process.stdout.write(JSON.stringify(result) + '\n');
+    return BRIDGE_EXIT.OK;
   }
   if (command === 'dispatch') {
     const result = await dispatchPrivateCi({

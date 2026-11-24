@@ -208,3 +208,61 @@ test('the verifier accepts the executor receipt format and rejects advisory-only
   const broken = {...executorReceipt, checks: executorReceipt.checks.map(check => check.name === 'build' ? {...check, status: 'failure'} : check)};
   assert.equal(verifyReceiptBinding(broken, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS}).reason, 'RECEIPT_CHECKS_UNSUCCESSFUL');
 });
+
+test('a fine-grained PAT scoped to one repository is not misreported as denied', async () => {
+  const {probePrivateRepository} = await import('../scripts/private-ci-bridge.mjs');
+  const seen = [];
+  // /user is 403 for a fine-grained PAT; /repos/<private> succeeds with the
+  // permission headers GitHub reports for that credential.
+  const fetchImpl = async (url) => {
+    seen.push(url);
+    const headers = new Map([
+      ['x-accepted-github-permissions', 'contents=read; metadata=read'],
+      ['x-oauth-scopes', null],
+    ]);
+    if (url.endsWith('/user')) return {ok: false, status: 403, headers: {get: () => null}, body: {cancel: async () => {}}};
+    if (url.includes('/repos/donraposo1-source/project-wolf/commits/')) return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({sha})};
+    if (url.includes('/repos/donraposo1-source/project-wolf/pulls/')) return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({number: 743, state: 'open', head: {sha, ref: 'feat/x'}, base: {ref: 'main'}})};
+    if (url.includes('/repos/donraposo1-source/project-wolf/actions/workflows')) return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({workflows: []})};
+    if (url.includes('/check-runs')) return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({check_runs: []})};
+    if (url.includes('/protection')) return {ok: false, status: 404, headers: {get: () => null}, body: {cancel: async () => {}}};
+    if (url.includes('/actions/permissions')) return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({enabled: true, allowed_actions: 'all', sha_pinning_required: false})};
+    return {ok: true, status: 200, headers: {get: name => headers.get(name) ?? null}, json: async () => ({full_name: 'donraposo1-source/project-wolf', private: true, default_branch: 'main', permissions: {pull: true, push: false}})};
+  };
+  const result = await probePrivateRepository({token: 'github_pat_fixture', repository: 'donraposo1-source/project-wolf', sha, pr: 743, fetchImpl});
+  assert.equal(result.credentialIdentity.httpStatus, 403, '/user denial is recorded as a fact');
+  assert.equal(result.credentialIdentity.state, 'NOT_APPLICABLE');
+  assert.equal(result.credential.authorisedForRepository, true, 'the repository read is the authority');
+  assert.deepEqual(result.credential.acceptedPermissions, ['contents=read', 'metadata=read']);
+  assert.notEqual(result.state, 'DENIED');
+  assert.equal(result.privateSourceFetched, false);
+  assert.equal(JSON.stringify(result).includes('github_pat_fixture'), false, 'the token must never appear in output');
+});
+
+test('dispatch diagnosis names the exact missing permission and never writes', async () => {
+  const {diagnoseDispatch} = await import('../scripts/private-ci-bridge.mjs');
+  const methods = [];
+  const fetchImpl = async (url, options = {}) => {
+    methods.push({url, method: options.method ?? 'GET'});
+    const permitted = {get: name => (name === 'x-accepted-github-permissions' ? 'contents=read; metadata=read' : null)};
+    if (url.includes('/dispatches')) {
+      return {ok: false, status: 403, headers: permitted, body: {cancel: async () => {}}};
+    }
+    if (url.includes('/actions/workflows')) return {ok: true, status: 200, headers: permitted, json: async () => ({workflows: [{id: 4242, path: '.github/workflows/bridge.yml', name: 'bridge'}]})};
+    if (url.includes('/actions/runs')) return {ok: true, status: 200, headers: permitted, json: async () => ({total_count: 0, workflow_runs: []})};
+    return {ok: true, status: 200, headers: permitted, json: async () => ({full_name: 'donraposo1-source/project-wolf', private: true, default_branch: 'main', permissions: {pull: true}})};
+  };
+  const result = await diagnoseDispatch({token: 'github_pat_fixture', repository: 'donraposo1-source/project-wolf', workflowId: 4242, fetchImpl});
+  assert.equal(result.capabilities.repositoryRead.ok, true);
+  assert.equal(result.capabilities.workflowsRead.ok, true);
+  assert.equal(result.capabilities.runsRead.ok, true);
+  assert.equal(result.capabilities.dispatchWrite.httpStatus, 403);
+  assert.deepEqual(result.requiredPermissions, ['actions: write'], 'the minimum missing permission is named');
+  assert.match(String(result.reason), /ACTIONS_WRITE_REQUIRED/);
+  assert.deepEqual(result.credentialPermissions.acceptedPermissions, ['contents=read', 'metadata=read']);
+  // Only the dispatch probe may write, and only to a read-safe payload.
+  const writes = methods.filter(entry => entry.method !== 'GET');
+  assert.equal(writes.length, 1);
+  assert.match(writes[0].url, /\/dispatches$/);
+  assert.equal(JSON.stringify(result).includes('github_pat_fixture'), false);
+});

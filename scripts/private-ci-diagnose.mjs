@@ -96,6 +96,48 @@ export function extractPsqlPlan(source) {
   return plan;
 }
 
+// Structural facts about how a workflow provisions its database: which
+// executables run before the first psql call, the psql flags used, and whether
+// the workflow itself creates schema or expects it. No source text is returned.
+export function extractProvisioning(source) {
+  const text = String(source ?? '');
+  const lines = text.split('\n');
+  const executables = new Set();
+  const setupExcerpt = [];
+  let seenPsql = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (!seenPsql && /psql\b/.test(line)) seenPsql = true;
+    const command = line.match(/^(?:sudo\s+)?([a-z0-9_.-]+)\b/);
+    if (command) executables.add(command[1]);
+    if (!seenPsql && setupExcerpt.length < 40) {
+      // Report only the executable and flag shape, never arguments or paths.
+      const tokens = line.split(/\s+/).slice(0, 3).map(token => (/^-/.test(token) ? token : token.replace(/[A-Za-z0-9_./-]+/g, '<arg>')));
+      setupExcerpt.push(tokens.join(' '));
+    }
+  }
+  return {
+    executableNames: [...executables].sort(),
+    prePsqlCommands: setupExcerpt,
+    createsSchema: /CREATE\s+(TABLE|SCHEMA|EXTENSION)/i.test(text),
+    createsDatabase: /CREATE\s+DATABASE/i.test(text),
+    usesOnErrorStop: /ON_ERROR_STOP/.test(text),
+    referencesMigrations: /migrations/i.test(text),
+    referencesSchemaFile: /\.sql\b/.test(text),
+    // Package/tool setup lines, reduced to manager + verb.
+    toolchainSetup: [...new Set(lines
+      .map(line => line.trim())
+      .map(line => line.match(/^(apt-get|apt|npm|npx|pip|pip3|corepack|yarn|pnpm|docker|systemctl|service|pg_ctl|initdb)\s+(\S+)/))
+      .filter(Boolean)
+      .map(match => `${match[1]} ${match[2]}`))].sort(),
+    // Supabase CLI/service-hosting markers: these change what the schema expects.
+    supabaseCli: /\bsupabase\b/.test(text),
+    usesServiceContainer: /^\s*services:\s*$/m.test(text),
+    workingDirectories: [...new Set([...text.matchAll(/working-directory:\s*(\S+)/g)].map(match => match[1]))].sort(),
+  };
+}
+
 // Non-secret service/setup facts: which step names precede the psql run block.
 export function extractStepNames(source) {
   const names = [];
@@ -185,11 +227,19 @@ export function diagnosePrivateCi({root} = {}) {
     workflows,
     concurrencyPlan: (() => {
       const source = read('.github/workflows/postgres-concurrency-evidence.yml');
-      return source ? {steps: extractStepNames(source), psql: extractPsqlPlan(source)} : null;
+      return source ? {steps: extractStepNames(source), psql: extractPsqlPlan(source), provisioning: extractProvisioning(source)} : null;
     })(),
     schemaPlan: (() => {
       const source = read('.github/workflows/postgres-schema.yml');
-      return source ? {steps: extractStepNames(source), psql: extractPsqlPlan(source)} : null;
+      return source ? {steps: extractStepNames(source), psql: extractPsqlPlan(source), provisioning: extractProvisioning(source)} : null;
+    })(),
+    workflowProvisions: (() => {
+      const summary = {};
+      for (const file of workflowFiles) {
+        const source = read(`.github/workflows/${file}`);
+        if (source) summary[file] = extractProvisioning(source);
+      }
+      return summary;
     })(),
     sqlTree: describeSqlTree(root),
     sourcePublished: false,

@@ -107,11 +107,30 @@ export function classifyError(text) {
   return 'UNKNOWN';
 }
 
-function errorLine(text) {
-  for (const line of String(text ?? '').split('\n')) {
-    if (/error|Error|ERROR|fatal|FATAL|denied|refused|expected|Expected|FAIL|fail/i.test(line)) return redact(line).slice(0, 200);
+// PostgreSQL diagnostics carry a stable SQLSTATE and a structured message. The
+// failure class (e.g. 42P01 undefined_table) is enough to drive a repair and
+// carries no private data, so it is published; the surrounding statement never
+// is. Non-postgres output falls back to the first error-looking line.
+export function errorDetail(text) {
+  const lines = String(text ?? '').split('\n');
+  const sqlstate = lines.find(line => /^psql:.*ERROR:/.test(line))?.match(/ERROR:\s*([0-9A-Z]{5})/)?.[1] ?? null;
+  const detail = {};
+  for (const line of lines) {
+    const match = line.match(/^(DETAIL|HINT|CONTEXT|SCHEMA NAME|TABLE NAME|COLUMN NAME|DATATYPE NAME|CONSTRAINT NAME):\s*(.*)$/);
+    if (match) detail[match[1]] = redact(match[2]).slice(0, 160);
   }
-  return null;
+  const message = lines.find(line => /ERROR:\s/.test(line))?.replace(/^psql:[^ ]*\s*/, '').match(/ERROR:\s*(.*)$/)?.[1] ?? null;
+  const errorLine = message ? redact(message).slice(0, 200) : (() => {
+    for (const line of lines) {
+      if (/error|Error|ERROR|fatal|FATAL|denied|refused|expected|Expected|FAIL|fail/i.test(line)) return redact(line).slice(0, 200);
+    }
+    return null;
+  })();
+  return {errorLine, sqlstate, detail: Object.keys(detail).length ? detail : null};
+}
+
+function errorLine(text) {
+  return errorDetail(text).errorLine;
 }
 
 function run(command, args, {cwd, env, timeoutMs, logPath}) {
@@ -139,6 +158,7 @@ function run(command, args, {cwd, env, timeoutMs, logPath}) {
     logBytes: Buffer.byteLength(output),
     status: result.status === 0 ? 'success' : result.error?.code === 'ETIMEDOUT' ? 'timeout' : 'failure',
     errorClass: result.status === 0 ? null : classifyError(output),
+    ...(result.status === 0 ? {} : (() => { const d = errorDetail(output); return {sqlstate: d.sqlstate, sqlDetail: d.detail}; })()),
     errorLine: result.status === 0 ? null : errorLine(output),
     logTail: result.status === 0 ? null : output.split('\n').slice(-30).join('\n'),
   };
@@ -189,9 +209,44 @@ export function listVerificationFiles(root, directory = 'supabase/tests') {
 // Steps that establish the schema a workflow assumes. Migrations are ordered
 // and each is applied through psql with ON_ERROR_STOP so a partial schema can
 // never be mistaken for a prepared one.
+// Supabase migrations assume the hosted platform: the `authenticated`,
+// `anon`, `service_role` and `supabase_admin` roles, the `auth`/`storage`/
+// `extensions` schemas, and extensions that ship with the platform. Provisioning
+// those is what makes the private workflow's own SQL runnable on a local
+// postgres:17, which is exactly the schema/bootstrap the workflow expects.
+export const PLATFORM_EXTENSIONS = Object.freeze(['pgcrypto', 'uuid-ossp', 'pg_trgm', 'btree_gin', 'citext', 'unaccent', 'pg_stat_statements', 'vector']);
+
+export function platformProvisionScript() {
+  const role = name => `do $$ begin if not exists (select 1 from pg_roles where rolname='${name}') then create role ${name} nologin; end if; end $$;`;
+  const schema = name => `create schema if not exists ${name};`;
+  return [
+    'set -uo pipefail',
+    role('anon'), role('authenticated'), role('service_role'), role('supabase_admin'), role('supabase_auth_admin'), role('supabase_storage_admin'),
+    schema('auth'), schema('storage'), schema('extensions'), schema('realtime'), schema('vault'),
+    'psql -v ON_ERROR_STOP=1 -q -c "grant usage on schema extensions to public" >/dev/null 2>&1 || true',
+    'psql -v ON_ERROR_STOP=1 -q -c "grant create on schema extensions to supabase_admin" >/dev/null 2>&1 || true',
+    `for ext in ${PLATFORM_EXTENSIONS.join(' ')}; do`,
+    '  psql -q -c "create extension if not exists \"$ext\" schema extensions" >/dev/null 2>&1 || echo "PLATFORM_EXTENSION_UNAVAILABLE=$ext" >&2',
+    'done',
+    'echo PLATFORM_SCHEMA_PROVISIONED=YES',
+  ].join('\n');
+}
+
 export function schemaBootstrapSteps({root, database, useMigrations = true}) {
   const steps = [];
   const migrationFiles = useMigrations ? listMigrations(root) : [];
+  // Provision the platform surface first so migration failures are real
+  // migration failures rather than missing-role or missing-schema noise.
+  if (migrationFiles.length) {
+    steps.push({
+      command: 'bash',
+      args: ['-c', platformProvisionScript()],
+      env: {PGDATABASE: database},
+      timeoutMs: 5 * 60 * 1000,
+      required: true,
+      label: 'platform-provisioning',
+    });
+  }
   if (migrationFiles.length) {
     const script = [
       'set -euo pipefail',
@@ -418,7 +473,7 @@ export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = 
         durationMs: result.durationMs,
         logBytes: result.logBytes,
         status: passed ? 'success' : result.timedOut ? 'timeout' : 'failure',
-        ...(result.status === 'success' ? {} : {errorClass: result.errorClass, errorLine: result.errorLine, logTail: redact(result.logTail).slice(0, 4000)}),
+        ...(result.status === 'success' ? {} : {errorClass: result.errorClass, errorLine: result.errorLine, sqlstate: result.sqlstate ?? null, sqlDetail: result.sqlDetail ?? null, logTail: redact(result.logTail).slice(0, 4000)}),
       });
       if (!passed && step.required) failure = `${group.name}:${steps.length}`;
     }

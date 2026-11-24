@@ -52,3 +52,23 @@ test('the psql plan exposes structure, never file contents', async () => {
   assert.equal(plan[1].dir, '.');
   assert.equal(JSON.stringify(plan).includes('ON_ERROR_STOP=1 -f supabase'), false, 'only structure is exposed');
 });
+
+test('provisioning facts are structural and never leak command arguments', async () => {
+  const {extractProvisioning} = await import('../scripts/private-ci-diagnose.mjs');
+  const workflow = [
+    'steps:',
+    '  - run: |',
+    '      docker run --name pg -e POSTGRES_PASSWORD=secret postgres:17',
+    '      sleep 5',
+    '      psql -v ON_ERROR_STOP=1 -f supabase/migrations/001.sql',
+  ].join('\n');
+  const facts = extractProvisioning(workflow);
+  assert.ok(facts.executableNames.includes('docker'));
+  assert.ok(facts.executableNames.includes('psql'));
+  assert.equal(facts.usesOnErrorStop, true);
+  assert.equal(facts.referencesMigrations, true);
+  const serialized = JSON.stringify(facts);
+  assert.equal(serialized.includes('secret'), false, 'arguments must not be exposed');
+  assert.equal(serialized.includes('POSTGRES_PASSWORD'), false);
+  assert.equal(serialized.includes('migrations/001.sql'), false);
+});

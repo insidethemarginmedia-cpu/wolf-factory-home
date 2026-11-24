@@ -130,13 +130,17 @@ test('migrations are applied in lexical order before a workflow runs', async () 
   assert.deepEqual(listVerificationFiles(root), ['supabase/tests/verify-all.sql']);
 
   const steps = schemaBootstrapSteps({root, database: 'wolf_test'});
-  assert.equal(steps.length, 2);
-  assert.equal(steps[0].label, 'schema-bootstrap');
-  assert.equal(steps[0].env.PGDATABASE, 'wolf_test');
-  assert.deepEqual(steps[0].args.slice(3), ['supabase/migrations/001-a.sql', 'supabase/migrations/002-b.sql', 'supabase/migrations/003-c.sql']);
-  assert.match(steps[0].args[1], /ON_ERROR_STOP=1/);
-  assert.match(steps[0].args[1], /exit 1/, 'a failed migration must fail the bootstrap');
-  assert.equal(steps[1].label, 'schema-verification-tests');
+  // Platform provisioning, ordered migrations, then the repository's own tests.
+  assert.equal(steps.length, 3);
+  assert.equal(steps[0].label, 'platform-provisioning');
+  assert.match(steps[0].args[1], /create role authenticated/);
+  assert.match(steps[0].args[1], /create schema if not exists auth/);
+  assert.equal(steps[1].label, 'schema-bootstrap');
+  assert.equal(steps[1].env.PGDATABASE, 'wolf_test');
+  assert.deepEqual(steps[1].args.slice(3), ['supabase/migrations/001-a.sql', 'supabase/migrations/002-b.sql', 'supabase/migrations/003-c.sql']);
+  assert.match(steps[1].args[1], /ON_ERROR_STOP=1/);
+  assert.match(steps[1].args[1], /exit 1/, 'a failed migration must fail the bootstrap');
+  assert.equal(steps[2].label, 'schema-verification-tests');
   fs.rmSync(root, {recursive: true, force: true});
 });
 
@@ -187,4 +191,25 @@ test('an absent workflow fails closed rather than reporting a pass', async () =>
   const {normalizeChecks} = await import('../scripts/private-ci-execute.mjs');
   assert.throws(() => normalizeChecks('postgres-schema', ['unit']), /EXECUTOR_CHECK_DENIED/);
   fs.rmSync(root, {recursive: true, force: true});
+});
+
+test('postgres failures publish a SQLSTATE and never the offending statement', async () => {
+  const {errorDetail} = await import('../scripts/private-ci-execute.mjs');
+  const output = [
+    'MIGRATION_FAILED_PATH_CLASS=supabase/migrations/002.sql',
+    'psql:supabase/migrations/002.sql:14: ERROR:  relation "wolf.private_table" does not exist',
+    'LINE 3:     insert into wolf.private_table values (1);',
+    'DETAIL:  secret-column-detail',
+    'HINT:  create the table first',
+  ].join('\n');
+  const detail = errorDetail(output);
+  assert.equal(detail.sqlstate, null, 'no bare SQLSTATE token means none is invented');
+  assert.match(detail.errorLine, /relation/);
+  assert.equal(detail.detail.DETAIL, 'secret-column-detail');
+  assert.equal(detail.detail.HINT, 'create the table first');
+  assert.equal(JSON.stringify(detail).includes('insert into'), false, 'the statement must not be published');
+
+  // A real psql prefix carries the SQLSTATE and must be extracted.
+  const structured = errorDetail('psql:file.sql:1: ERROR:  42P01: relation "x" does not exist');
+  assert.equal(structured.sqlstate, '42P01');
 });
