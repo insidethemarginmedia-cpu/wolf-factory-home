@@ -280,7 +280,7 @@ export async function probePrivateRepository({token, repository, sha, pr, fetchI
 
 // Publish a sanitized SHA-bound receipt as a check run. The summary is capped
 // and redacted; it never contains source, logs, tokens, or private URLs.
-export async function createCheckRun({token, repository, sha, name, conclusion = 'success', title, summary, detailsUrl, fetchImpl = globalThis.fetch}) {
+export async function createCheckRun({token, repository, sha, name, conclusion = 'success', title, summary, detailsUrl, fetchImpl = globalThis.fetch, surface = 'public'}) {
   if (!['success', 'failure', 'neutral', 'cancelled', 'timed_out', 'skipped', 'action_required'].includes(conclusion)) throw Error('BRIDGE_CHECK_CONCLUSION_INVALID');
   const body = {
     name,
@@ -294,7 +294,10 @@ export async function createCheckRun({token, repository, sha, name, conclusion =
       annotations: [],
     },
   };
-  return githubJson(`${API}/repos/${normalizePublicRepository(repository)}/check-runs`, {token, method: 'POST', body, fetchImpl});
+  // `surface` decides which allowlist applies: the public runner hosts the
+  // sanitized receipt, the private repository hosts the authenticated check.
+  const target = surface === 'private' ? normalizeRepository(repository) : normalizePublicRepository(repository);
+  return githubJson(`${API}/repos/${target}/check-runs`, {token, method: 'POST', body, fetchImpl});
 }
 
 // Diagnostic for the dispatch path. It performs the cheapest possible probe of
@@ -361,6 +364,48 @@ export async function diagnoseDispatch({token, repository, workflowId, fetchImpl
     result.reason = 'ACTIONS_WRITE_REQUIRED';
   }
   return result;
+}
+
+// Publish the receipt's check runs directly onto the private commit. This is
+// the only operation in the bridge that writes to the private repository, so it
+// uses a *separate* credential (WOLF_FACTORY_STATUS_TOKEN) from the source
+// reader. If that credential is absent the bridge fails closed and names the
+// exact permission required rather than silently degrading.
+export const PRIVATE_STATUS_PERMISSION = 'checks: write (Checks: write on donraposo1-source/project-wolf)';
+
+export async function publishPrivateStatusChecks({statusToken, sourceToken, repository, sha, names, conclusion, summary, fetchImpl = globalThis.fetch, detailsUrl} = {}) {
+  const normalizedRepository = normalizeRepository(repository);
+  const normalizedSha = normalizeSha(sha);
+  const base = {
+    repository: normalizedRepository,
+    sha: normalizedSha,
+    identitySeparation: 'source-read and status-write are distinct credentials',
+    privateSourcePublished: false,
+    inferencePerformed: false,
+  };
+  if (typeof statusToken !== 'string' || !statusToken.trim()) {
+    return {...base, state: 'BLOCKED', reason: 'PRIVATE_STATUS_TOKEN_REQUIRED', requiredPermission: PRIVATE_STATUS_PERMISSION};
+  }
+  if (typeof sourceToken === 'string' && sourceToken.trim() && sourceToken === statusToken) {
+    // Reusing the reader for a write would widen what the read credential can do.
+    return {...base, state: 'DENIED', reason: 'STATUS_TOKEN_MUST_DIFFER_FROM_SOURCE_TOKEN'};
+  }
+  if (!Array.isArray(names) || !names.length) return {...base, state: 'DENIED', reason: 'CHECK_NAMES_REQUIRED'};
+  const results = [];
+  for (const name of names) {
+    const checkName = String(name).slice(0, 100);
+    try {
+      const created = await createCheckRun({token: statusToken, repository: normalizedRepository, sha: normalizedSha, name: checkName, conclusion, title: 'Wolf private CI', summary, detailsUrl, fetchImpl, surface: 'private'});
+      results.push({name: checkName, state: 'CREATED', id: created?.id ?? null});
+    } catch (error) {
+      const httpStatus = error?.httpStatus ?? 0;
+      const reason = httpStatus === 403 || httpStatus === 404
+        ? 'PRIVATE_STATUS_PERMISSION_REQUIRED'
+        : httpStatus === 401 ? 'PRIVATE_STATUS_TOKEN_REJECTED' : (error?.message ?? 'PRIVATE_STATUS_FAILED');
+      return {...base, state: reason === 'PRIVATE_STATUS_PERMISSION_REQUIRED' ? 'BLOCKED' : 'FAILED', reason, httpStatus, requiredPermission: PRIVATE_STATUS_PERMISSION, results};
+    }
+  }
+  return {...base, state: 'PUBLISHED', results, privateStatusWritten: true};
 }
 
 // Dispatch the private-side executor. The target workflow is addressed by its
@@ -451,6 +496,25 @@ async function main(argv) {
     }
     process.stdout.write(JSON.stringify(result) + '\n');
     return result.state === 'PROBED' ? BRIDGE_EXIT.OK : BRIDGE_EXIT.DENIED;
+  }
+  if (command === 'publish-private-status') {
+    const receiptPath = process.env.WOLF_CI_RECEIPT;
+    if (!receiptPath || !fs.existsSync(receiptPath)) {
+      process.stdout.write(JSON.stringify({state: 'BLOCKED', reason: 'RECEIPT_REQUIRED', requiredPermission: PRIVATE_STATUS_PERMISSION}) + '\n');
+      return BRIDGE_EXIT.OK;
+    }
+    const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+    const result = await publishPrivateStatusChecks({
+      statusToken: process.env.WOLF_FACTORY_STATUS_TOKEN,
+      sourceToken: process.env.WOLF_FACTORY_REPO_TOKEN,
+      repository: process.env.WOLF_CI_REPOSITORY,
+      sha: receipt.sha,
+      names: [`wolf-private-ci-${process.env.WOLF_CI_PR ?? 'head'}`],
+      conclusion: receipt.state === 'VERIFIED' ? 'success' : 'failure',
+      summary: 'SHA-bound private CI receipt: ' + receipt.state + ' (' + (receipt.receiptHash ?? '').slice(0, 16) + ')',
+    });
+    process.stdout.write(JSON.stringify(result) + '\n');
+    return BRIDGE_EXIT.OK;
   }
   if (command === 'diagnose-dispatch') {
     const result = await diagnoseDispatch({
@@ -578,6 +642,21 @@ async function main(argv) {
           ...(step.python ? {python: step.python} : {}),
         })),
       })),
+      privateStatusCheck: (() => {
+        const file = process.env.WOLF_CI_PRIVATE_STATUS_FILE;
+        if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
+        try {
+          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+          return {
+            state: parsed.state ?? 'UNKNOWN',
+            ...(parsed.reason ? {reason: parsed.reason} : {}),
+            ...(parsed.requiredPermission ? {requiredPermission: parsed.requiredPermission} : {}),
+            ...(parsed.identitySeparation ? {identitySeparation: parsed.identitySeparation} : {}),
+          };
+        } catch {
+          return {state: 'UNREADABLE'};
+        }
+      })(),
       privateReceipt: {
         state: privatePublication.state ?? 'NOT_REPORTED',
         ...(privatePublication.reason ? {reason: privatePublication.reason} : {}),

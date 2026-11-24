@@ -105,6 +105,22 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/private-ci-bridge.mjs secret-inventory
+      - name: Publish the authenticated check to the private commit
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
+          WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
+        run: |
+          set -euo pipefail
+          : "${WOLF_CI_PRIVATE_STATUS_FILE:?STATUS_FILE_REQUIRED}"
+          rm -f "$WOLF_CI_PRIVATE_STATUS_FILE"
+          node scripts/private-ci-bridge.mjs publish-private-status > "$WOLF_CI_PRIVATE_STATUS_FILE" || true
+          test -s "$WOLF_CI_PRIVATE_STATUS_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_STATUS_NOT_REPORTED"}' > "$WOLF_CI_PRIVATE_STATUS_FILE"
+          node -e 'const s=require(process.env.WOLF_CI_PRIVATE_STATUS_FILE); console.log("PRIVATE_STATUS=" + s.state + (s.reason ? " REASON=" + s.reason : ""))'
       - name: Publish the sanitized public receipt
         if: always()
         env:
@@ -396,12 +412,29 @@ jobs:
             echo PRIVATE_RECEIPT_PUBLICATION=BLOCKED
             test -s "$WOLF_CI_PRIVATE_PUBLICATION_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_RECEIPT_PUBLICATION_FAILED"}' > "$WOLF_CI_PRIVATE_PUBLICATION_FILE"
           fi
+      - name: Publish the authenticated check to the private commit
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
+          WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
+        run: |
+          set -euo pipefail
+          : "${WOLF_CI_PRIVATE_STATUS_FILE:?STATUS_FILE_REQUIRED}"
+          rm -f "$WOLF_CI_PRIVATE_STATUS_FILE"
+          node scripts/private-ci-bridge.mjs publish-private-status > "$WOLF_CI_PRIVATE_STATUS_FILE" || true
+          test -s "$WOLF_CI_PRIVATE_STATUS_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_STATUS_NOT_REPORTED"}' > "$WOLF_CI_PRIVATE_STATUS_FILE"
+          node -e 'const s=require(process.env.WOLF_CI_PRIVATE_STATUS_FILE); console.log("PRIVATE_STATUS=" + s.state + (s.reason ? " REASON=" + s.reason : ""))'
       - name: Publish the sanitized public receipt
         if: always()
         shell: bash
         env:
           WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
           WOLF_CI_PRIVATE_PUBLICATION_FILE: /tmp/wolf-ci-private-publication.json
+          WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
           WOLF_CI_PR: '743'
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -432,9 +465,10 @@ jobs:
         shell: bash
         env:
           WOLF_CI_PRIVATE_PUBLICATION_FILE: /tmp/wolf-ci-private-publication.json
+          WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
         run: |
           set -euo pipefail
-          for path in "$WOLF_CI_PRIVATE_ROOT" "$WOLF_CI_LOG_DIR" "$WOLF_CI_RECEIPT" "$WOLF_CI_PRIVATE_PUBLICATION_FILE" /tmp/dbos /tmp/wolf-factory-dbos-e2e; do
+          for path in "$WOLF_CI_PRIVATE_ROOT" "$WOLF_CI_LOG_DIR" "$WOLF_CI_RECEIPT" "$WOLF_CI_PRIVATE_PUBLICATION_FILE" "$WOLF_CI_PRIVATE_STATUS_FILE" /tmp/dbos /tmp/wolf-factory-dbos-e2e; do
             test -n "$path" && rm -rf -- "$path"
           done
           test ! -e "$WOLF_CI_PRIVATE_ROOT"

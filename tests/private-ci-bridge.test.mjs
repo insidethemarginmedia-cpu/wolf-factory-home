@@ -266,3 +266,47 @@ test('dispatch diagnosis names the exact missing permission and never writes', a
   assert.match(writes[0].url, /\/dispatches$/);
   assert.equal(JSON.stringify(result).includes('github_pat_fixture'), false);
 });
+
+test('private status checks require their own credential and fail closed without it', async () => {
+  const {publishPrivateStatusChecks, PRIVATE_STATUS_PERMISSION} = await import('../scripts/private-ci-bridge.mjs');
+  const base = {repository, sha, names: ['wolf-private-ci-743'], conclusion: 'success', summary: 'x'};
+
+  // No status credential: blocked, and the missing permission is named.
+  const blocked = await publishPrivateStatusChecks({...base, sourceToken: 'github_pat_source'});
+  assert.equal(blocked.state, 'BLOCKED');
+  assert.equal(blocked.reason, 'PRIVATE_STATUS_TOKEN_REQUIRED');
+  assert.match(blocked.requiredPermission, /checks: write/);
+
+  // Reusing the read credential for a write is refused outright.
+  const reused = await publishPrivateStatusChecks({...base, sourceToken: 'same', statusToken: 'same'});
+  assert.equal(reused.state, 'DENIED');
+  assert.equal(reused.reason, 'STATUS_TOKEN_MUST_DIFFER_FROM_SOURCE_TOKEN');
+
+  // A credential without Checks:write is reported as a permission gap, not an outage.
+  const denied = await publishPrivateStatusChecks({
+    ...base,
+    sourceToken: 'github_pat_source',
+    statusToken: 'github_pat_status',
+    fetchImpl: async () => ({ok: false, status: 403, headers: {get: () => null}, body: {cancel: async () => {}}}),
+  });
+  assert.equal(denied.state, 'BLOCKED');
+  assert.equal(denied.reason, 'PRIVATE_STATUS_PERMISSION_REQUIRED');
+  assert.equal(denied.httpStatus, 403);
+
+  // With the right credential the check lands on the private commit.
+  const calls = [];
+  const published = await publishPrivateStatusChecks({
+    ...base,
+    sourceToken: 'github_pat_source',
+    statusToken: 'github_pat_status',
+    fetchImpl: async (url, options = {}) => {
+      calls.push({url, body: JSON.parse(options.body)});
+      return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({id: 999})};
+    },
+  });
+  assert.equal(published.state, 'PUBLISHED');
+  assert.equal(published.privateStatusWritten, true);
+  assert.match(calls[0].url, /repos\/donraposo1-source\/project-wolf\/check-runs$/);
+  assert.equal(calls[0].body.head_sha, sha);
+  assert.equal(JSON.stringify(published).includes('github_pat_status'), false, 'credentials never appear in output');
+});
