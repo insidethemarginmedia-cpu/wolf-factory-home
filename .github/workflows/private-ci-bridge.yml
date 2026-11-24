@@ -23,6 +23,9 @@ on:
     branches: [arena/38f3a7f7-wolf-factory-home]
     paths:
       - '.github/workflows/private-ci-bridge.yml'
+      # The evidence doc states the check table and the test counts, so it is
+      # validated with the code it describes rather than after it.
+      - 'docs/private-ci-bridge-evidence.md'
       - 'scripts/private-ci-bridge.mjs'
       - 'scripts/private-ci-inventory.mjs'
       - 'scripts/private-ci-execute.mjs'
