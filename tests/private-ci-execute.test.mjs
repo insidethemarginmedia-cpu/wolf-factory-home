@@ -298,3 +298,31 @@ test('each workflow check is pointed at its own Postgres cluster', async () => {
   assert.equal(WORKFLOW_CHECKS['postgres-concurrency'].port, 5434);
   assert.ok(ports.every(port => Number.isInteger(port)), 'every postgres workflow declares a cluster');
 });
+
+test('the platform DDL reaches psql byte-for-byte, without shell expansion', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const {execFileSync} = await import('node:child_process');
+  const {platformProvisionScript} = await import('../scripts/private-ci-execute.mjs');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-ci-ddl-'));
+  const payload = path.join(dir, 'payload.sql');
+  // Replace the psql consumer with a writer so the heredoc body can be inspected.
+  const script = platformProvisionScript({roles: true})
+    .replace("output=$(psql -v ON_ERROR_STOP=0 -q <<'WOLF_PLATFORM_DDL' 2>&1", `output=$(cat > '${payload}' <<'WOLF_PLATFORM_DDL' 2>&1`);
+  const scriptPath = path.join(dir, 'run.sh');
+  fs.writeFileSync(scriptPath, script);
+  execFileSync('bash', [scriptPath], {stdio: 'pipe'});
+
+  const body = fs.readFileSync(payload, 'utf8');
+  // These are exactly the constructs that broke on previous attempts.
+  assert.match(body, /as \$f\$/m, '$$-quoted function bodies must survive');
+  assert.match(body, /do \$\$ begin if not exists/, 'DO blocks must survive');
+  assert.match(body, /'{}'::jsonb/, 'quoted jsonb literals must survive');
+  assert.match(body, /create table if not exists auth\.users/m);
+  assert.match(body, /create extension if not exists "pgcrypto" schema extensions/);
+  assert.equal(body.includes('\\n'), false, 'no escaped newlines may leak into the SQL');
+  assert.ok(body.split('\n').length > 20, 'the DDL must be real multi-line SQL');
+  fs.rmSync(dir, {recursive: true, force: true});
+});

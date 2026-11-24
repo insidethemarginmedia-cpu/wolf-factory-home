@@ -575,6 +575,7 @@ async function main(argv) {
           ...(step.sqlstate ? {sqlstate: step.sqlstate} : {}),
           ...(step.errorLine ? {errorLine: step.errorLine} : {}),
           ...(step.sqlDetail ? {sqlDetail: step.sqlDetail} : {}),
+          ...(step.python ? {python: step.python} : {}),
         })),
       })),
       privateReceipt: {

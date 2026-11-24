@@ -91,6 +91,21 @@ function listSourceFiles(root) {
   return result.sort();
 }
 
+// The Python "no matching distribution" error states the interpreter tags it
+// searched. Capturing that list is what distinguishes an unsupported runtime
+// from a missing package, and it contains no private data.
+export function extractPythonDiagnostics(text) {
+  const value = String(text ?? '');
+  const tags = value.match(/from versions:([^)\n]*)/)?.[1]?.trim() ?? null;
+  const requires = value.match(/Requires-Python ([^\n]+)/)?.[1]?.trim() ?? null;
+  const pythonVersion = value.match(/Python (\d+\.\d+(?:\.\d+)?)/)?.[1] ?? null;
+  return {
+    versionsAvailable: tags === null ? null : tags.replace(/\s+/g, ' ').slice(0, 200),
+    requiresPython: requires,
+    pythonVersion,
+  };
+}
+
 export function classifyError(text) {
   const value = String(text ?? '');
   const rules = [
@@ -162,7 +177,15 @@ function run(command, args, {cwd, env, timeoutMs, logPath}) {
     logBytes: Buffer.byteLength(output),
     status: result.status === 0 ? 'success' : result.error?.code === 'ETIMEDOUT' ? 'timeout' : 'failure',
     errorClass: result.status === 0 ? null : classifyError(output),
-    ...(result.status === 0 ? {} : (() => { const d = errorDetail(output); return {sqlstate: d.sqlstate, sqlDetail: d.detail}; })()),
+    ...(result.status === 0 ? {} : (() => {
+      const d = errorDetail(output);
+      const py = extractPythonDiagnostics(output);
+      return {
+        sqlstate: d.sqlstate,
+        sqlDetail: d.detail,
+        ...(py.versionsAvailable || py.pythonVersion ? {python: py} : {}),
+      };
+    })()),
     errorLine: result.status === 0 ? null : errorLine(output),
     logTail: result.status === 0 ? null : output.split('\n').slice(-30).join('\n'),
   };
@@ -220,79 +243,65 @@ export function listVerificationFiles(root, directory = 'supabase/tests') {
 // postgres:17, which is exactly the schema/bootstrap the workflow expects.
 export const PLATFORM_EXTENSIONS = Object.freeze(['pgcrypto', 'uuid-ossp', 'pg_trgm', 'btree_gin', 'citext', 'unaccent', 'pg_stat_statements', 'vector']);
 
-// Every statement is executed through psql. Emitting raw SQL into a bash script
-// makes bash parse `do`/`create` as commands, which fails with a syntax error
-// before the database is ever touched.
+// The platform DDL is fed to psql through a single-quoted heredoc. That is the
+// only construction that survives every hazard here: `$$` and `$f$` would be
+// shell-expanded inside double quotes, and a JSON-encoded multi-line string
+// would reach psql with literal backslash-n. A quoted delimiter performs no
+// expansion at all, so the SQL arrives byte-for-byte.
 export function platformProvisionScript({roles = true} = {}) {
-  const statements = [];
-  // The migrations create the Supabase roles themselves with a guarded DO
-  // block, so when they run we only supply the schemas they expect. When they
-  // are not run (workflow-owned fixtures) the roles must be supplied.
+  const ddl = [];
   if (roles) {
     for (const name of ['anon', 'authenticated', 'service_role', 'supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin']) {
-      statements.push(`do \$\$ begin if not exists (select 1 from pg_roles where rolname='${name}') then create role ${name} nologin; end if; end \$\$`);
+      ddl.push(`do $$ begin if not exists (select 1 from pg_roles where rolname='${name}') then create role ${name} nologin; end if; end $$;`);
     }
   }
-  for (const name of ['auth', 'storage', 'extensions', 'realtime', 'vault', 'public']) statements.push(`create schema if not exists ${name}`);
-  // Supabase's hosted platform ships the auth tables and helpers that the
-  // migrations reference. Supplying their shape is what makes the migrations
-  // runnable off-platform; without it they fail on the first foreign key to
-  // auth.users rather than on anything the repository actually got wrong.
-  statements.push(`create table if not exists auth.users (
-    id uuid primary key default gen_random_uuid(),
-    instance_id uuid,
-    aud varchar(255),
-    role varchar(255),
-    email varchar(255),
-    encrypted_password varchar(255),
-    email_confirmed_at timestamptz,
-    invited_at timestamptz,
-    confirmation_token varchar(255),
-    raw_app_meta_data jsonb,
-    raw_user_meta_data jsonb,
-    is_super_admin boolean,
-    created_at timestamptz default now(),
-    updated_at timestamptz default now(),
-    phone text,
-    confirmed_at timestamptz,
-    last_sign_in_at timestamptz,
-    banned_until timestamptz,
-    deleted_at timestamptz
-  )`);
-  statements.push(`create or replace function auth.uid() returns uuid language sql stable as $f$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $f$`);
-  statements.push(`create or replace function auth.jwt() returns jsonb language sql stable as $f$ select coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb) $f$`);
-  statements.push(`create or replace function auth.role() returns text language sql stable as $f$ select nullif(current_setting('request.jwt.claim.role', true), '') $f$`);
-  statements.push(`create table if not exists storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[], created_at timestamptz default now(), updated_at timestamptz default now())`);
-  statements.push(`create table if not exists storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid, metadata jsonb, created_at timestamptz default now(), updated_at timestamptz default now())`);
-  const lines = ['set -uo pipefail', 'failed=0'];
-  lines.push('apply() {');
-  lines.push('  if psql -v ON_ERROR_STOP=1 -q -c "$1" >/dev/null 2>&1; then return 0; fi');
-  lines.push('  echo "PLATFORM_STATEMENT_FAILED_CLASS=$(printf \'%s\' \"$1\" | cut -c1-28)" >&2');
-  lines.push('  failed=$((failed+1))');
-  lines.push('}');
-  for (const statement of statements) lines.push(`apply ${JSON.stringify(statement)}`);
-  lines.push(`for ext in ${PLATFORM_EXTENSIONS.join(' ')}; do`);
-  lines.push('  psql -q -c "create extension if not exists \"$ext\" schema extensions" >/dev/null 2>&1 || echo "PLATFORM_EXTENSION_UNAVAILABLE=$ext" >&2');
-  lines.push('done');
-  lines.push('echo "PLATFORM_SCHEMA_PROVISIONED=YES FAILED_STATEMENTS=$failed"');
-  // Role/schema creation is idempotent and non-fatal; a genuinely broken cluster
-  // surfaces on the next step, where the workflow's own SQL runs.
-  lines.push('exit 0');
-  return lines.join('\n');
-}
+  for (const name of ['auth', 'storage', 'extensions', 'realtime', 'vault', 'public']) ddl.push(`create schema if not exists ${name};`);
+  // Supabase's hosted platform ships these tables and helpers; the migrations
+  // reference them, so their shape is supplied to make the migrations runnable
+  // off-platform instead of failing on the first foreign key to auth.users.
+  ddl.push(`create table if not exists auth.users (
+  id uuid primary key default gen_random_uuid(),
+  instance_id uuid,
+  aud varchar(255),
+  role varchar(255),
+  email varchar(255),
+  encrypted_password varchar(255),
+  email_confirmed_at timestamptz,
+  invited_at timestamptz,
+  confirmation_token varchar(255),
+  raw_app_meta_data jsonb default '{}'::jsonb,
+  raw_user_meta_data jsonb default '{}'::jsonb,
+  is_super_admin boolean,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  phone text,
+  confirmed_at timestamptz,
+  last_sign_in_at timestamptz,
+  banned_until timestamptz,
+  deleted_at timestamptz
+);`);
+  ddl.push(`create or replace function auth.uid() returns uuid language sql stable as $f$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $f$;`);
+  ddl.push(`create or replace function auth.jwt() returns jsonb language sql stable as $f$ select coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb) $f$;`);
+  ddl.push(`create or replace function auth.role() returns text language sql stable as $f$ select nullif(current_setting('request.jwt.claim.role', true), '') $f$;`);
+  ddl.push(`create table if not exists storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[], created_at timestamptz default now(), updated_at timestamptz default now());`);
+  ddl.push(`create table if not exists storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid, metadata jsonb, created_at timestamptz default now(), updated_at timestamptz default now());`);
+  for (const extension of PLATFORM_EXTENSIONS) {
+    ddl.push(`create extension if not exists "${extension}" schema extensions;`);
+  }
 
-export function platformProvisioningSteps({root, database}) {
-  // The platform surface is always provisioned; whether the repository's own
-  // migrations also run depends on the caller.
-  if (!listMigrations(root).length && !findBootstrap(root)) return [];
-  return [{
-    command: 'bash',
-    args: ['-c', platformProvisionScript()],
-    env: {PGDATABASE: database},
-    timeoutMs: 5 * 60 * 1000,
-    required: true,
-    label: 'platform-provisioning',
-  }];
+  return [
+    'set -uo pipefail',
+    '# Report the outcome without aborting: a genuinely broken cluster surfaces',
+    '# on the workflow step that follows, where the repository SQL runs.',
+    'output=$(psql -v ON_ERROR_STOP=0 -q <<\'WOLF_PLATFORM_DDL\' 2>&1',
+    ddl.join('\n'),
+    'WOLF_PLATFORM_DDL',
+    ')',
+    'failed=$(printf \'%s\n\' "$output" | grep -c \'^ERROR\' || true)',
+    'printf \'%s\n\' "$output" | grep \'^ERROR\' | cut -c1-120 >&2 || true',
+    'echo "PLATFORM_SCHEMA_PROVISIONED=YES FAILED_STATEMENTS=$failed"',
+    'exit 0',
+  ].join('\n');
 }
 
 export function schemaBootstrapSteps({root, database, useMigrations = true, platform = true, platformRoles = false}) {
@@ -564,7 +573,7 @@ export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = 
         status: passed ? 'success' : result.timedOut ? 'timeout' : 'failure',
         ...(step.workflowStep ? {workflowStep: step.workflowStep} : {}),
         ...(step.label ? {label: step.label} : {}),
-        ...(result.status === 'success' ? {} : {errorClass: result.errorClass, errorLine: result.errorLine, sqlstate: result.sqlstate ?? null, sqlDetail: result.sqlDetail ?? null, logTail: redact(result.logTail).slice(0, 4000)}),
+        ...(result.status === 'success' ? {} : {errorClass: result.errorClass, errorLine: result.errorLine, sqlstate: result.sqlstate ?? null, sqlDetail: result.sqlDetail ?? null, ...(result.python ? {python: result.python} : {}), logTail: redact(result.logTail).slice(0, 4000)}),
       });
       if (!passed && step.required) failure = `${group.name}:${steps.length}`;
     }
