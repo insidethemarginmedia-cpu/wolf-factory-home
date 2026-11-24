@@ -329,3 +329,36 @@ test('the publisher prefers the App token and never mixes it with the status PAT
   assert.equal(seen.length, 0, 'no request without a status credential');
   assert.deepEqual(blocked.installationIds ?? null, null);
 });
+
+test('the receipt keeps the credential source the probe reported', async () => {
+  const {readDispatchVerification} = await import('../scripts/private-ci-bridge.mjs');
+  const {mkdtempSync, writeFileSync} = await import('node:fs');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'dispatch-receipt-'));
+  const dispatchFile = join(dir, 'd.json');
+  writeFileSync(dispatchFile, JSON.stringify({state: 'BLOCKED', reason: 'WORKFLOW_LIST_UNAVAILABLE', credentialSource: 'pat', duplicateSuppressed: false, runsBefore: null, runsAfter: null}));
+  const receipt = readDispatchVerification(dispatchFile);
+  assert.equal(receipt.credentialSource, 'pat');
+  assert.equal(receipt.reason, 'WORKFLOW_LIST_UNAVAILABLE');
+});
+
+test('the auth posture names the App once the secrets exist, and never a value', async () => {
+  const {readAuthenticationPosture} = await import('../scripts/private-ci-bridge.mjs');
+  const {mkdtempSync, writeFileSync} = await import('node:fs');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'auth-posture-'));
+
+  assert.deepEqual(readAuthenticationPosture(join(dir, 'missing.json')), {state: 'NOT_REPORTED'});
+
+  const file = join(dir, 'auth.json');
+  writeFileSync(file, JSON.stringify({appAuthComplete: true, installations: {reader: 'present', publisher: 'present', dispatcher: 'present', legacy: 'absent'}, fallback: {pat: 'present', statusPat: 'absent', deployKey: 'present'}, appId: '12345', privateKey: 'MUST_NOT_APPEAR'}));
+  const posture = readAuthenticationPosture(file);
+  assert.equal(posture.mode, 'github-app');
+  assert.equal(posture.appSecretsComplete, true);
+  assert.equal(posture.credentialsPrinted, false);
+  const serialized = JSON.stringify(posture);
+  assert.equal(serialized.includes('MUST_NOT_APPEAR'), false, 'the posture is presence-only');
+  assert.equal(serialized.includes('12345'), false, 'even the app id is not published');
+});

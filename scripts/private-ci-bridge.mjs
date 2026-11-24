@@ -17,6 +17,50 @@ export const BRIDGE_WORKFLOW_PATH = '.github/workflows/private-ci-bridge.yml';
 export const SHA_PATTERN = /^[a-f0-9]{40}$/;
 export const PR_PATTERN = /^[1-9][0-9]*$/;
 
+// Reads a JSON artefact written by an earlier step. Presence reporting only:
+// neither helper can surface a credential, because neither artefact contains one.
+function readJsonArtefact(file) {
+  if (!file || !fs.existsSync(file)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return 'UNREADABLE';
+  }
+}
+
+export function readAuthenticationPosture(file) {
+  const parsed = readJsonArtefact(file);
+  if (parsed === null) return {state: 'NOT_REPORTED'};
+  if (parsed === 'UNREADABLE') return {state: 'UNREADABLE'};
+  return {
+    mode: parsed.appAuthComplete ? 'github-app' : 'pat-fallback',
+    appSecretsComplete: parsed.appAuthComplete ?? false,
+    installationIds: parsed.installations ?? null,
+    fallbacks: parsed.fallback ?? null,
+    credentialsPrinted: false,
+  };
+}
+
+export function readDispatchVerification(file) {
+  const parsed = readJsonArtefact(file);
+  if (parsed === null) return {state: 'NOT_REPORTED'};
+  if (parsed === 'UNREADABLE') return {state: 'UNREADABLE'};
+  return {
+    state: parsed.state,
+    reason: parsed.reason ?? null,
+    // The probe reports `credentialSource`; accepted either way so the receipt
+    // never silently drops which identity was used.
+    credentialSource: parsed.credentialSource ?? parsed.source ?? null,
+    workflowDiscovered: parsed.workflowDiscovered === true,
+    workflowId: parsed.workflowId ?? null,
+    workflowFile: parsed.workflowFile ?? null,
+    discoveredWorkflow: parsed.discoveredWorkflow ?? null,
+    duplicateSuppressed: parsed.duplicateSuppressed === true,
+    runsBefore: parsed.runsBefore ?? null,
+    runsAfter: parsed.runsAfter ?? null,
+  };
+}
+
 export const BRIDGE_EXIT = Object.freeze({
   OK: 0,
   DEFECT: 1,
@@ -644,39 +688,8 @@ async function main(argv) {
           ...(step.python ? {python: step.python} : {}),
         })),
       })),
-      authentication: (() => {
-        const file = process.env.WOLF_CI_APP_AUTH_FILE;
-        if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
-        try {
-          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-          return {
-            mode: parsed.appAuthComplete ? 'github-app' : 'pat-fallback',
-            appSecretsComplete: parsed.appAuthComplete ?? false,
-            installationIds: parsed.installations ?? null,
-            fallbacks: parsed.fallback ?? null,
-            credentialsPrinted: false,
-          };
-        } catch {
-          return {state: 'UNREADABLE'};
-        }
-      })(),
-      dispatchVerification: (() => {
-        const file = process.env.WOLF_CI_DISPATCH_FILE;
-        if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
-        try {
-          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-          return {
-            state: parsed.state,
-            reason: parsed.reason ?? null,
-            credentialSource: parsed.source ?? null,
-            duplicateSuppressed: parsed.duplicateSuppressed === true,
-            runsBefore: parsed.runsBefore ?? null,
-            runsAfter: parsed.runsAfter ?? null,
-          };
-        } catch {
-          return {state: 'UNREADABLE'};
-        }
-      })(),
+      authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
+      dispatchVerification: readDispatchVerification(process.env.WOLF_CI_DISPATCH_FILE),
       privateStatusCheck: (() => {
         const file = process.env.WOLF_CI_PRIVATE_STATUS_FILE;
         if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
