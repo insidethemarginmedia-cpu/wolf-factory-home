@@ -1,139 +1,186 @@
-# Wolf Private CI Bridge — Activation Evidence
+# Wolf Private CI Bridge — Acceptance Evidence
 
-Status: **OPERATIONAL — six required checks execute and publish at an immutable SHA.**
+Status: **OPERATIONAL — thirteen checks execute at an immutable SHA and publish authenticated, SHA-bound receipts.**
 
-This document records the evidence for the secure CI bridge in
-`insidethemarginmedia-cpu/wolf-factory-home`. It contains only public,
-non-sensitive facts: workflow names, commit SHAs, check names, exit codes and
-timestamps. No private Wolf source, log, credential or configuration value is
-reproduced here.
+This document records public, non-sensitive facts only: workflow names, commit
+SHAs, check names, exit codes, durations and timestamps. No private Wolf source,
+log, credential or configuration value is reproduced here.
 
-## 1. What was recovered
+## 1. Identity and access
 
 | Item | Evidence |
 | --- | --- |
-| Successful pre-existing run | `43131620655` / job `130896985000` — partial success (preflight only: checkout at immutable SHA, lockfile install, DBOS donor build, private regression suite). Every credential, publication, mission and receipt step was `skipped`. |
-| Public runner repository | `insidethemarginmedia-cpu/wolf-factory-home` (public, Actions enabled) |
-| Private Factory repository | `donraposo1-source/project-wolf` (private) |
-| Canonical private branch | `feat/factory-real-worker-m1-20261006` |
+| Public runner | `insidethemarginmedia-cpu/wolf-factory-home` (public, Actions enabled) |
+| Private Factory | `donraposo1-source/project-wolf` (private) |
 | Target commit | `8d319fc50be4e4d225e3bb80de963583899c25ec` (PR #743 HEAD) |
-| DBOS donor | `dbos-inc/dbos-transact-ts` at `3f36908f58fd8b3079cbf5372203c7a2d0ba06cc`, MIT |
+| Source-read credential | `WOLF_FACTORY_REPO_TOKEN` — fine-grained PAT, Contents + Metadata read-only, scoped to the one repository |
+| Source-checkout credential | `WOLF_FACTORY_DEPLOY_KEY` — SSH deploy key, unchanged |
+| Status-write credential | `WOLF_FACTORY_STATUS_TOKEN` — **not configured**; reserved for publishing check runs to the private commit, deliberately separate from the reader |
 
-## 2. Effective permissions
+### Token recovery result
 
-| Surface | Result |
+The previous PAT was expired (HTTP 401). With the rotated token the probe now
+returns `PROBED`:
+
+- `/repos/donraposo1-source/project-wolf` → **200**, `private: true`
+- target commit present, `sha` matches
+- identity `donraposo1-source`
+- probe job conclusion: **success**
+
+Authorisation is decided by the private repository read, not by `/user`: a
+fine-grained PAT scoped to one repository returns 403 on `/user` even when it is
+perfectly valid. The probe previously reported such a token as denied; it no
+longer does.
+
+### Remaining 403s and their cause
+
+These are the expected consequence of a Contents+Metadata-only credential, not
+defects:
+
+| Endpoint | Status | Requires |
+| --- | --- | --- |
+| `/actions/workflows` | 403 | Actions: read |
+| `/commits/{sha}/check-runs` | 403 | Checks: read |
+| `/branches/{b}/protection` | 403 | Administration: read |
+| `/actions/permissions` | 403 | Administration: read |
+| workflow dispatch | 403 | **Actions: write** |
+
+`diagnose-dispatch` performs each capability probe and names the minimum missing
+permission (`actions: write`) without broadening anything. The bridge does not
+need dispatch: execution is driven by the runner's own triggers, and the
+deploy-key path is what reads private source.
+
+## 2. Checks executed at the immutable SHA
+
+All thirteen run against a checkout asserted equal to the requested SHA. Every
+check is **blocking** — there is no advisory tier.
+
+| Check | Source | Result |
+| --- | --- | --- |
+| `security` | audit + secret scan | success |
+| `lint` | the repository's `scripts/run-actionlint.sh` | success |
+| `typecheck` | syntax/type gate | success |
+| `unit` | `npm test` | success |
+| `integration` | `prepare` → `crash` (77) → `recover` (0) | success |
+| `build` | `npm run build` | success |
+| `migrations` | schema verification on postgres 17 | success |
+| `postgres-schema` | `.github/workflows/postgres-schema.yml` (real steps) | success |
+| `postgres-concurrency` | `.github/workflows/postgres-concurrency-evidence.yml` (real steps) | success |
+| `test` | `.github/workflows/test.yml` | success |
+| `http-load-evidence` | `.github/workflows/http-load-evidence.yml` | success |
+| `ocr-tesseract` | `.github/workflows/ocr-tesseract.yml` | success |
+| `ocr-paddle` | `.github/workflows/ocr-paddle.yml` | success |
+
+The six original Wolf workflows (`test`, `postgres-schema`,
+`postgres-concurrency-evidence`, `http-load-evidence`, `ocr-tesseract`,
+`ocr-paddle`) run their **own** commands, parsed from the workflow definitions
+by a fail-closed reader that inlines local composite actions and records any
+step it cannot reproduce instead of silently skipping it.
+
+### How Postgres was made faithful
+
+Three distinct problems had to be separated:
+
+1. **Platform surface.** Supabase migrations reference `auth.users`, `storage.*`,
+   the Supabase roles and extensions that the hosted platform ships. The bridge
+   supplies that shape through a quoted heredoc (a double-quoted or
+   JSON-encoded form corrupts `$$`, `$f$` and multi-line SQL) so the SQL arrives
+   byte-for-byte.
+2. **Who owns the roles.** The migrations create the Supabase roles themselves
+   in a guarded block, while the concurrency workflow issues an unguarded
+   `create role authenticated`. Pre-creating the roles for the migrations makes
+   the workflow fail; supplying schemas only lets both succeed.
+3. **Cluster scope.** Roles are cluster-scoped in PostgreSQL, so the schema and
+   concurrency workflows cannot share one cluster: they collide on
+   `authenticated`. Each gets its own `postgres:17` cluster (5432/5433/5434),
+   mirroring the private repository where each workflow declares its own
+   service container.
+
+The concurrency workflow runs completely unmodified — it builds its own
+canonical fixture and then measures it, so any bootstrap would change what it
+measures.
+
+## 3. Published artefacts
+
+| Artefact | State |
 | --- | --- |
-| Public repository contents | `contents: read` at workflow level; `contents: write` + `checks: write` granted per job for receipt publication |
-| Public Actions | Enabled. Default token permission `read`; `allowed_actions=all`; `sha_pinning_required=false` → flagged `SECURITY_REVIEW_REQUIRED` (all actions are nevertheless pinned to full commit SHAs) |
-| Secret names present | `WOLF_FACTORY_REPO_TOKEN` (expired), `WOLF_FACTORY_DEPLOY_KEY` (valid) |
-| Secret names absent | `WOLF_FACTORY_APP_ID`, `WOLF_FACTORY_APP_PRIVATE_KEY`, `WOLF_FACTORY_APP_INSTALLATION_ID` |
-| Private-source read path | SSH deploy key only (`git@github.com:donraposo1-source/project-wolf.git`), verified working from public CI |
+| Sanitized public receipt (commit comment) | published, SHA-bound, with `receiptHash` |
+| Public check runs `execute` / `inventory` / `probe` | success |
+| Check run `wolf-private-ci-743` on the public commit | created, success |
+| Private receipt branch `wolf-ci-receipts/<sha>` | `PUBLISHED` over the deploy key |
+| Private status check (`wolf-private-ci-743` on the private commit) | `BLOCKED` — `PRIVATE_STATUS_TOKEN_REQUIRED`, names `checks: write` |
 
-## 3. The bridge
+`privateSourcePublished`, `privateLogsPublished`, `inferencePerformed` and
+`refUpdated` are `false` in every receipt.
 
-Workflow: `.github/workflows/private-ci-bridge.yml` (jobs `probe`, `inventory`, `execute`).
+### Identity separation
 
-Triggers: `push` (arena branch, path-filtered), `workflow_dispatch` (with `sha`/`pr`
-inputs), `repository_dispatch` (`wolf-private-ci`), and an hourly `schedule`
-recovery sweep.
+Writing a check to the private commit is the only private-side write, and it
+uses its own credential. Supplying the same credential for reading and writing
+is refused (`STATUS_TOKEN_MUST_DIFFER_FROM_SOURCE_TOKEN`), so the reader can
+never be widened by accident.
 
-### Isolation and secret handling
+## 4. Durable operation
+
+`scripts/private-ci-journal.mjs` keeps an append-only journal keyed by
+repository + SHA:
+
+- repeated triggers for one SHA collapse onto a single request;
+- cancellation is terminal, and a completed request is never re-armed;
+- leases expire after 20 minutes and are reclaimed by an hourly sweep, recording
+  `recoveredFrom` in the receipt, so a crashed runner cannot stall the queue;
+- triggers: `push`, `workflow_dispatch`, `repository_dispatch`, `schedule`.
+
+Verified across three real runs (`b56c795`, `2b9811e`, `3628709`), each
+producing exactly one `wolf-private-ci-743` check run — duplicate suppression
+holding in practice, not only in tests.
+
+## 5. Cost and platform
+
+| Control | Value |
+| --- | --- |
+| `EUR_SPEND` | `0` |
+| `COST_UNKNOWN` | `DENY` |
+| `PAID_FALLBACK` | `DENY` |
+| `TRIAL_CREDIT` | `DENY` |
+| Billable minutes (measured, 3 jobs) | `total_ms: 0` |
+| Inference performed by the bridge | none |
+
+The workflow is public-repository standard-runner only. No paid endpoint, no
+inference provider and no paid fallback is reachable from the bridge; the only
+network operations are GitHub, the pinned MIT DBOS donor and the package
+registry.
+
+## 6. Security posture
 
 - Private source is cloned into the ephemeral runner only, `--filter=blob:none`,
-  then `checkout --detach <sha>`; the job asserts `git rev-parse HEAD` equals the
-  requested SHA and that the tree is clean.
-- Deploy key material is written to `$RUNNER_TEMP` with mode `0600`, used through a
-  pinned `github.com` ed25519 host key with `BatchMode=yes` and
-  `StrictHostKeyChecking=yes`, then deleted.
-- Checkout of the public repo uses `persist-credentials: false`.
-- Every command's stdout/stderr is captured to a mode-`0600` log outside the
-  repository and deleted at the end of the job. Nothing is uploaded as an artifact.
-- A final `if: always()` step destroys the private checkout, log directory,
-  receipt, DBOS donor and fixture root, and asserts they are gone.
+  then `checkout --detach` with `git rev-parse HEAD` asserted equal to the
+  requested SHA.
+- Deploy key written `0600` in `RUNNER_TEMP`, pinned `github.com` ed25519 host
+  key, `BatchMode=yes`, `StrictHostKeyChecking=yes`, removed after use.
+- Public checkout uses `persist-credentials: false`; all actions pinned to full
+  commit SHAs.
+- Per-command logs at mode `0600` outside the repository, destroyed by an
+  `always()` step that asserts they are gone; no artifacts uploaded.
+- Failures publish PostgreSQL `SQLSTATE` plus `DETAIL`/`HINT`, never the
+  offending statement; Python failures publish interpreter tags, never commands.
+- Leak audit over every public comment: no source lines, keys or token patterns.
 
-### Cost controls
-
-Job-level environment forces `EUR_SPEND=0`, `COST_UNKNOWN=DENY`,
-`PAID_FALLBACK=DENY`, `TRIAL_CREDIT=DENY`. The bridge performs no inference and
-calls no paid endpoint; the only network operations are GitHub, the pinned MIT
-DBOS donor, and the package registry.
-
-## 4. Execution result at PR #743
-
-Verified SHA: `8d319fc50be4e4d225e3bb80de963583899c25ec`.
-
-| Check | Result |
-| --- | --- |
-| `security` | success (`npm audit --audit-level=high` + secret-pattern scan) |
-| `lint` | success (the repository's own `scripts/run-actionlint.sh`) |
-| `typecheck` | success (syntax/type gate) |
-| `unit` | success (`npm test`) |
-| `integration` | success (`prepare` → `crash` (77) → `recover` (0)) |
-| `build` | success (`npm run build`) |
-| `migrations` | success (repository's schema verification against `wolf_test`) |
-| `postgres-concurrency` | advisory-failure (evidence workflow assumes a pre-existing schema; reported, never blocking) |
-
-Verdict: **VERIFIED**. `privateSourcePublished=false`,
-`privateLogsPublished=false`, `inferencePerformed=false`, `refUpdated=false`.
-
-### Published artifacts
-
-1. A sanitized receipt as a commit comment on the public runner, bound to the
-   private SHA and carrying a `receiptHash` over `{sha, checks}`.
-2. A check run `wolf-private-ci-743` on the public commit.
-3. A `receipt.json` on the orphan branch
-   `wolf-ci-receipts/8d319fc50be4e4d225e3bb80de963583899c25ec` in the private
-   repository, written over the deploy key and confirming `PUBLISHED`.
-
-### Leak audit
-
-Every public comment published by the bridge was scanned for JavaScript source
-lines, private-key headers, and token patterns (`ghp_`, `github_pat_`,
-`sk-or-v1-`, `AKIA`, JWT prefixes, passwords): **zero matches**.
-
-## 5. Durable operation
-
-`scripts/private-ci-journal.mjs` implements an append-only request journal keyed
-by repository + SHA:
-
-- **Dispatch** — `repository_dispatch` / `workflow_dispatch` requests are
-  journaled; repeated triggers for one SHA collapse onto a single request.
-- **Cancellation** — a cancelled request can never start; a completed request is
-  never re-armed.
-- **Recovery** — leases expire after 20 minutes; the hourly sweep reclaims an
-  expired lease and records `recoveredFrom` in the receipt, so a crashed runner
-  cannot stall the queue.
-- **Automatic execution** — a push, dispatch or scheduled sweep runs the same
-  `execute` job; there is no manual step in the path.
-
-## 6. Defects found and repaired
+## 7. Defects found and repaired in this phase
 
 | Defect | Repair |
 | --- | --- |
-| `night-shift-wakeup.yml` pinned a reusable workflow at `d09f2c22…`, which does not exist | Repointed to `20f1872…`; `tests/workflow-pins-resolve.test.mjs` now fails if any reusable-workflow pin is missing or lacks the workflow |
-| Integration expected an exit code `78` the private workflow never produces | Sequence aligned to `prepare` → `crash` (77) → `recover` (0) |
-| Migrations ran against the DBOS database | Each check pins its own database; job uses `postgres:17` with `wolf_test`, and the DBOS database is created explicitly |
-| Concurrency invoked a helper the private workflow never calls | The executor now runs the workflow's own `psql -f` sequence, validated against path escape |
-| Check runs were sent to the private repository and denied | Separate `BRIDGE_PUBLIC_REPOSITORIES` allowlist for the public status surface |
-| A step wrote to an undeclared environment variable | Declared, plus `tests/workflow-env-declared.test.mjs`, which reproduces the original defect as a test case |
-| `verify-receipt` could not parse the executor's own receipt format | Accepts both `conclusion` and `status` |
-
-## 7. External blockers
-
-1. **`WOLF_FACTORY_REPO_TOKEN` is expired** (HTTP 401). The token-based probe and
-   REST dispatch paths fail; the deploy-key path is unaffected. Repair requires
-   rotating the PAT or installing a GitHub App with `contents: read` on
-   `project-wolf`.
-2. **Workflow dispatch by API is denied** to the integration token (HTTP 403), so
-   runs are triggered by push to the arena branch instead of a manual dispatch.
-   The `repository_dispatch` trigger is installed and requires no code change once
-   a token with `actions: write` is provided.
-3. **`postgres-concurrency` remains advisory.** Its evidence workflow assumes a
-   schema created outside the workflow; the bridge reports the true exit codes and
-   never converts that into a pass.
+| Probe reported a valid fine-grained PAT as denied (403 on `/user`) | Authorisation decided by the repository read; permissions recorded |
+| Platform provisioning emitted raw SQL as shell lines | Quoted heredoc; a test asserts the DDL arrives byte-for-byte |
+| Migrations failed on missing `auth.users` | Platform shape supplied; schemas only, roles left to migrations |
+| Concurrency failed on `role "authenticated" already exists` | Each role-creating workflow gets its own cluster |
+| Postgres checks reported as advisory | Advisory tier removed; every check is blocking |
+| PaddleOCR install failed on the runner interpreter | `actions/setup-python@6d4fd22…` pinned to 3.11 |
+| Step failures were unattributable | Receipts name the workflow step, error class and SQLSTATE |
 
 ## 8. Local verification
 
-`node --test tests/*.test.mjs` → **119 passing, 0 failing**, covering the bridge,
-inventory, executor, receipt publication, diagnostics, durable journal, workflow
-pin resolution and workflow environment declaration.
+`node --test tests/*.test.mjs` → **141 passing, 0 failing**, covering the bridge,
+probe, dispatch diagnosis, inventory, executor, workflow reader, schema
+provisioning, receipt publication, private status checks, durable journal,
+workflow pin resolution and workflow environment declaration.
