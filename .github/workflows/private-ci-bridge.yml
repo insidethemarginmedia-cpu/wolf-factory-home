@@ -29,13 +29,15 @@ on:
       - 'scripts/private-ci-publish-receipt.mjs'
       - 'scripts/private-ci-diagnose.mjs'
       - 'scripts/private-ci-journal.mjs'
+      - 'scripts/private-ci-workflow.mjs'
       - 'scripts/private-ci-journal-cli.mjs'
       - 'tests/private-ci-bridge.test.mjs'
       - 'tests/private-ci-inventory.test.mjs'
       - 'tests/private-ci-execute.test.mjs'
       - 'tests/private-ci-publish-receipt.test.mjs'
       - 'tests/private-ci-diagnose.test.mjs'
-      - 'tests/private-ci-journal.test.mjs'
+      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs'
+      - 'tests/private-ci-workflow.test.mjs'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
       - 'tests/private-controller-preflight-pin.test.mjs'
@@ -196,7 +198,7 @@ jobs:
       WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
       WOLF_CI_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
       WOLF_CI_PR: '743'
-      WOLF_CI_CHECKS: security,lint,typecheck,unit,integration,build,migrations,postgres-concurrency
+      WOLF_CI_CHECKS: security,lint,typecheck,unit,integration,build,migrations,postgres-concurrency,postgres-schema,test,http-load-evidence,ocr-tesseract,ocr-paddle
       WOLF_CI_PRIVATE_ROOT: /tmp/wolf-private
       WOLF_CI_LOG_DIR: /tmp/wolf-ci-logs
       WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json

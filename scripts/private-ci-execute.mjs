@@ -9,11 +9,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {buildWorkflowPlan, parseWorkflowJobs} from './private-ci-workflow.mjs';
 
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 
 export const REQUIRED_CHECKS = Object.freeze(['security', 'lint', 'typecheck', 'unit', 'integration', 'build']);
 export const EXTRA_CHECKS = Object.freeze(['migrations', 'postgres-concurrency']);
+// The six original Wolf workflows that must run with their own commands.
+export const WORKFLOW_CHECKS = Object.freeze({
+  test: {workflow: '.github/workflows/test.yml', database: 'wolf_test'},
+  'postgres-schema': {workflow: '.github/workflows/postgres-schema.yml', database: 'wolf_test', schema: 'full'},
+  'postgres-concurrency': {workflow: '.github/workflows/postgres-concurrency-evidence.yml', database: 'wolf_test', schema: 'full'},
+  'http-load-evidence': {workflow: '.github/workflows/http-load-evidence.yml', database: 'none'},
+  'ocr-tesseract': {workflow: '.github/workflows/ocr-tesseract.yml', database: 'none'},
+  'ocr-paddle': {workflow: '.github/workflows/ocr-paddle.yml', database: 'none'},
+});
 
 export function normalizeSha(value) {
   const sha = String(value ?? '').trim().toLowerCase();
@@ -21,7 +31,7 @@ export function normalizeSha(value) {
   return sha;
 }
 
-export function normalizeChecks(value, allowed = [...REQUIRED_CHECKS, ...EXTRA_CHECKS]) {
+export function normalizeChecks(value, allowed = [...REQUIRED_CHECKS, ...EXTRA_CHECKS, ...Object.keys(WORKFLOW_CHECKS)]) {
   const checks = [...new Set(String(value ?? [...REQUIRED_CHECKS].join(',')).split(',').map(item => item.trim().toLowerCase()).filter(Boolean))];
   if (!checks.length) throw Error('EXECUTOR_CHECKS_REQUIRED');
   for (const check of checks) if (!allowed.includes(check)) throw Error('EXECUTOR_CHECK_DENIED');
@@ -134,10 +144,9 @@ function run(command, args, {cwd, env, timeoutMs, logPath}) {
   };
 }
 
-// The private concurrency workflow assumes a schema that is created outside the
-// workflow (by the Supabase migrations). When the repository ships a
-// conventional bootstrap file we apply it first; otherwise the concurrency
-// evidence remains advisory and reports its true exit codes.
+// The private Postgres workflows assume a schema created by the Supabase
+// migrations. The executor applies those migrations before the workflow runs,
+// so a check failure means the check itself failed - never a missing schema.
 export const BOOTSTRAP_CANDIDATES = Object.freeze([
   'supabase/bootstrap.sql',
   'supabase/schema.sql',
@@ -150,6 +159,138 @@ export const BOOTSTRAP_CANDIDATES = Object.freeze([
 export function findBootstrap(root) {
   for (const candidate of BOOTSTRAP_CANDIDATES) if (exists(root, candidate)) return candidate;
   return null;
+}
+
+// The private repository carries its schema as ordered migrations. Applying
+// them in lexical order is what the schema workflow itself does, so the
+// concurrency and schema checks start from the same database they assume.
+export function listMigrations(root, directory = 'supabase/migrations') {
+  try {
+    return fs.readdirSync(path.join(root, directory))
+      .filter(name => name.endsWith('.sql'))
+      .sort()
+      .map(name => `${directory}/${name}`);
+  } catch {
+    return [];
+  }
+}
+
+export function listVerificationFiles(root, directory = 'supabase/tests') {
+  try {
+    return fs.readdirSync(path.join(root, directory))
+      .filter(name => name.endsWith('.sql'))
+      .sort()
+      .map(name => `${directory}/${name}`);
+  } catch {
+    return [];
+  }
+}
+
+// Steps that establish the schema a workflow assumes. Migrations are ordered
+// and each is applied through psql with ON_ERROR_STOP so a partial schema can
+// never be mistaken for a prepared one.
+export function schemaBootstrapSteps({root, database, useMigrations = true}) {
+  const steps = [];
+  const migrationFiles = useMigrations ? listMigrations(root) : [];
+  if (migrationFiles.length) {
+    const script = [
+      'set -euo pipefail',
+      'applied=0',
+      'failed=0',
+      'while IFS= read -r file; do',
+      '  if psql -v ON_ERROR_STOP=1 -q -f "$file" >/dev/null 2>&1; then',
+      '    applied=$((applied+1))',
+      '  else',
+      '    failed=$((failed+1))',
+      '    echo "MIGRATION_FAILED_PATH_CLASS=$file" >&2',
+      '    psql -v ON_ERROR_STOP=1 -q -f "$file" >&2 || true',
+      '  fi',
+      'done < <(printf "%s\\n" "$@")',
+      'echo "MIGRATIONS_APPLIED=$applied"',
+      'if [ "$failed" -gt 0 ]; then echo "MIGRATIONS_FAILED=$failed"; exit 1; fi',
+    ].join('\n');
+    steps.push({
+      command: 'bash',
+      args: ['-c', script, 'schema-bootstrap', ...migrationFiles],
+      env: {PGDATABASE: database},
+      timeoutMs: 20 * 60 * 1000,
+      required: true,
+      label: 'schema-bootstrap',
+    });
+  } else {
+    const bootstrap = findBootstrap(root);
+    if (bootstrap) {
+      steps.push({command: 'psql', args: ['-v', 'ON_ERROR_STOP=1', '-q', '-f', bootstrap], env: {PGDATABASE: database}, timeoutMs: 10 * 60 * 1000, required: true, label: 'schema-bootstrap'});
+    }
+  }
+  const verification = listVerificationFiles(root);
+  if (verification.length) {
+    steps.push({
+      command: 'bash',
+      args: ['-c', 'set -euo pipefail; for file in "$@"; do echo "SCHEMA_TEST=$file"; psql -v ON_ERROR_STOP=1 -q -f "$file" >/dev/null; done', 'schema-tests', ...verification],
+      env: {PGDATABASE: database},
+      timeoutMs: 20 * 60 * 1000,
+      required: true,
+      label: 'schema-verification-tests',
+    });
+  }
+  return steps;
+}
+
+// A step is runnable when the bridge can reproduce it faithfully inside the
+// executor. Anything else (another checkout, an action with a network install)
+// is recorded as skipped with its reason, never silently treated as passing.
+const RUNNABLE_EXECUTABLES = /^\s*(?:sudo\s+)?(psql|node|npm|npx|bash|sh|python3?|git|echo|test|set|export|for|while|if|cat|printf|mkdir|cp|mv|rm|ls|chmod|sleep|true|false|pg_isready|createdb|dropdb|curl|jq)\b/;
+const SKIPPABLE_PREFIXES = [/^\s*uses:/, /\s*\bset\s*\+e\b/, /^\s*git\s+clone\b/];
+
+export function classifyWorkflowStep(step) {
+  if (step.empty) return {runnable: false, reason: 'STEP_HAS_NO_COMMAND'};
+  if (!step.run) {
+    if (step.uses) return {runnable: false, reason: 'STEP_USES_EXTERNAL_ACTION', uses: step.uses};
+    return {runnable: false, reason: 'STEP_HAS_NO_COMMAND'};
+  }
+  const firstCommandLines = step.run.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+  if (!firstCommandLines.length) return {runnable: false, reason: 'STEP_RUN_EMPTY'};
+  const accepted = firstCommandLines.filter(line => RUNNABLE_EXECUTABLES.test(line));
+  if (!accepted.length) return {runnable: false, reason: 'STEP_NOT_REPRODUCIBLE'};
+  return {runnable: true, reason: null, commandCount: accepted.length};
+}
+
+// Builds executable steps from a workflow's own definition, starting at
+// `fromStep` (a step name) so bootstrap steps are not duplicated.
+export function workflowSteps({root, check, fromStepIndex = 0, database, extraEnv = {}}) {
+  const definition = WORKFLOW_CHECKS[check];
+  if (!definition) throw Error('EXECUTOR_WORKFLOW_CHECK_UNKNOWN');
+  const plan = buildWorkflowPlan(root, definition.workflow);
+  if (plan.state !== 'PLANNED') throw Error('EXECUTOR_WORKFLOW_ABSENT');
+  const all = plan.jobs.flatMap(job => job.steps);
+  if (!all.length) throw Error('EXECUTOR_WORKFLOW_STEPS_EMPTY');
+  const steps = [];
+  for (let index = fromStepIndex; index < all.length; index += 1) {
+    const step = all[index];
+    const verdict = classifyWorkflowStep(step);
+    if (!verdict.runnable) {
+      steps.push({
+        command: 'node',
+        args: ['--input-type=module', '-e', `console.log(${JSON.stringify(JSON.stringify({skippedStep: step.name ?? null, reason: verdict.reason}))})`],
+        env: {},
+        timeoutMs: 60 * 1000,
+        required: true,
+        label: `skip:${step.name ?? verdict.reason}`,
+        skippedReason: verdict.reason,
+      });
+      continue;
+    }
+    steps.push({
+      command: 'bash',
+      args: ['-c', step.run],
+      env: {...(database ? {PGDATABASE: database} : {}), ...extraEnv},
+      timeoutMs: 20 * 60 * 1000,
+      required: true,
+      label: step.name ?? `step-${index}`,
+    });
+  }
+  return steps;
 }
 
 function buildPlan({root, checks, env}) {
@@ -222,38 +363,48 @@ function buildPlan({root, checks, env}) {
           : {...node(['--input-type=module', '-e', "console.error('MIGRATION_RUNNER_MISSING');process.exit(78)"]), required: true, env: schemaEnv},
     ]});
   }
+  // The two Postgres checks run the original Wolf workflows' own commands. Both
+  // assume a populated schema, so the ordered migrations are applied first and
+  // a migration failure fails the check: it is never downgraded to advisory.
   if (checks.includes('postgres-concurrency')) {
-    const concurrencyEnv = {PGDATABASE: schemaDatabase};
-    let workflowSource = null;
-    try { workflowSource = fs.readFileSync(path.join(root, '.github/workflows/postgres-concurrency-evidence.yml'), 'utf8'); } catch { workflowSource = null; }
-    const sequence = workflowSource ? extractPsqlSequence(workflowSource) : [];
-    const bootstrap = findBootstrap(root);
-    const bootstrapSteps = bootstrap ? [{command: 'psql', args: ['-v', 'ON_ERROR_STOP=1', '-f', bootstrap], timeoutMs: 10 * 60 * 1000, required: false, env: concurrencyEnv}] : [];
-    const steps = sequence.length
-      ? [...bootstrapSteps, ...sequence.map(file => ({command: 'psql', args: ['-v', 'ON_ERROR_STOP=1', '-f', file], timeoutMs: 5 * 60 * 1000, required: true, env: concurrencyEnv}))]
-      : [exists(root, 'scripts/measure-postgres-concurrency.mjs')
-        ? {...node(['scripts/measure-postgres-concurrency.mjs']), required: true, env: concurrencyEnv}
-        : {...node(['--input-type=module', '-e', "console.error('CONCURRENCY_RUNNER_MISSING');process.exit(78)"]), required: true, env: concurrencyEnv}];
-    plan.push({name: 'postgres-concurrency', steps});
+    plan.push({name: 'postgres-concurrency', steps: [
+      ...schemaBootstrapSteps({root, database: schemaDatabase}),
+      ...workflowSteps({root, check: 'postgres-concurrency', database: schemaDatabase}),
+    ]});
+  }
+  if (checks.includes('postgres-schema')) {
+    plan.push({name: 'postgres-schema', steps: [
+      ...schemaBootstrapSteps({root, database: schemaDatabase}),
+      ...workflowSteps({root, check: 'postgres-schema', database: schemaDatabase}),
+    ]});
+  }
+  if (checks.includes('test')) {
+    plan.push({name: 'test', steps: workflowSteps({root, check: 'test', database: schemaDatabase})});
+  }
+  if (checks.includes('http-load-evidence')) {
+    plan.push({name: 'http-load-evidence', steps: workflowSteps({root, check: 'http-load-evidence', database: schemaDatabase})});
+  }
+  if (checks.includes('ocr-tesseract')) {
+    plan.push({name: 'ocr-tesseract', steps: workflowSteps({root, check: 'ocr-tesseract', database: null})});
+  }
+  if (checks.includes('ocr-paddle')) {
+    plan.push({name: 'ocr-paddle', steps: workflowSteps({root, check: 'ocr-paddle', database: null})});
   }
   return plan;
 }
 
-export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = {}, runnerTemp = process.env.RUNNER_TEMP, advisoryChecks = EXTRA_CHECKS} = {}) {
+export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = {}, runnerTemp = process.env.RUNNER_TEMP} = {}) {
   const normalizedSha = normalizeSha(sha);
   const normalizedChecks = normalizeChecks(checks);
   const startedAt = new Date().toISOString();
   const results = [];
   let failure = null;
-  // Required checks decide the verdict. Extra checks (migrations,
-  // postgres-concurrency) are advisory: they run and are reported with their
-  // true exit codes, but a failure there never blocks the six required checks.
-  const advisory = new Set(advisoryChecks);
+  // Every requested check is blocking. There is no advisory tier: a check that
+  // runs must be able to fail the run, or the receipt would not mean anything.
   const plan = buildPlan({root, checks: normalizedChecks, env});
   for (const group of plan) {
     const groupStarted = Date.now();
     const steps = [];
-    const groupAdvisory = advisory.has(group.name);
     for (const step of group.steps) {
       const logPath = path.join(logDir, `${group.name}-${steps.length + 1}.log`);
       const result = run(step.command, step.args, {cwd: root, env: {...env, ...(step.env ?? {})}, timeoutMs: step.timeoutMs, logPath});
@@ -269,7 +420,7 @@ export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = 
         status: passed ? 'success' : result.timedOut ? 'timeout' : 'failure',
         ...(result.status === 'success' ? {} : {errorClass: result.errorClass, errorLine: result.errorLine, logTail: redact(result.logTail).slice(0, 4000)}),
       });
-      if (!passed && step.required && !groupAdvisory) failure = `${group.name}:${steps.length}`;
+      if (!passed && step.required) failure = `${group.name}:${steps.length}`;
     }
     results.push({
       name: group.name,
@@ -279,8 +430,6 @@ export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = 
     });
     process.stdout.write(`WOLF_CI_CHECK=${JSON.stringify({name: group.name, status: results.at(-1).status, steps: steps.map(step => ({exitCode: step.exitCode, status: step.status}))})}\n`);
   }
-  // Advisory check failures are recorded explicitly instead of being hidden.
-  for (const result of results) if (advisory.has(result.name) && result.status !== 'success') result.status = 'advisory-failure';
   const receipt = {
     schema: 'wolf.private-ci.receipt/v1',
     state: failure ? 'FAILED' : 'VERIFIED',
@@ -289,8 +438,7 @@ export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = 
     checks: results,
     requiredChecks: normalizedChecks.filter(check => REQUIRED_CHECKS.includes(check)),
     extraChecks: normalizedChecks.filter(check => EXTRA_CHECKS.includes(check)),
-    advisoryChecks: [...advisory],
-    advisoryFailures: results.filter(check => check.status === 'advisory-failure').map(check => check.name),
+    failedChecks: results.filter(check => check.status !== 'success').map(check => check.name),
     startedAt,
     completedAt: new Date().toISOString(),
     failure,
