@@ -430,6 +430,10 @@ jobs:
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-dispatcher-token.env
           WOLF_CI_DISPATCH_FILE: /tmp/wolf-ci-dispatch.json
+          # The probe resolves the target workflow itself; these stay as the
+          # explicit override for a pinned pipeline.
+          WOLF_CI_WORKFLOW_ID: ${{ vars.WOLF_CI_WORKFLOW_ID }}
+          WOLF_CI_WORKFLOW_FILE: ${{ vars.WOLF_CI_WORKFLOW_FILE }}
         run: |
           set -euo pipefail
           : "${WOLF_CI_DISPATCH_FILE:?DISPATCH_FILE_REQUIRED}"

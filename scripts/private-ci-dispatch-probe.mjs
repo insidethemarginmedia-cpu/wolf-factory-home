@@ -35,6 +35,34 @@ const request = async (url, token, init = {}, fetchImpl = globalThis.fetch) => {
   return {ok, httpStatus: response.status, body};
 };
 
+const normalisePath = value => String(value ?? '').replace(/^\.\//, '');
+
+/**
+ * Resolves the target workflow without an operator setting: an explicit id wins,
+ * then an explicit file, then the oldest workflow the token can see, which is
+ * the pinned `private-ci` pipeline rather than the probe that was added later.
+ * A wrong pick is visible in the result, so nothing is hidden by the guess.
+ */
+export async function resolveWorkflow({token, repository, workflowId, workflowFile, fetchImpl = globalThis.fetch} = {}) {
+  if (Number.isInteger(workflowId) && workflowId > 0) {
+    return {workflowId, workflowFile: null, discovered: false};
+  }
+  if (workflowFile) {
+    // GitHub accepts the file name in place of the id, so no lookup is needed.
+    return {workflowId: 0, workflowFile: normalisePath(workflowFile), discovered: false};
+  }
+  const listed = await request(API + '/repos/' + repository + '/actions/workflows?per_page=100', token, {}, fetchImpl);
+  if (!listed.ok || !Array.isArray(listed.body?.workflows)) {
+    return {workflowId: 0, workflowFile: null, discovered: false, reason: 'WORKFLOW_LIST_UNAVAILABLE'};
+  }
+  const candidates = listed.body.workflows
+    .filter(workflow => typeof workflow?.path === 'string' && workflow.path.startsWith('.github/workflows/'))
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id);
+  const chosen = candidates[0];
+  if (!chosen) return {workflowId: 0, workflowFile: null, discovered: false, reason: 'WORKFLOW_LIST_EMPTY'};
+  return {workflowId: chosen.id, workflowFile: null, discovered: true, discoveredName: chosen.name ?? null, discoveredPath: chosen.path};
+}
+
 /**
  * Dispatches the private workflow once and compares the run count before and
  * after. A duplicate is reported, never retried: re-dispatching to "make sure"
@@ -44,6 +72,7 @@ export async function probeDispatch({
   token,
   repository,
   workflowId,
+  workflowFile,
   ref = 'main',
   sha,
   pr = '743',
@@ -58,15 +87,23 @@ export async function probeDispatch({
     credentialSource: token ? (token.source ?? null) : null,
     repository: repository ?? null,
     workflowId: workflowId ?? null,
+    workflowFile: workflowFile ? normalisePath(workflowFile) : null,
     duplicateSuppressed: false,
     runsBefore: null,
     runsAfter: null,
   };
   if (!token || !token.value) return {...result, reason: 'DISPATCH_CREDENTIAL_REQUIRED'};
   if (!repository) return {...result, reason: 'REPOSITORY_REQUIRED'};
-  if (!Number.isInteger(workflowId) || workflowId <= 0) return {...result, reason: 'WORKFLOW_ID_REQUIRED'};
 
-  const base = API + '/repos/' + repository + '/actions/workflows/' + workflowId;
+  const resolved = await resolveWorkflow({token: token.value, repository, workflowId, workflowFile, fetchImpl});
+  if (resolved.reason) return {...result, state: DISPATCH_PROBE_STATES.BLOCKED, reason: resolved.reason};
+  const target = resolved.workflowFile ?? resolved.workflowId;
+  result.workflowId = resolved.workflowId || null;
+  result.workflowFile = resolved.workflowFile;
+  result.workflowDiscovered = resolved.discovered === true;
+  if (resolved.discoveredName) result.discoveredWorkflow = {name: resolved.discoveredName, path: resolved.discoveredPath};
+
+  const base = API + '/repos/' + repository + '/actions/workflows/' + target;
   const listed = await request(base, token.value, {}, fetchImpl);
   result.workflowReadable = {ok: listed.ok, httpStatus: listed.httpStatus};
   if (!listed.ok) return {...result, state: DISPATCH_PROBE_STATES.BLOCKED, reason: 'WORKFLOW_NOT_READABLE'};
@@ -117,6 +154,7 @@ export async function dispatchProbeCli(argv = [], env = process.env, {
     token,
     repository: env.WOLF_CI_REPOSITORY,
     workflowId: Number(env.WOLF_CI_WORKFLOW_ID) || 0,
+    workflowFile: env.WOLF_CI_WORKFLOW_FILE,
     ref: env.WOLF_CI_REF || 'main',
     sha: env.WOLF_CI_SHA,
     pr: env.WOLF_CI_PR || '743',

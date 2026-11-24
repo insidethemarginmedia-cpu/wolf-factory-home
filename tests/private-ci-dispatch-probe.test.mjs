@@ -48,13 +48,45 @@ test('a 403 on dispatch is a blocked capability, not a crash', async () => {
   assert.equal(result.reason, 'ACTIONS_WRITE_REQUIRED');
 });
 
-test('the probe never dispatches without a credential or a workflow id', async () => {
+test('the probe never dispatches without a credential', async () => {
   const {calls, fetchImpl} = harness();
   const noToken = await probeDispatch({repository: 'r/r', workflowId: 1, fetchImpl});
   assert.equal(noToken.reason, 'DISPATCH_CREDENTIAL_REQUIRED');
-  const noId = await probeDispatch({token: {value: 't', source: 'app'}, repository: 'r/r', fetchImpl});
-  assert.equal(noId.reason, 'WORKFLOW_ID_REQUIRED');
-  assert.equal(calls.length, 0, 'no request may be made while the inputs are incomplete');
+  assert.equal(calls.length, 0, 'no request may be made without a credential');
+});
+
+test('the workflow is discovered without an operator setting, deterministically', async () => {
+  const listed = {workflows: [
+    {id: 22, name: 'later', path: '.github/workflows/probe.yml', created_at: '2026-02-01T00:00:00Z'},
+    {id: 11, name: 'private-ci', path: '.github/workflows/private-ci.yml', created_at: '2026-01-01T00:00:00Z'},
+    {id: 9, name: 'not-a-workflow', path: 'docs/notes.md', created_at: '2025-01-01T00:00:00Z'},
+  ]};
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({url, method: init.method ?? 'GET'});
+    if (url.includes('/actions/workflows?')) return ok(listed);
+    if (url.includes('/dispatches')) return {ok: true, status: 204, json: async () => ({})};
+    if (url.includes('/runs?per_page=1')) return ok({total_count: 4});
+    return ok({id: 11});
+  };
+  const result = await probeDispatch({token: {value: 't', source: 'app'}, repository: 'r/r', sha: 'a'.repeat(40), settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.workflowDiscovered, true);
+  assert.equal(result.workflowId, 11, 'the oldest workflow wins, and a non-workflow path is ignored');
+  assert.equal(result.discoveredWorkflow.path, '.github/workflows/private-ci.yml');
+  assert.ok(calls.some(c => c.url.includes('/workflows/11/dispatches')), 'the discovered id is what gets dispatched');
+});
+
+test('an explicit workflow file is used as given, with no lookup', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push(url);
+    if (url.includes('/dispatches')) return {ok: true, status: 204, json: async () => ({})};
+    return ok({total_count: 1});
+  };
+  const result = await probeDispatch({token: {value: 't', source: 'app'}, repository: 'r/r', workflowFile: './.github/workflows/private-ci.yml', sha: 'a'.repeat(40), settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.workflowFile, '.github/workflows/private-ci.yml');
+  assert.ok(calls.some(u => u.includes('/workflows/.github/workflows/private-ci.yml/dispatches')));
+  assert.equal(calls.some(u => u.includes('?per_page=100')), false, 'no discovery request when the file is known');
 });
 
 test('the CLI writes the outcome and exits 78 only for a blocked capability', async () => {
