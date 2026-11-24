@@ -202,6 +202,51 @@ export function describeSqlTree(root) {
   return Object.fromEntries(Object.entries(summary).sort(([a], [b]) => a.localeCompare(b)).slice(0, 40));
 }
 
+// Files are summarized by directory and first-token shape only. This answers
+// "does the schema live in migrations or in test fixtures?" without exposing SQL.
+export function summarizeSqlDirectory(root, directory) {
+  const base = path.join(root, directory);
+  let names;
+  try { names = fs.readdirSync(base).filter(name => name.endsWith('.sql')).sort(); } catch { return null; }
+  const creaters = [];
+  const inserts = [];
+  for (const name of names) {
+    let text;
+    try { text = fs.readFileSync(path.join(base, name), 'utf8'); } catch { continue; }
+    if (/create\s+(?:or\s+replace\s+)?(?:table|schema|role|type|function|extension)/i.test(text)) creaters.push(name);
+    if (/insert\s+into|copy\s+/i.test(text)) inserts.push(name);
+  }
+  return {count: names.length, sample: names.slice(0, 6), createsSchema: creaters.length, insertFiles: inserts.length};
+}
+
+// psql flags used per script, so the invocation the repository expects can be
+// reproduced exactly (e.g. -1 signleton transaction, or single-transaction).
+export function summarizePsqlInvocations(root) {
+  const result = {};
+  const walk = (directory, depth) => {
+    if (depth > 2) return;
+    let entries;
+    try { entries = fs.readdirSync(path.join(root, directory), {withFileTypes: true}); } catch { return; }
+    for (const entry of entries) {
+      if (['node_modules', '.git'].includes(entry.name)) continue;
+      const relative = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) { walk(relative, depth + 1); continue; }
+      if (!/\.(sh|mjs|js)$/.test(entry.name)) continue;
+      let text;
+      try { text = fs.readFileSync(path.join(root, relative), 'utf8'); } catch { continue; }
+      for (const match of text.matchAll(/psql\s+((?:-[A-Za-z]+\s+\S+\s+)*)-f\s+(\S+)/g)) {
+        const flags = (match[1].match(/-[A-Za-z]+/g) ?? []).sort().join(' ');
+        const target = match[2];
+        const key = target.includes('migrations') ? 'migrations' : target.includes('tests') ? 'tests' : 'other';
+        result[key] = result[key] ?? new Set();
+        result[key].add(flags || '(none)');
+      }
+    }
+  };
+  for (const base of ['scripts', 'supabase']) walk(base, 0);
+  return Object.fromEntries(Object.entries(result).map(([key, value]) => [key, [...value].sort()]));
+}
+
 export function diagnosePrivateCi({root} = {}) {
   if (!root || !fs.existsSync(root)) throw Error('DIAGNOSTIC_ROOT_REQUIRED');
   const read = relative => {
@@ -242,6 +287,9 @@ export function diagnosePrivateCi({root} = {}) {
       return summary;
     })(),
     sqlTree: describeSqlTree(root),
+    migrationsDir: summarizeSqlDirectory(root, 'supabase/migrations'),
+    testsDir: summarizeSqlDirectory(root, 'supabase/tests'),
+    psqlInvocations: summarizePsqlInvocations(root),
     sourcePublished: false,
     logsPublished: false,
     inferencePerformed: false,
