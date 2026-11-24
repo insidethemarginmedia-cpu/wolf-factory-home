@@ -133,8 +133,10 @@ test('migrations are applied in lexical order before a workflow runs', async () 
   // Platform provisioning, ordered migrations, then the repository's own tests.
   assert.equal(steps.length, 3);
   assert.equal(steps[0].label, 'platform-provisioning');
-  assert.match(steps[0].args[1], /create role authenticated/);
+  // Migrations create the roles themselves, so only schemas are supplied here.
+  assert.doesNotMatch(steps[0].args[1], /create role authenticated nologin/, 'the migrations own the roles');
   assert.match(steps[0].args[1], /create schema if not exists auth/);
+  assert.match(steps[0].args[1], /create schema if not exists public/);
   assert.equal(steps[1].label, 'schema-bootstrap');
   assert.equal(steps[1].env.PGDATABASE, 'wolf_test');
   assert.deepEqual(steps[1].args.slice(3), ['supabase/migrations/001-a.sql', 'supabase/migrations/002-b.sql', 'supabase/migrations/003-c.sql']);

@@ -219,12 +219,17 @@ export const PLATFORM_EXTENSIONS = Object.freeze(['pgcrypto', 'uuid-ossp', 'pg_t
 // Every statement is executed through psql. Emitting raw SQL into a bash script
 // makes bash parse `do`/`create` as commands, which fails with a syntax error
 // before the database is ever touched.
-export function platformProvisionScript() {
+export function platformProvisionScript({roles = true} = {}) {
   const statements = [];
-  for (const name of ['anon', 'authenticated', 'service_role', 'supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin']) {
-    statements.push(`do \$\$ begin if not exists (select 1 from pg_roles where rolname='${name}') then create role ${name} nologin; end if; end \$\$`);
+  // The migrations create the Supabase roles themselves with a guarded DO
+  // block, so when they run we only supply the schemas they expect. When they
+  // are not run (workflow-owned fixtures) the roles must be supplied.
+  if (roles) {
+    for (const name of ['anon', 'authenticated', 'service_role', 'supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin']) {
+      statements.push(`do \$\$ begin if not exists (select 1 from pg_roles where rolname='${name}') then create role ${name} nologin; end if; end \$\$`);
+    }
   }
-  for (const name of ['auth', 'storage', 'extensions', 'realtime', 'vault']) statements.push(`create schema if not exists ${name}`);
+  for (const name of ['auth', 'storage', 'extensions', 'realtime', 'vault', 'public']) statements.push(`create schema if not exists ${name}`);
   const lines = ['set -uo pipefail', 'failed=0'];
   lines.push('apply() {');
   lines.push('  if psql -v ON_ERROR_STOP=1 -q -c "$1" >/dev/null 2>&1; then return 0; fi');
@@ -256,7 +261,7 @@ export function platformProvisioningSteps({root, database}) {
   }];
 }
 
-export function schemaBootstrapSteps({root, database, useMigrations = true, platform = true}) {
+export function schemaBootstrapSteps({root, database, useMigrations = true, platform = true, platformRoles = false}) {
   const steps = [];
   const migrationFiles = useMigrations ? listMigrations(root) : [];
   // Provision the platform surface first so migration failures are real
@@ -266,7 +271,7 @@ export function schemaBootstrapSteps({root, database, useMigrations = true, plat
   if (migrationFiles.length && platform) {
     steps.push({
       command: 'bash',
-      args: ['-c', platformProvisionScript()],
+      args: ['-c', platformProvisionScript({roles: platformRoles})],
       env: {PGDATABASE: database},
       timeoutMs: 5 * 60 * 1000,
       required: true,
@@ -464,15 +469,17 @@ function buildPlan({root, checks, env}) {
   // authenticated`. The schema still has to exist first (their verify scripts
   // read public tables), so the ordered migrations run; the platform roles are
   // left for the workflow to create so its own statements do not collide.
+  // The concurrency workflow builds its own canonical fixture end to end,
+  // including the roles and the tables it then measures. Any bootstrap would
+  // change what it is measuring, so it runs exactly as written.
   if (checks.includes('postgres-concurrency')) {
-    plan.push({name: 'postgres-concurrency', steps: [
-      ...schemaBootstrapSteps({root, database: isolatedDatabase('postgres-concurrency'), platform: false}),
-      ...workflowSteps({root, check: 'postgres-concurrency', database: isolatedDatabase('postgres-concurrency')}),
-    ]});
+    plan.push({name: 'postgres-concurrency', steps: workflowSteps({root, check: 'postgres-concurrency', database: isolatedDatabase('postgres-concurrency')})});
   }
+  // The schema workflow verifies the schema the migrations produce, so the
+  // migrations are applied first with only the platform schemas supplied.
   if (checks.includes('postgres-schema')) {
     plan.push({name: 'postgres-schema', steps: [
-      ...schemaBootstrapSteps({root, database: isolatedDatabase('postgres-schema'), platform: false}),
+      ...schemaBootstrapSteps({root, database: isolatedDatabase('postgres-schema'), platform: true, platformRoles: false}),
       ...workflowSteps({root, check: 'postgres-schema', database: isolatedDatabase('postgres-schema')}),
     ]});
   }
