@@ -16,13 +16,17 @@ const SHA_PATTERN = /^[a-f0-9]{40}$/;
 export const REQUIRED_CHECKS = Object.freeze(['security', 'lint', 'typecheck', 'unit', 'integration', 'build']);
 export const EXTRA_CHECKS = Object.freeze(['migrations', 'postgres-concurrency']);
 // The six original Wolf workflows that must run with their own commands.
+// `port` selects the Postgres cluster for the check. Roles are cluster-scoped
+// in PostgreSQL, so two workflows that both create `authenticated` cannot share
+// one cluster without colliding - exactly as they do not share a runner in the
+// private repository, where each workflow declares its own service container.
 export const WORKFLOW_CHECKS = Object.freeze({
-  test: {workflow: '.github/workflows/test.yml', database: 'wolf_test'},
-  'postgres-schema': {workflow: '.github/workflows/postgres-schema.yml', database: 'wolf_test', schema: 'full'},
-  'postgres-concurrency': {workflow: '.github/workflows/postgres-concurrency-evidence.yml', database: 'wolf_test', schema: 'full'},
-  'http-load-evidence': {workflow: '.github/workflows/http-load-evidence.yml', database: 'none'},
-  'ocr-tesseract': {workflow: '.github/workflows/ocr-tesseract.yml', database: 'none'},
-  'ocr-paddle': {workflow: '.github/workflows/ocr-paddle.yml', database: 'none'},
+  test: {workflow: '.github/workflows/test.yml', database: 'wolf_test', port: 5432},
+  'postgres-schema': {workflow: '.github/workflows/postgres-schema.yml', database: 'wolf_test', port: 5433},
+  'postgres-concurrency': {workflow: '.github/workflows/postgres-concurrency-evidence.yml', database: 'wolf_test', port: 5434},
+  'http-load-evidence': {workflow: '.github/workflows/http-load-evidence.yml', database: 'wolf_test', port: 5432},
+  'ocr-tesseract': {workflow: '.github/workflows/ocr-tesseract.yml', database: null, port: null},
+  'ocr-paddle': {workflow: '.github/workflows/ocr-paddle.yml', database: null, port: null},
 });
 
 export function normalizeSha(value) {
@@ -349,6 +353,11 @@ export function classifyWorkflowStep(step) {
 export function workflowSteps({root, check, fromStepIndex = 0, database, extraEnv = {}}) {
   const definition = WORKFLOW_CHECKS[check];
   if (!definition) throw Error('EXECUTOR_WORKFLOW_CHECK_UNKNOWN');
+  const targetDatabase = database === undefined ? definition.database : database;
+  const clusterEnv = {
+    ...(targetDatabase ? {PGDATABASE: targetDatabase} : {}),
+    ...(definition.port ? {PGPORT: String(definition.port)} : {}),
+  };
   const plan = buildWorkflowPlan(root, definition.workflow);
   if (plan.state !== 'PLANNED') throw Error('EXECUTOR_WORKFLOW_ABSENT');
   const all = plan.jobs.flatMap(job => job.steps);
@@ -372,7 +381,7 @@ export function workflowSteps({root, check, fromStepIndex = 0, database, extraEn
     steps.push({
       command: 'bash',
       args: ['-c', step.run],
-      env: {...(database ? {PGDATABASE: database} : {}), ...extraEnv},
+      env: {...clusterEnv, ...extraEnv},
       timeoutMs: 20 * 60 * 1000,
       required: true,
       label: step.name ?? `step-${index}`,

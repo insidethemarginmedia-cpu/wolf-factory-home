@@ -286,3 +286,15 @@ test('schema workflows apply migrations but leave their own roles to the workflo
   assert.equal(withoutPlatform[0].label, 'schema-bootstrap');
   fs.rmSync(root, {recursive: true, force: true});
 });
+
+test('each workflow check is pointed at its own Postgres cluster', async () => {
+  const {WORKFLOW_CHECKS} = await import('../scripts/private-ci-execute.mjs');
+  // Only the workflows that create Supabase roles need their own cluster; the
+  // ones that merely read must not be given a different one by accident.
+  const roleCreating = Object.entries(WORKFLOW_CHECKS).filter(([, definition]) => definition.workflow.includes('postgres'));
+  const ports = roleCreating.map(([, definition]) => definition.port);
+  assert.equal(new Set(ports).size, ports.length, 'roles are cluster-scoped: no two workflows may share a cluster');
+  assert.equal(WORKFLOW_CHECKS['postgres-schema'].port, 5433);
+  assert.equal(WORKFLOW_CHECKS['postgres-concurrency'].port, 5434);
+  assert.ok(ports.every(port => Number.isInteger(port)), 'every postgres workflow declares a cluster');
+});

@@ -181,6 +181,9 @@ jobs:
       contents: write
       checks: write
     services:
+      # Roles are cluster-scoped in PostgreSQL, so each workflow that creates
+      # `authenticated` needs its own cluster - mirroring the private
+      # repository, where each workflow declares its own service container.
       postgres:
         image: postgres:17
         env:
@@ -189,6 +192,32 @@ jobs:
           POSTGRES_DB: wolf_test
         ports:
           - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wolf_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      postgres-schema:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dbos
+          POSTGRES_DB: wolf_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wolf_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      postgres-concurrency:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dbos
+          POSTGRES_DB: wolf_test
+        ports:
+          - 5434:5432
         options: >-
           --health-cmd "pg_isready -U postgres -d wolf_test"
           --health-interval 5s
@@ -238,15 +267,17 @@ jobs:
           if ! psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc "select 1 from pg_database where datname='wolf_factory_dbos'" | grep -q 1; then
             psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -c 'CREATE DATABASE wolf_factory_dbos'
           fi
-          # Each workflow check runs in its own database: they create roles and
-          # fixtures with identical names and would otherwise interfere.
-          for name in wolf_test_test wolf_test_http_load_evidence wolf_test_postgres_schema wolf_test_postgres_concurrency; do
-            if ! psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc "select 1 from pg_database where datname='$name'" | grep -q 1; then
-              psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -c "CREATE DATABASE \"$name\""
-            fi
-            test "$(psql -h 127.0.0.1 -p 5432 -U postgres -d "$name" -tAc 'select 1')" = '1'
+          # Roles are cluster-scoped, so each role-creating workflow gets its
+          # own cluster (5432/5433/5434). Every cluster gets the same databases:
+          # the workflows are not told which cluster they are on.
+          for port in 5432 5433 5434; do
+            for name in wolf_test wolf_test_test wolf_test_http_load_evidence wolf_test_postgres_schema wolf_test_postgres_concurrency; do
+              if ! psql -h 127.0.0.1 -p "$port" -U postgres -d wolf_test -tAc "select 1 from pg_database where datname='$name'" | grep -q 1; then
+                psql -h 127.0.0.1 -p "$port" -U postgres -d wolf_test -c "CREATE DATABASE \"$name\""
+              fi
+              test "$(psql -h 127.0.0.1 -p "$port" -U postgres -d "$name" -tAc 'select 1')" = '1'
+            done
           done
-          test "$(psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc 'select 1')" = '1'
           echo PRIVATE_POSTGRES_DATABASES_READY=YES
       - name: Verify the public bridge and executor contracts
         shell: bash
