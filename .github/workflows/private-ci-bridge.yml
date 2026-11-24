@@ -311,70 +311,12 @@ jobs:
         with:
           node-version: '22'
       - name: Set up the Python runtime the OCR workflows require
-        shell: bash
-        run: |
-          set -euo pipefail
-          # paddlepaddle publishes cp39-cp313 wheels only. When the runner image
-          # default falls outside that window, pip reports "from versions: none"
-          # for a pinned version rather than naming the interpreter, so the OCR
-          # workflow's own `pip install` step fails for a reason that has nothing
-          # to do with the repository.
-          #
-          # No private data is printed here: interpreter versions and pip's
-          # configured index host only.
-          echo "RUNNER_DEFAULT_PYTHON=$(python3 --version 2>&1 || echo absent)"
-          for candidate in python3.13 python3.12 python3.11 python3.10 python3.9; do
-            if command -v "$candidate" >/dev/null 2>&1; then echo "AVAILABLE_INTERPRETER=$candidate:$($candidate --version 2>&1)"; fi
-          done
-          if [ -n "${PIP_INDEX_URL:-}" ]; then echo "PIP_INDEX_CONFIGURED=yes"; else echo "PIP_INDEX_CONFIGURED=no"; fi
-
-          supported() { "$1" -c 'import sys; raise SystemExit(0 if (3,9) <= sys.version_info[:2] <= (3,13) else 1)' >/dev/null 2>&1; }
-
-          chosen=""
-          if supported python3; then
-            chosen=python3
-          else
-            for candidate in python3.13 python3.12 python3.11 python3.10 python3.9; do
-              if command -v "$candidate" >/dev/null 2>&1 && supported "$candidate"; then chosen="$candidate"; break; fi
-            done
-          fi
-
-          if [ -z "$chosen" ] && command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -qq >/dev/null 2>&1 || true
-            sudo apt-get install -y -qq python3.11 python3.11-venv >/dev/null 2>&1 || true
-            if command -v python3.11 >/dev/null 2>&1 && supported python3.11; then chosen=python3.11; fi
-          fi
-
-          if [ -z "$chosen" ]; then
-            echo "OCR_PYTHON_SELECTION=UNAVAILABLE" >&2
-            exit 78
-          fi
-
-          # Prefer an isolated venv so the OCR dependencies never touch the
-          # runner's system Python. `python3 -m venv` needs the venv package,
-          # which minimal images omit; installing it needs root. If no venv can
-          # be created the supported interpreter is used directly, and `pip`
-          # is pinned to it with `--python` so later steps agree.
-          venv_ok=no
-          rm -rf /tmp/wolf-ocr-venv
-          if "$chosen" -m venv /tmp/wolf-ocr-venv >/dev/null 2>&1; then
-            venv_ok=yes
-          elif command -v apt-get >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-            if sudo apt-get install -y -qq python3-venv >/dev/null 2>&1 && "$chosen" -m venv /tmp/wolf-ocr-venv >/dev/null 2>&1; then
-              venv_ok=yes
-            fi
-          fi
-          # Publishing to GITHUB_PATH is best effort: if the runner has not
-          # provided it, the selected interpreter is used directly instead.
-          if [ "$venv_ok" = yes ] && [ -n "${GITHUB_PATH:-}" ]; then
-            echo "/tmp/wolf-ocr-venv/bin" >> "$GITHUB_PATH" || venv_ok=no
-          fi
-          if [ "$venv_ok" = yes ]; then export PATH="/tmp/wolf-ocr-venv/bin:$PATH"; fi
-          echo "OCR_PYTHON_SELECTION=$chosen"
-          echo "OCR_VENV_CREATED=$venv_ok"
-          "$chosen" -m pip --version >/dev/null 2>&1 || "$chosen" -m ensurepip --upgrade >/dev/null 2>&1 || echo "PIP_BOOTSTRAP_REQUIRED=yes"
-          "$chosen" -c 'import sys; print("OCR_PYTHON_VERSION=" + ".".join(map(str, sys.version_info[:3])))'
-          "$chosen" -m pip --version 2>&1 | sed 's/ from .*//' || true
+        # paddlepaddle publishes cp39-cp313 wheels; a runner default outside that
+        # window surfaces as "from versions: none" for a pinned version. The
+        # action is pinned to a commit, matching the other actions here.
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.11'
       - name: Install private lockfile dependencies without lifecycle scripts
         shell: bash
         run: |
