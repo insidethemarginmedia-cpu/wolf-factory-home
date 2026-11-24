@@ -13,7 +13,7 @@ jobs:
     if: github.event.repository.private == false && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.actor == 'insidethemarginmedia-cpu'
     permissions:
       contents: write
-    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@d09f2c22e07580154415bc510e5e939980ed23df
+    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-controller-preflight.yml@20f1872da5f8e32cb4b5285fb28e591a8652a586
     with:
       night_shift: true
     secrets:

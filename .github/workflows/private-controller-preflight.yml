@@ -62,6 +62,30 @@ on:
         description: Run a bounded free inference qualification
         type: boolean
         default: false
+      probe_private_ci:
+        description: Read-only probe of the private CI surface for one immutable PR head SHA
+        type: boolean
+        default: false
+      execute_private_ci:
+        description: Execute the six required CI checks for one immutable private PR head SHA
+        type: boolean
+        default: false
+      private_ci_repository:
+        description: Allowlisted private repository hosting the Wolf commit
+        type: string
+        default: donraposo1-source/project-wolf
+      private_ci_sha:
+        description: Immutable private commit SHA to probe or execute
+        type: string
+        default: ''
+      private_ci_pr:
+        description: Private pull request number bound to the SHA
+        type: string
+        default: ''
+      private_ci_checks:
+        description: Comma-separated required CI check names
+        type: string
+        default: security,lint,typecheck,unit,integration,build
   push:
     branches: [feat/public-runtime-probe-20261022]
     paths:
@@ -1206,3 +1230,37 @@ jobs:
         set -euo pipefail
         npm test
         npm run build
+
+  private-ci-probe:
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.probe_private_ci == true && github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.actor == 'insidethemarginmedia-cpu' || github.actor == 'donraposo1-source')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Verify the public bridge contract before reading private metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/private-ci-bridge.test.mjs
+          echo PUBLIC_BRIDGE_CONTRACT=PASS
+      - name: Probe private CI metadata without fetching source
+        env:
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_REPOSITORY: ${{ inputs.private_ci_repository }}
+          WOLF_CI_SHA: ${{ inputs.private_ci_sha }}
+          WOLF_CI_PR: ${{ inputs.private_ci_pr }}
+          WOLF_CI_PROBE_OUTPUT: ${{ runner.temp }}/wolf-ci-probe.json
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-bridge.mjs probe
