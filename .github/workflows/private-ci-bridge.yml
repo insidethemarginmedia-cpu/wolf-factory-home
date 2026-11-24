@@ -314,17 +314,50 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # paddlepaddle publishes cp39-cp313 wheels; the runner image default
-          # may be outside that window, which reads as "no matching
-          # distribution". Pin a supported interpreter for the OCR checks.
-          if ! python3 -c 'import sys; sys.exit(0 if (3,9) <= sys.version_info[:2] <= (3,13) else 1)'; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -qq >/dev/null 2>&1 || true
-              sudo apt-get install -y -qq python3.11 python3.11-venv >/dev/null 2>&1 || true
-            fi
+          # paddlepaddle publishes cp39-cp313 wheels only. When the runner image
+          # default falls outside that window, pip reports "from versions: none"
+          # for a pinned version rather than naming the interpreter, so the OCR
+          # workflow's own `pip install` step fails for a reason that has nothing
+          # to do with the repository.
+          #
+          # No private data is printed here: interpreter versions and pip's
+          # configured index host only.
+          echo "RUNNER_DEFAULT_PYTHON=$(python3 --version 2>&1 || echo absent)"
+          for candidate in python3.13 python3.12 python3.11 python3.10 python3.9; do
+            if command -v "$candidate" >/dev/null 2>&1; then echo "AVAILABLE_INTERPRETER=$candidate:$($candidate --version 2>&1)"; fi
+          done
+          echo "PIP_INDEX_CONFIGURED=$([ -n "${PIP_INDEX_URL:-}" ] && echo yes || echo no)"
+
+          supported() { "$1" -c 'import sys; raise SystemExit(0 if (3,9) <= sys.version_info[:2] <= (3,13) else 1)' >/dev/null 2>&1; }
+
+          chosen=""
+          if supported python3; then
+            chosen=python3
+          else
+            for candidate in python3.13 python3.12 python3.11 python3.10 python3.9; do
+              if command -v "$candidate" >/dev/null 2>&1 && supported "$candidate"; then chosen="$candidate"; break; fi
+            done
           fi
-          python3 --version
-          python3 -c 'import sys; print("PYTHON_SUPPORTED=%s" % str((3,9) <= sys.version_info[:2] <= (3,13)).lower())'
+
+          if [ -z "$chosen" ] && command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq >/dev/null 2>&1 || true
+            sudo apt-get install -y -qq python3.11 python3.11-venv >/dev/null 2>&1 || true
+            if command -v python3.11 >/dev/null 2>&1 && supported python3.11; then chosen=python3.11; fi
+          fi
+
+          if [ -z "$chosen" ]; then
+            echo "OCR_PYTHON_SELECTION=UNAVAILABLE" >&2
+            exit 78
+          fi
+
+          # A venv keeps the OCR dependencies out of the runner's system Python
+          # and makes `python3`/`pip` resolve to a supported interpreter for
+          # every later step, including the workflow's own install commands.
+          rm -rf /tmp/wolf-ocr-venv
+          "$chosen" -m venv /tmp/wolf-ocr-venv
+          echo "/tmp/wolf-ocr-venv/bin" >> "$GITHUB_PATH"
+          echo "OCR_PYTHON_SELECTION=$chosen"
+          /tmp/wolf-ocr-venv/bin/python3 -c 'import sys; print("OCR_VENV_PYTHON=" + ".".join(map(str, sys.version_info[:3])))'
       - name: Install private lockfile dependencies without lifecycle scripts
         shell: bash
         run: |

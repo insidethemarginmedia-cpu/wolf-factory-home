@@ -326,3 +326,23 @@ test('the platform DDL reaches psql byte-for-byte, without shell expansion', asy
   assert.ok(body.split('\n').length > 20, 'the DDL must be real multi-line SQL');
   fs.rmSync(dir, {recursive: true, force: true});
 });
+
+test('python diagnostics identify the interpreter and never leak commands', async () => {
+  const {extractPythonDiagnostics} = await import('../scripts/private-ci-execute.mjs');
+  const error = [
+    'ERROR: Ignored the following versions that require a different python version: 3.2.0 Requires-Python >=3.9.1',
+    'ERROR: Could not find a version that satisfies the requirement paddlepaddle==3.2.0 (from versions: none)',
+    'ERROR: No matching distribution found for paddlepaddle==3.2.0',
+  ].join('\n');
+  const result = extractPythonDiagnostics(error);
+  assert.equal(result.versionsAvailable, 'none');
+  assert.match(result.requiresPython, /3\.9\.1/);
+
+  const withInterpreter = extractPythonDiagnostics('pip install --python-version 3.14 x\n  paddlepaddle-3.2.0-cp311-cp311-manylinux1_x86_64.whl');
+  assert.equal(withInterpreter.searchedInterpreter, '3.14');
+  assert.match(withInterpreter.platformTag, /cp311/);
+
+  const network = extractPythonDiagnostics('SSLError: CERTIFICATE_VERIFY_FAILED for https://pypi.org/secret-path');
+  assert.ok(network.networkError);
+  assert.equal(JSON.stringify(network).includes('secret-path'), false);
+});

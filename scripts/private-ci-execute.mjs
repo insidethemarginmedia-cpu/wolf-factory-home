@@ -91,18 +91,29 @@ function listSourceFiles(root) {
   return result.sort();
 }
 
-// The Python "no matching distribution" error states the interpreter tags it
-// searched. Capturing that list is what distinguishes an unsupported runtime
-// from a missing package, and it contains no private data.
+// The Python "no matching distribution" error states which interpreter tags it
+// searched and how the interpreter was invoked. Capturing that is what
+// distinguishes an unsupported runtime from a missing package, and the package
+// metadata is public. Only the tag list and version are kept - never paths or
+// the surrounding command.
 export function extractPythonDiagnostics(text) {
   const value = String(text ?? '');
-  const tags = value.match(/from versions:([^)\n]*)/)?.[1]?.trim() ?? null;
+  const searched = value.match(/from versions:([^)\n]*)/)?.[1]?.trim() ?? null;
   const requires = value.match(/Requires-Python ([^\n]+)/)?.[1]?.trim() ?? null;
   const pythonVersion = value.match(/Python (\d+\.\d+(?:\.\d+)?)/)?.[1] ?? null;
+  const oneline = value.match(/--python-version (\d+\.\d+(?:\.\d+)?)/)?.[1] ?? null;
+  const implementation = value.match(/(cp|py)(\d{2,3})-(?:cp|py)\d{2,3}[a-z]*-(\w+)/)?.[0] ?? null;
+  const pipIndex = value.match(/Looking in indexes: ([^\n]+)/)?.[1]?.replace(/https?:\/\/[^\s]+/g, '[REDACTED_URL]') ?? null;
+  const sslOrNetwork = /CERTIFICATE_VERIFY_FAILED|SSLError|Connection|Temporary failure|ProxyError|Read timed out/i.test(value)
+    ? (value.match(/CERTIFICATE_VERIFY_FAILED|SSLError|Temporary failure[^\n]*|ProxyError[^\n]*|Read timed out/i)?.[0] ?? 'NETWORK') : null;
   return {
-    versionsAvailable: tags === null ? null : tags.replace(/\s+/g, ' ').slice(0, 200),
+    versionsAvailable: searched === null ? null : searched.replace(/\s+/g, ' ').slice(0, 200),
     requiresPython: requires,
     pythonVersion,
+    searchedInterpreter: oneline,
+    platformTag: implementation,
+    index: pipIndex,
+    networkError: sslOrNetwork,
   };
 }
 
