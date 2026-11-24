@@ -350,14 +350,29 @@ jobs:
             exit 78
           fi
 
-          # A venv keeps the OCR dependencies out of the runner's system Python
-          # and makes `python3`/`pip` resolve to a supported interpreter for
-          # every later step, including the workflow's own install commands.
+          # Prefer an isolated venv so the OCR dependencies never touch the
+          # runner's system Python. `python3 -m venv` needs the venv package,
+          # which minimal images omit; installing it needs root. If no venv can
+          # be created the supported interpreter is used directly, and `pip`
+          # is pinned to it with `--python` so later steps agree.
+          venv_ok=no
           rm -rf /tmp/wolf-ocr-venv
-          "$chosen" -m venv /tmp/wolf-ocr-venv
-          echo "/tmp/wolf-ocr-venv/bin" >> "$GITHUB_PATH"
+          if "$chosen" -m venv /tmp/wolf-ocr-venv >/dev/null 2>&1; then
+            venv_ok=yes
+            echo "/tmp/wolf-ocr-venv/bin" >> "$GITHUB_PATH"
+            PATH="/tmp/wolf-ocr-venv/bin:$PATH"
+          elif command -v apt-get >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            if sudo apt-get install -y -qq python3-venv >/dev/null 2>&1 && "$chosen" -m venv /tmp/wolf-ocr-venv >/dev/null 2>&1; then
+              venv_ok=yes
+              echo "/tmp/wolf-ocr-venv/bin" >> "$GITHUB_PATH"
+              PATH="/tmp/wolf-ocr-venv/bin:$PATH"
+            fi
+          fi
           echo "OCR_PYTHON_SELECTION=$chosen"
-          /tmp/wolf-ocr-venv/bin/python3 -c 'import sys; print("OCR_VENV_PYTHON=" + ".".join(map(str, sys.version_info[:3])))'
+          echo "OCR_VENV_CREATED=$venv_ok"
+          "$chosen" -m pip --version >/dev/null 2>&1 || "$chosen" -m ensurepip --upgrade >/dev/null 2>&1 || echo "PIP_BOOTSTRAP_REQUIRED=yes"
+          "$chosen" -c 'import sys; print("OCR_PYTHON_VERSION=" + ".".join(map(str, sys.version_info[:3])))'
+          "$chosen" -m pip --version 2>&1 | sed 's/ from .*//' || true
       - name: Install private lockfile dependencies without lifecycle scripts
         shell: bash
         run: |
