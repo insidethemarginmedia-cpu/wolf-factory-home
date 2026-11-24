@@ -180,12 +180,12 @@ registry.
 
 ## 8. Local verification
 
-`node --test tests/*.test.mjs` → **191 passing, 0 failing**, covering the bridge,
+`node --test tests/*.test.mjs` → **221 passing, 0 failing**, covering the bridge,
 probe, dispatch diagnosis, inventory, executor, workflow reader, schema
 provisioning, receipt publication, private status checks, durable journal,
 workflow pin resolution, workflow environment declaration, GitHub App
-authentication, the App manifest flow, the recovery ladder and the dispatch
-probe.
+authentication, the App manifest flow, installation mapping across two personal
+accounts, the activation wizard, the recovery ladder and the dispatch probe.
 
 ## 9. Zero-touch authentication
 

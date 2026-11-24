@@ -6,7 +6,7 @@
 <p>This form creates one GitHub App with the minimum permissions the bridge needs,
 on the two repositories the bridge uses. Nothing is sent anywhere until you press
 the button.</p>
-<form method="post" action="https://github.com/organizations/insidethemarginmedia-cpu/settings/apps/new">
+<form method="post" action="https://github.com/settings/apps/new">
   <input type="hidden" name="manifest" value="{
   &quot;name&quot;: &quot;Wolf Factory Automation&quot;,
   &quot;description&quot;: &quot;Least-privilege CI authentication for the Wolf Factory bridge.&quot;,
@@ -14,7 +14,7 @@ the button.</p>
   &quot;hook_attributes&quot;: {
     &quot;active&quot;: false
   },
-  &quot;redirect_url&quot;: &quot;https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions&quot;,
+  &quot;redirect_url&quot;: &quot;https://github.com/insidethemarginmedia-cpu&quot;,
   &quot;public&quot;: true,
   &quot;default_permissions&quot;: {
     &quot;contents&quot;: &quot;read&quot;,
@@ -28,7 +28,9 @@ the button.</p>
   &quot;repositories_hint&quot;: [
     &quot;project-wolf&quot;,
     &quot;wolf-factory-home&quot;
-  ]
+  ],
+  &quot;owner&quot;: &quot;insidethemarginmedia-cpu&quot;,
+  &quot;accountType&quot;: &quot;user&quot;
 }">
   <button type="submit">Create the App on GitHub</button>
 </form>
@@ -40,7 +42,7 @@ the button.</p>
   &quot;hook_attributes&quot;: {
     &quot;active&quot;: false
   },
-  &quot;redirect_url&quot;: &quot;https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions&quot;,
+  &quot;redirect_url&quot;: &quot;https://github.com/insidethemarginmedia-cpu&quot;,
   &quot;public&quot;: true,
   &quot;default_permissions&quot;: {
     &quot;contents&quot;: &quot;read&quot;,
@@ -54,7 +56,9 @@ the button.</p>
   &quot;repositories_hint&quot;: [
     &quot;project-wolf&quot;,
     &quot;wolf-factory-home&quot;
-  ]
+  ],
+  &quot;owner&quot;: &quot;insidethemarginmedia-cpu&quot;,
+  &quot;accountType&quot;: &quot;user&quot;
 }</pre>
 </body>
 </html>

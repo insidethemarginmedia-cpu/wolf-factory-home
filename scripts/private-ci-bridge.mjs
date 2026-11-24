@@ -440,18 +440,32 @@ export async function diagnoseDispatch({token, repository, workflowId, fetchImpl
 // exact permission required rather than silently degrading.
 export const PRIVATE_STATUS_PERMISSION = 'checks: write (Checks: write on donraposo1-source/project-wolf)';
 
-export async function publishPrivateStatusChecks({statusToken, sourceToken, repository, sha, names, conclusion, summary, fetchImpl = globalThis.fetch, detailsUrl} = {}) {
+export async function publishPrivateStatusChecks({statusToken, sourceToken, statusIdentity, repository, sha, names, conclusion, summary, fetchImpl = globalThis.fetch, detailsUrl} = {}) {
   const normalizedRepository = normalizeRepository(repository);
   const normalizedSha = normalizeSha(sha);
   const base = {
     repository: normalizedRepository,
     sha: normalizedSha,
+    // Which identity published. `app-installation` means no PAT was involved.
+    statusIdentity: statusIdentity ?? 'unknown',
     identitySeparation: 'source-read and status-write are distinct credentials',
     privateSourcePublished: false,
     inferencePerformed: false,
   };
   if (typeof statusToken !== 'string' || !statusToken.trim()) {
-    return {...base, state: 'BLOCKED', reason: 'PRIVATE_STATUS_TOKEN_REQUIRED', requiredPermission: PRIVATE_STATUS_PERMISSION};
+    // No STATUS PAT is needed once the App can issue a checks:write installation
+    // token: the App *is* the separate status-write identity, so the requirement
+    // is satisfied by a different mechanism rather than dropped.
+    return {
+      ...base,
+      state: 'BLOCKED',
+      reason: 'PRIVATE_STATUS_TOKEN_REQUIRED',
+      requiredPermission: PRIVATE_STATUS_PERMISSION,
+      alternatives: [
+        'WOLF_CI_APP_PUBLISHER_TOKEN minted from the App installation (checks:write)',
+        'WOLF_FACTORY_STATUS_TOKEN with checks:write on the private repository',
+      ],
+    };
   }
   if (typeof sourceToken === 'string' && sourceToken.trim() && sourceToken === statusToken) {
     // Reusing the reader for a write would widen what the read credential can do.
@@ -571,10 +585,12 @@ async function main(argv) {
       return BRIDGE_EXIT.OK;
     }
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+    const appPublisherToken = process.env.WOLF_CI_APP_PUBLISHER_TOKEN;
     const result = await publishPrivateStatusChecks({
       // The App-issued publisher token is preferred; the status PAT remains a
       // fallback until the App can publish. Never both.
-      statusToken: process.env.WOLF_CI_APP_PUBLISHER_TOKEN || process.env.WOLF_FACTORY_STATUS_TOKEN,
+      statusToken: appPublisherToken || process.env.WOLF_FACTORY_STATUS_TOKEN,
+      statusIdentity: appPublisherToken ? 'app-installation' : process.env.WOLF_FACTORY_STATUS_TOKEN ? 'status-pat' : 'none',
       sourceToken: process.env.WOLF_FACTORY_REPO_TOKEN,
       repository: process.env.WOLF_CI_REPOSITORY,
       sha: receipt.sha,

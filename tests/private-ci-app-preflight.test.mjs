@@ -60,3 +60,34 @@ test('the preflight output never contains a key, even when the input has one', (
   });
   assert.equal(out.lines.join('').includes('LEAKME'), false);
 });
+
+test('map-installations turns a real response into the secrets to store', () => {
+  const out = collect();
+  const payload = {installations: [
+    {id: 176017917, account: {login: 'donraposo1-source', type: 'User'}, repository_selection: 'selected', repositories: [{name: 'project-wolf'}]},
+    {id: 176144552, account: {login: 'insidethemarginmedia-cpu', type: 'User'}, repository_selection: 'selected', repositories: [{name: 'wolf-factory-home'}]},
+  ]};
+  const code = runPreflightCli(['map-installations', '--file', 'x'], {readFile: () => JSON.stringify(payload), stdout: out.stdout});
+  assert.equal(code, PREFLIGHT_EXIT.OK);
+  const mapped = JSON.parse(out.lines.join(''));
+  assert.equal(mapped.state, 'MAPPED');
+  assert.equal(mapped.secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID.value, '176017917');
+  assert.equal(mapped.credentialsPrinted, false);
+});
+
+test('an over-scoped or unauthorized installation is a blocking preflight failure', () => {
+  const over = collect();
+  const overCode = runPreflightCli(['map-installations', '--file', 'x'], {
+    readFile: () => JSON.stringify({installations: [{id: 1, account: {login: 'donraposo1-source', type: 'User'}, repository_selection: 'all'}]}),
+    stdout: over.stdout,
+  });
+  assert.equal(overCode, PREFLIGHT_EXIT.EXCESS);
+  assert.equal(JSON.parse(over.lines.join('')).state, 'OVER_SCOPED');
+});
+
+test('an incomplete mapping is 78, distinct from a defect', () => {
+  const out = collect();
+  const code = runPreflightCli(['map-installations', '--file', 'x'], {readFile: () => JSON.stringify({installations: []}), stdout: out.stdout});
+  assert.equal(code, PREFLIGHT_EXIT.INCOMPLETE);
+  assert.equal(JSON.parse(out.lines.join('')).state, 'INCOMPLETE');
+});

@@ -391,3 +391,39 @@ test('the receipt makes the difference between verified App renewal and a PAT fa
   assert.equal(verified.roles[0].restartRecovered, true);
   assert.equal(verified.credentialsPrinted, false);
 });
+
+test('an App publisher token removes the STATUS PAT requirement without dropping identity separation', async () => {
+  const {publishPrivateStatusChecks} = await import('../scripts/private-ci-bridge.mjs');
+  const seen = [];
+  const fetchImpl = async (url, options = {}) => {
+    seen.push({url, auth: options.headers.authorization});
+    return {ok: true, status: 201, headers: {get: () => null}, json: async () => ({id: 1, name: 'wolf-private-ci-743'})};
+  };
+  const result = await publishPrivateStatusChecks({
+    statusToken: 'ghs_app_publisher', statusIdentity: 'app-installation',
+    sourceToken: 'github_pat_reader',
+    repository, sha, names: ['wolf-private-ci-743'], conclusion: 'success', summary: 'x', fetchImpl,
+  });
+  assert.notEqual(result.state, 'BLOCKED', 'no PAT is needed when the App issues a checks:write token');
+  assert.equal(result.statusIdentity, 'app-installation');
+  assert.ok(seen.every(call => call.auth.includes('ghs_app_publisher')), 'the App token is what is presented');
+});
+
+test('the blocked message names both ways to satisfy the status-write requirement', async () => {
+  const {publishPrivateStatusChecks} = await import('../scripts/private-ci-bridge.mjs');
+  const result = await publishPrivateStatusChecks({repository, sha, names: ['x'], conclusion: 'success', summary: 'y', fetchImpl: async () => ({ok: true, status: 201, json: async () => ({})})});
+  assert.equal(result.state, 'BLOCKED');
+  assert.ok(result.alternatives.some(text => text.includes('WOLF_CI_APP_PUBLISHER_TOKEN')));
+  assert.ok(result.alternatives.some(text => text.includes('WOLF_FACTORY_STATUS_TOKEN')));
+});
+
+test('the reader PAT is still refused as a status writer, App token or not', async () => {
+  const {publishPrivateStatusChecks} = await import('../scripts/private-ci-bridge.mjs');
+  const result = await publishPrivateStatusChecks({
+    statusToken: 'same_token', sourceToken: 'same_token',
+    repository, sha, names: ['x'], conclusion: 'success', summary: 'y',
+    fetchImpl: async () => ({ok: true, status: 201, json: async () => ({})}),
+  });
+  assert.equal(result.state, 'DENIED');
+  assert.equal(result.reason, 'STATUS_TOKEN_MUST_DIFFER_FROM_SOURCE_TOKEN');
+});

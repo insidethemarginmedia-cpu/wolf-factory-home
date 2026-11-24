@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {buildAppManifest, buildManifestForm, APP_NAME, MANIFEST_ENDPOINTS} from '../scripts/private-ci-app-manifest.mjs';
+import {assertInstallableAcrossAccounts} from '../scripts/private-ci-app-installations.mjs';
 
 test('the manifest requests exactly the four permissions the roles need, and no more', () => {
   const manifest = buildAppManifest();
@@ -76,4 +77,28 @@ test('a conversion summary never carries the private key', async () => {
   assert.equal(summary.audit, 'WITHIN_MINIMUM');
   assert.equal(JSON.stringify(summary).includes('SECRET'), false, 'the key is returned separately, never in the summary');
   assert.equal(privateKey, pem);
+});
+
+test('a personal account targets the personal endpoint, never the organization one', () => {
+  const form = buildManifestForm({manifest: buildAppManifest({accountType: 'user'})});
+  assert.match(form, /action="https:\/\/github\.com\/settings\/apps\/new"/);
+  assert.equal(form.includes('/organizations/'), false, 'neither Wolf account is an organization');
+});
+
+test('the manifest is public, because a private App installs on one account only', () => {
+  const manifest = buildAppManifest();
+  assert.equal(manifest.public, true);
+  // A public manifest must pass the gate, and a private one must not.
+  assert.equal(assertInstallableAcrossAccounts(manifest), true);
+  assert.throws(() => assertInstallableAcrossAccounts({...manifest, public: false}), /APP_MUST_BE_PUBLIC_FOR_MULTI_ACCOUNT_INSTALL/);
+});
+
+test('the redirect is an absolute https URL GitHub can actually return to', () => {
+  const manifest = buildAppManifest({owner: 'insidethemarginmedia-cpu'});
+  assert.match(manifest.redirect_url, /^https:\/\//);
+  assert.equal(manifest.redirect_url.includes('/actions'), false, 'a repository tab is not a callback');
+});
+
+test('an organization form still requires naming the organization', () => {
+  assert.throws(() => buildManifestForm({manifest: buildAppManifest(), accountType: 'organization'}), /MANIFEST_ORGANIZATION_REQUIRED/);
 });

@@ -27,6 +27,7 @@ on:
       # validated with the code it describes rather than after it.
       - 'docs/private-ci-bridge-evidence.md'
       - 'docs/zero-touch-activation.md'
+      - 'docs/app-activation/**'
       - 'scripts/private-ci-bridge.mjs'
       - 'scripts/private-ci-inventory.mjs'
       - 'scripts/private-ci-execute.mjs'
@@ -39,19 +40,23 @@ on:
       - 'scripts/private-ci-dispatch-probe.mjs'
       - 'scripts/private-ci-app-manifest.mjs'
       - 'scripts/private-ci-app-preflight.mjs'
+      - 'scripts/private-ci-app-installations.mjs'
+      - 'scripts/private-ci-activation-wizard.mjs'
       - 'scripts/private-ci-journal-cli.mjs'
       - 'tests/private-ci-bridge.test.mjs'
       - 'tests/private-ci-inventory.test.mjs'
       - 'tests/private-ci-execute.test.mjs'
       - 'tests/private-ci-publish-receipt.test.mjs'
       - 'tests/private-ci-diagnose.test.mjs'
-      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs'
+      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs tests/private-ci-app-installations.test.mjs tests/private-ci-activation-wizard.test.mjs'
       - 'tests/private-ci-workflow.test.mjs'
       - 'tests/private-ci-app-auth.test.mjs'
       - 'tests/private-ci-dispatch-probe.test.mjs'
       - 'tests/private-ci-app-auth-recovery.test.mjs'
       - 'tests/private-ci-app-manifest.test.mjs'
       - 'tests/private-ci-app-preflight.test.mjs'
+      - 'tests/private-ci-app-installations.test.mjs'
+      - 'tests/private-ci-activation-wizard.test.mjs'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
       - 'tests/private-controller-preflight-pin.test.mjs'
@@ -137,6 +142,21 @@ jobs:
           set -euo pipefail
           : "${WOLF_CI_PRIVATE_STATUS_FILE:?STATUS_FILE_REQUIRED}"
           rm -f "$WOLF_CI_PRIVATE_STATUS_FILE"
+          # The App publisher token is minted here, in the step that uses it. It
+          # was previously referenced but never minted, so an installed App still
+          # could not publish a check - the STATUS PAT did all the work and the
+          # App path was never actually exercised.
+          #
+          # The token is exported only when the mint produced a file, and the
+          # reader's PAT is never substituted for it: a checks:write identity and
+          # a contents:read identity must not collapse into one.
+          if node scripts/private-ci-app-auth-cli.mjs mint publisher --out "$WOLF_CI_TOKEN_FILE" && test -s "$WOLF_CI_TOKEN_FILE"; then
+            echo PUBLISHER_CREDENTIAL=app
+            set -a; . "$WOLF_CI_TOKEN_FILE"; set +a
+          else
+            echo PUBLISHER_CREDENTIAL=status-pat-fallback
+          fi
+          rm -f "$WOLF_CI_TOKEN_FILE"
           node scripts/private-ci-bridge.mjs publish-private-status > "$WOLF_CI_PRIVATE_STATUS_FILE" || true
           test -s "$WOLF_CI_PRIVATE_STATUS_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_STATUS_NOT_REPORTED"}' > "$WOLF_CI_PRIVATE_STATUS_FILE"
           node -e 'const s=require(process.env.WOLF_CI_PRIVATE_STATUS_FILE); console.log("PRIVATE_STATUS=" + s.state + (s.reason ? " REASON=" + s.reason : ""))'

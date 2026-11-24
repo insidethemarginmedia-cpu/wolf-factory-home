@@ -35,13 +35,18 @@ export const MANIFEST_ENDPOINTS = Object.freeze({
  */
 export function buildAppManifest({
   name = APP_NAME,
+  owner = 'insidethemarginmedia-cpu',
+  accountType = 'user',
   publicBase = 'https://github.com/insidethemarginmedia-cpu/wolf-factory-home',
   redirectUrl,
   webhookUrl,
   repositories = REPOSITORIES,
 } = {}) {
   if (!name || typeof name !== 'string') throw Error('MANIFEST_NAME_REQUIRED');
-  const callback = redirectUrl ?? publicBase + '/actions';
+  if (!['user', 'organization'].includes(accountType)) throw Error('MANIFEST_ACCOUNT_TYPE_INVALID');
+  // GitHub requires an absolute https callback. It only displays the one-time
+  // conversion code there, so it must be a real page, not a guess.
+  const callback = redirectUrl ?? `https://github.com/${owner}`;
   const manifest = {
     name,
     description: 'Least-privilege CI authentication for the Wolf Factory bridge.',
@@ -50,8 +55,9 @@ export function buildAppManifest({
     // endpoint would be an attack surface with no benefit.
     hook_attributes: hookUrl(webhookUrl),
     redirect_url: callback,
-    // Deliberately public: the App itself is not private source, and a public
-    // App listing makes the installation auditable.
+    // Public is mandatory, not cosmetic: GitHub only allows a private App to be
+    // installed on the account that owns it, and this App must be installed on
+    // two personal accounts. Anything else silently yields one installation.
     public: true,
     default_permissions: {...PERMISSIONS},
     default_events: [],
@@ -61,6 +67,8 @@ export function buildAppManifest({
   // `repository_selection` is set by the installer, not the manifest; the two
   // repositories are named in the installation instructions instead.
   manifest.repositories_hint = [...repositories];
+  manifest.owner = owner;
+  manifest.accountType = accountType;
   return manifest;
 }
 
@@ -71,8 +79,12 @@ const hookUrl = value => (value ? {url: value, active: false} : {active: false})
  * the Founder opens it in a browser: the form posts to GitHub, GitHub redirects
  * back with a code, and the conversion is what yields the App ID and the key.
  */
-export function buildManifestForm({manifest, organization = null, action = null} = {}) {
-  const target = action ?? (organization
+export function buildManifestForm({manifest, organization = null, accountType = null, action = null} = {}) {
+  // Both Wolf accounts are personal (`type=User`), so the organization endpoint
+  // would be wrong twice over. It is only used when explicitly asked for.
+  const type = accountType ?? (organization ? 'organization' : 'user');
+  if (type === 'organization' && !organization) throw Error('MANIFEST_ORGANIZATION_REQUIRED');
+  const target = action ?? (type === 'organization'
     ? MANIFEST_ENDPOINTS.organization.replace('{org}', organization)
     : MANIFEST_ENDPOINTS.personal);
   const payload = JSON.stringify(manifest, null, 2);
@@ -100,8 +112,10 @@ if (import.meta.url === 'file://' + process.argv[1]) {
   const org = process.argv.includes('--org')
     ? process.argv[process.argv.indexOf('--org') + 1]
     : null;
-  const manifest = buildAppManifest();
-  process.stdout.write(buildManifestForm({manifest, organization: org}));
+  const manifest = buildAppManifest({accountType: org ? 'organization' : 'user'});
+  // Without --org the form targets the personal-account endpoint, which is the
+  // only correct target for donraposo1-source and insidethemarginmedia-cpu.
+  process.stdout.write(buildManifestForm({manifest, organization: org, accountType: org ? 'organization' : 'user'}));
 }
 
 // ---------------------------------------------------------------------------

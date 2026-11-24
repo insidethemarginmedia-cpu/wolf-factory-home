@@ -8,8 +8,9 @@
 import fs from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {readConversion, APP_NAME, MANIFEST_ENDPOINTS} from './private-ci-app-manifest.mjs';
+import {mapInstallations, INSTALL_MAP_STATES} from './private-ci-app-installations.mjs';
 
-export const PREFLIGHT_EXIT = Object.freeze({OK: 0, DEFECT: 1, USAGE: 2, EXCESS: 79});
+export const PREFLIGHT_EXIT = Object.freeze({OK: 0, DEFECT: 1, USAGE: 2, EXCESS: 79, INCOMPLETE: 78});
 
 export const REQUIRED_SECRETS = Object.freeze([
   'WOLF_FACTORY_APP_ID',
@@ -71,6 +72,27 @@ export function runPreflightCli(argv = [], {
   if (command === 'plan') {
     stdout(JSON.stringify(founderPlan({owner: flag('--owner')}), null, 2) + '\n');
     return PREFLIGHT_EXIT.OK;
+  }
+
+  if (command === 'map-installations') {
+    // Takes a saved `GET /user/installations` response (or /app/installations)
+    // and produces the exact secrets to store. Reuse across roles is reported so
+    // a shared ID is visibly intended rather than suspected as a copy-paste bug.
+    const file = flag('--file');
+    if (!file) return PREFLIGHT_EXIT.USAGE;
+    let payload;
+    try {
+      payload = JSON.parse(readFile(file));
+    } catch {
+      stdout(JSON.stringify({state: 'UNREADABLE', reason: 'INSTALLATIONS_FILE_INVALID', credentialsPrinted: false}) + '\n');
+      return PREFLIGHT_EXIT.DEFECT;
+    }
+    const list = Array.isArray(payload) ? payload : payload.installations ?? [];
+    const mapped = mapInstallations(list);
+    stdout(JSON.stringify(mapped, null, 2) + '\n');
+    if (mapped.state === INSTALL_MAP_STATES.MAPPED) return PREFLIGHT_EXIT.OK;
+    if (mapped.state === INSTALL_MAP_STATES.OVER_SCOPED || mapped.state === INSTALL_MAP_STATES.UNAUTHORIZED) return PREFLIGHT_EXIT.EXCESS;
+    return PREFLIGHT_EXIT.INCOMPLETE;
   }
 
   if (command === 'audit-conversion') {
