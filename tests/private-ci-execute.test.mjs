@@ -237,3 +237,32 @@ test('each workflow result names the workflow step that produced it', async () =
   assert.ok(fs.readFileSync(path.join(root, 'logs', 'test-1.log'), 'utf8').includes('hello-from-wolf'), 'workflow output reaches the private log');
   fs.rmSync(root, {recursive: true, force: true});
 });
+
+test('every generated shell script is valid bash', async () => {
+  const {execFileSync} = await import('node:child_process');
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const {platformProvisionScript, schemaBootstrapSteps} = await import('../scripts/private-ci-execute.mjs');
+
+  const scripts = [platformProvisionScript()];
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-ci-bash-'));
+  fs.mkdirSync(path.join(root, 'supabase', 'migrations'), {recursive: true});
+  fs.mkdirSync(path.join(root, 'supabase', 'tests'), {recursive: true});
+  fs.writeFileSync(path.join(root, 'supabase', 'migrations', '001.sql'), 'select 1;');
+  fs.writeFileSync(path.join(root, 'supabase', 'tests', 'verify.sql'), 'select 1;');
+  for (const step of schemaBootstrapSteps({root, database: 'wolf_test'})) {
+    if (step.command === 'bash' && step.args[0] === '-c') scripts.push(step.args[1]);
+  }
+
+  const file = path.join(root, 'script.sh');
+  for (const script of scripts) {
+    fs.writeFileSync(file, script);
+    // bash -n parses without executing: a syntax error here would have been a
+    // runtime failure in CI before the database was even contacted.
+    execFileSync('bash', ['-n', file], {stdio: 'pipe'});
+  }
+  assert.ok(scripts.length >= 3, 'expected the provisioning and bootstrap scripts');
+  assert.match(platformProvisionScript(), /exit 0/);
+  fs.rmSync(root, {recursive: true, force: true});
+});

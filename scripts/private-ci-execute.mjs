@@ -216,20 +216,30 @@ export function listVerificationFiles(root, directory = 'supabase/tests') {
 // postgres:17, which is exactly the schema/bootstrap the workflow expects.
 export const PLATFORM_EXTENSIONS = Object.freeze(['pgcrypto', 'uuid-ossp', 'pg_trgm', 'btree_gin', 'citext', 'unaccent', 'pg_stat_statements', 'vector']);
 
+// Every statement is executed through psql. Emitting raw SQL into a bash script
+// makes bash parse `do`/`create` as commands, which fails with a syntax error
+// before the database is ever touched.
 export function platformProvisionScript() {
-  const role = name => `do $$ begin if not exists (select 1 from pg_roles where rolname='${name}') then create role ${name} nologin; end if; end $$;`;
-  const schema = name => `create schema if not exists ${name};`;
-  return [
-    'set -uo pipefail',
-    role('anon'), role('authenticated'), role('service_role'), role('supabase_admin'), role('supabase_auth_admin'), role('supabase_storage_admin'),
-    schema('auth'), schema('storage'), schema('extensions'), schema('realtime'), schema('vault'),
-    'psql -v ON_ERROR_STOP=1 -q -c "grant usage on schema extensions to public" >/dev/null 2>&1 || true',
-    'psql -v ON_ERROR_STOP=1 -q -c "grant create on schema extensions to supabase_admin" >/dev/null 2>&1 || true',
-    `for ext in ${PLATFORM_EXTENSIONS.join(' ')}; do`,
-    '  psql -q -c "create extension if not exists \"$ext\" schema extensions" >/dev/null 2>&1 || echo "PLATFORM_EXTENSION_UNAVAILABLE=$ext" >&2',
-    'done',
-    'echo PLATFORM_SCHEMA_PROVISIONED=YES',
-  ].join('\n');
+  const statements = [];
+  for (const name of ['anon', 'authenticated', 'service_role', 'supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin']) {
+    statements.push(`do \$\$ begin if not exists (select 1 from pg_roles where rolname='${name}') then create role ${name} nologin; end if; end \$\$`);
+  }
+  for (const name of ['auth', 'storage', 'extensions', 'realtime', 'vault']) statements.push(`create schema if not exists ${name}`);
+  const lines = ['set -uo pipefail', 'failed=0'];
+  lines.push('apply() {');
+  lines.push('  if psql -v ON_ERROR_STOP=1 -q -c "$1" >/dev/null 2>&1; then return 0; fi');
+  lines.push('  echo "PLATFORM_STATEMENT_FAILED_CLASS=$(printf \'%s\' \"$1\" | cut -c1-28)" >&2');
+  lines.push('  failed=$((failed+1))');
+  lines.push('}');
+  for (const statement of statements) lines.push(`apply ${JSON.stringify(statement)}`);
+  lines.push(`for ext in ${PLATFORM_EXTENSIONS.join(' ')}; do`);
+  lines.push('  psql -q -c "create extension if not exists \"$ext\" schema extensions" >/dev/null 2>&1 || echo "PLATFORM_EXTENSION_UNAVAILABLE=$ext" >&2');
+  lines.push('done');
+  lines.push('echo "PLATFORM_SCHEMA_PROVISIONED=YES FAILED_STATEMENTS=$failed"');
+  // Role/schema creation is idempotent and non-fatal; a genuinely broken cluster
+  // surfaces on the next step, where the workflow's own SQL runs.
+  lines.push('exit 0');
+  return lines.join('\n');
 }
 
 export function platformProvisioningSteps({root, database}) {

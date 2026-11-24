@@ -562,7 +562,20 @@ async function main(argv) {
         name: check.name,
         status: check.status,
         durationMs: check.durationMs,
-        steps: (check.steps ?? []).map(step => ({command: step.command, exitCode: step.exitCode, status: step.status, durationMs: step.durationMs, ...(step.errorClass ? {errorClass: step.errorClass} : {})})),
+        steps: (check.steps ?? []).map(step => ({
+          // Attribution lets a failure be traced to the exact private workflow
+          // step without publishing the step's command or output.
+          stepName: step.workflowStep?.stepName ?? step.label ?? null,
+          workflow: step.workflowStep?.workflow ?? null,
+          command: step.command,
+          exitCode: step.exitCode,
+          status: step.status,
+          durationMs: step.durationMs,
+          ...(step.errorClass ? {errorClass: step.errorClass} : {}),
+          ...(step.sqlstate ? {sqlstate: step.sqlstate} : {}),
+          ...(step.errorLine ? {errorLine: step.errorLine} : {}),
+          ...(step.sqlDetail ? {sqlDetail: step.sqlDetail} : {}),
+        })),
       })),
       privateReceipt: {
         state: privatePublication.state ?? 'NOT_REPORTED',
