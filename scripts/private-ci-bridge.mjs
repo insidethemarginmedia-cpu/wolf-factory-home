@@ -41,6 +41,29 @@ export function readAuthenticationPosture(file) {
   };
 }
 
+export function readAuthRecovery(file) {
+  const parsed = readJsonArtefact(file);
+  if (parsed === null) return {state: 'NOT_REPORTED'};
+  if (parsed === 'UNREADABLE') return {state: 'UNREADABLE'};
+  return {
+    // VERIFIED means the App issued two distinct tokens per role.
+    // NOT_APPLICABLE means the PAT did the work and the claim is not made.
+    state: parsed.state,
+    reason: parsed.reason ?? null,
+    roles: Array.isArray(parsed.renewal)
+      ? parsed.renewal.map(entry => ({
+          role: entry.role,
+          source: entry.source ?? null,
+          renews: entry.renews === true,
+          restartRecovered: entry.restartRecovered === true,
+          firstState: entry.first?.authState ?? null,
+          secondState: entry.second?.authState ?? null,
+        }))
+      : [],
+    credentialsPrinted: false,
+  };
+}
+
 export function readDispatchVerification(file) {
   const parsed = readJsonArtefact(file);
   if (parsed === null) return {state: 'NOT_REPORTED'};
@@ -690,6 +713,7 @@ async function main(argv) {
       })),
       authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
       dispatchVerification: readDispatchVerification(process.env.WOLF_CI_DISPATCH_FILE),
+      authRecovery: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
       privateStatusCheck: (() => {
         const file = process.env.WOLF_CI_PRIVATE_STATUS_FILE;
         if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};

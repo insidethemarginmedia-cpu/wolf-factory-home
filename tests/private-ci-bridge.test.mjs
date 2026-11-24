@@ -362,3 +362,32 @@ test('the auth posture names the App once the secrets exist, and never a value',
   assert.equal(serialized.includes('MUST_NOT_APPEAR'), false, 'the posture is presence-only');
   assert.equal(serialized.includes('12345'), false, 'even the app id is not published');
 });
+
+test('the receipt makes the difference between verified App renewal and a PAT fallback explicit', async () => {
+  const {readAuthRecovery} = await import('../scripts/private-ci-bridge.mjs');
+  const {mkdtempSync, writeFileSync} = await import('node:fs');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'auth-recovery-'));
+  const file = join(dir, 'recovery.json');
+
+  writeFileSync(file, JSON.stringify({
+    state: 'NOT_APPLICABLE',
+    reason: 'APP_AUTH_INCOMPLETE',
+    renewal: [{role: 'reader', source: 'pat-fallback', renews: false, restartRecovered: false, first: {authState: 'FALLBACK'}, second: {authState: 'FALLBACK'}}],
+  }));
+  const fallback = readAuthRecovery(file);
+  assert.equal(fallback.state, 'NOT_APPLICABLE', 'a PAT run is never reported as verified');
+  assert.equal(fallback.roles[0].source, 'pat-fallback');
+  assert.equal(fallback.roles[0].renews, false);
+
+  writeFileSync(file, JSON.stringify({
+    state: 'VERIFIED',
+    renewal: [{role: 'reader', source: 'github-app', renews: true, restartRecovered: true, first: {authState: 'FRESH'}, second: {authState: 'FRESH'}}],
+  }));
+  const verified = readAuthRecovery(file);
+  assert.equal(verified.state, 'VERIFIED');
+  assert.equal(verified.roles[0].renews, true);
+  assert.equal(verified.roles[0].restartRecovered, true);
+  assert.equal(verified.credentialsPrinted, false);
+});

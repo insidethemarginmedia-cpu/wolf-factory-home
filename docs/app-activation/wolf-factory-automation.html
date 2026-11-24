@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Create Wolf Factory Automation</title></head>
+<body>
+<h1>Create Wolf Factory Automation</h1>
+<p>This form creates one GitHub App with the minimum permissions the bridge needs,
+on the two repositories the bridge uses. Nothing is sent anywhere until you press
+the button.</p>
+<form method="post" action="https://github.com/organizations/insidethemarginmedia-cpu/settings/apps/new">
+  <input type="hidden" name="manifest" value="{
+  &quot;name&quot;: &quot;Wolf Factory Automation&quot;,
+  &quot;description&quot;: &quot;Least-privilege CI authentication for the Wolf Factory bridge.&quot;,
+  &quot;url&quot;: &quot;https://github.com/insidethemarginmedia-cpu/wolf-factory-home&quot;,
+  &quot;hook_attributes&quot;: {
+    &quot;active&quot;: false
+  },
+  &quot;redirect_url&quot;: &quot;https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions&quot;,
+  &quot;public&quot;: true,
+  &quot;default_permissions&quot;: {
+    &quot;contents&quot;: &quot;read&quot;,
+    &quot;metadata&quot;: &quot;read&quot;,
+    &quot;checks&quot;: &quot;write&quot;,
+    &quot;actions&quot;: &quot;write&quot;
+  },
+  &quot;default_events&quot;: [],
+  &quot;request_oauth_on_install&quot;: false,
+  &quot;setup_on_update&quot;: false,
+  &quot;repositories_hint&quot;: [
+    &quot;project-wolf&quot;,
+    &quot;wolf-factory-home&quot;
+  ]
+}">
+  <button type="submit">Create the App on GitHub</button>
+</form>
+<h2>The manifest, in full</h2>
+<pre>{
+  &quot;name&quot;: &quot;Wolf Factory Automation&quot;,
+  &quot;description&quot;: &quot;Least-privilege CI authentication for the Wolf Factory bridge.&quot;,
+  &quot;url&quot;: &quot;https://github.com/insidethemarginmedia-cpu/wolf-factory-home&quot;,
+  &quot;hook_attributes&quot;: {
+    &quot;active&quot;: false
+  },
+  &quot;redirect_url&quot;: &quot;https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions&quot;,
+  &quot;public&quot;: true,
+  &quot;default_permissions&quot;: {
+    &quot;contents&quot;: &quot;read&quot;,
+    &quot;metadata&quot;: &quot;read&quot;,
+    &quot;checks&quot;: &quot;write&quot;,
+    &quot;actions&quot;: &quot;write&quot;
+  },
+  &quot;default_events&quot;: [],
+  &quot;request_oauth_on_install&quot;: false,
+  &quot;setup_on_update&quot;: false,
+  &quot;repositories_hint&quot;: [
+    &quot;project-wolf&quot;,
+    &quot;wolf-factory-home&quot;
+  ]
+}</pre>
+</body>
+</html>

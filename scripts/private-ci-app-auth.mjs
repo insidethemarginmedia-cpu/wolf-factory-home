@@ -251,3 +251,102 @@ export function selectCredential(role, {env = process.env} = {}) {
   }
   return {role: normalizedRole, source: 'none', fallback: false, reason: 'NO_CREDENTIAL_FOR_ROLE'};
 }
+
+// ---------------------------------------------------------------------------
+// Auth state: renewal, expiry recovery and revocation handling.
+//
+// A token in hand is not the same as a usable token. Every consumer asks this
+// state machine first, and the state names exactly why a token must be replaced,
+// so a revocation cannot be mistaken for a transient failure and retried forever.
+// ---------------------------------------------------------------------------
+
+export const AUTH_STATES = Object.freeze({
+  FRESH: 'FRESH',
+  RENEW: 'RENEW',
+  EXPIRED: 'EXPIRED',
+  REVOKED: 'REVOKED',
+  FALLBACK: 'FALLBACK',
+  NONE: 'NONE',
+});
+
+export function describeAuthState({state, expiresAt, now = Date.now(), unauthorized = false} = {}) {
+  if (unauthorized) return {state: AUTH_STATES.REVOKED, reason: 'TOKEN_REVOKED_OR_REJECTED', mustRemint: true};
+  if (state && state !== 'MINTED' && state !== 'FALLBACK') {
+    return {state: AUTH_STATES.NONE, reason: state, mustRemint: true};
+  }
+  if (state === 'FALLBACK') return {state: AUTH_STATES.FALLBACK, reason: 'APP_AUTH_INCOMPLETE', mustRemint: true};
+  if (!expiresAt) return {state: AUTH_STATES.EXPIRED, reason: 'APP_TOKEN_EXPIRY_UNKNOWN', mustRemint: true};
+  const expires = Date.parse(expiresAt);
+  if (!Number.isFinite(expires)) return {state: AUTH_STATES.EXPIRED, reason: 'APP_TOKEN_EXPIRY_INVALID', mustRemint: true};
+  if (expires <= now) return {state: AUTH_STATES.EXPIRED, reason: 'APP_TOKEN_EXPIRED', mustRemint: true, expiredForMs: now - expires};
+  if (expires - now <= RENEWAL_MARGIN_MS) return {state: AUTH_STATES.RENEW, reason: 'APP_TOKEN_NEAR_EXPIRY', mustRemint: true, expiresInMs: expires - now};
+  return {state: AUTH_STATES.FRESH, reason: null, mustRemint: false, expiresInMs: expires - now};
+}
+
+/**
+ * Mints a token, then re-mints only when the state says it must.
+ *
+ * `renew` is separate from `mint` so this can be tested without a network: the
+ * recovery ladder is the interesting part, not the HTTP call.
+ */
+export async function ensureToken({role, mint, renew = mint, now = Date.now(), maxAttempts = 2} = {}) {
+  if (typeof mint !== 'function') throw Error('APP_MINT_REQUIRED');
+  const attempts = [];
+  let result = await mint({role, now, attempt: 0});
+  attempts.push({attempt: 0, state: result?.state ?? 'UNKNOWN', expiresAt: result?.expiresAt ?? null});
+  if (result?.state === 'MINTED') {
+    let auth = describeAuthState({state: 'MINTED', expiresAt: result.expiresAt, now});
+    if (!auth.mustRemint) return {role, result, auth, attempts, recovered: false};
+    // A token minted already expired (or nearly so) is a defect, not a race:
+    // try exactly once more, then report it rather than looping.
+    if (maxAttempts <= 1) return {role, result, auth, attempts, recovered: false};
+    const second = await renew({role, now, attempt: 1});
+    attempts.push({attempt: 1, state: second?.state ?? 'UNKNOWN', expiresAt: second?.expiresAt ?? null});
+    auth = describeAuthState({state: second?.state === 'MINTED' ? 'MINTED' : second?.state, expiresAt: second?.expiresAt, now});
+    // A token that is still not fresh after a re-mint is reported expired, never
+    // reported as recovered.
+    if (auth.state === AUTH_STATES.RENEW) auth = {...auth, state: AUTH_STATES.EXPIRED, reason: 'APP_RENEWAL_DID_NOT_REFRESH'};
+    return {role, result: second, auth, attempts, recovered: second?.state === 'MINTED' && auth.state === AUTH_STATES.FRESH};
+  }
+  return {role, result, auth: describeAuthState({state: result?.state, expiresAt: result?.expiresAt, now}), attempts, recovered: false};
+}
+
+/**
+ * Classifies a rejected API call. 401 means the installation token was revoked
+ * or expired early; the caller must re-mint, not retry the same credential.
+ */
+export function classifyRejection(httpStatus) {
+  const status = Number(httpStatus) || 0;
+  if (status === 401) return {state: AUTH_STATES.REVOKED, retryable: false, mustRemint: true, reason: 'TOKEN_REVOKED_OR_REJECTED'};
+  if (status === 403) return {state: AUTH_STATES.NONE, retryable: false, mustRemint: false, reason: 'PERMISSION_OR_RATE_LIMIT'};
+  if (status === 404) return {state: AUTH_STATES.NONE, retryable: false, mustRemint: false, reason: 'NOT_FOUND_OR_NO_ACCESS'};
+  if (status >= 500) return {state: AUTH_STATES.NONE, retryable: true, mustRemint: false, reason: 'UPSTREAM_ERROR'};
+  return {state: AUTH_STATES.NONE, retryable: false, mustRemint: false, reason: 'CLIENT_ERROR'};
+}
+
+/**
+ * Runs `call` with a token and heals a revoked credential exactly once.
+ * Bounded on purpose: a revoked installation that cannot re-mint must surface an
+ * honest failure rather than an unbounded retry loop.
+ */
+export async function withAuthRecovery({ensure, call, maxRecoveries = 1} = {}) {
+  if (typeof call !== 'function') throw Error('APP_CALL_REQUIRED');
+  let issued = await ensure();
+  let token = issued?.result?.token;
+  if (!token) return {state: issued?.auth?.state ?? AUTH_STATES.NONE, reason: issued?.auth?.reason ?? 'NO_TOKEN', recovered: false, result: null};
+  for (let recovery = 0; ; recovery += 1) {
+    const outcome = await call(token);
+    const status = outcome?.httpStatus ?? outcome?.status ?? 0;
+    if (status !== 401) return {state: outcome?.state ?? 'OK', recovered: recovery > 0, result: outcome, httpStatus: status};
+    const classified = classifyRejection(status);
+    if (!classified.mustRemint || recovery >= maxRecoveries) {
+      return {state: AUTH_STATES.REVOKED, reason: classified.reason, recovered: false, result: outcome, httpStatus: status};
+    }
+    issued = await ensure({force: true, reason: 'TOKEN_REVOKED_OR_REJECTED'});
+    const renewed = issued?.result?.token;
+    if (!renewed || renewed === token) {
+      return {state: AUTH_STATES.REVOKED, reason: 'REVOKED_AND_NOT_REISSUABLE', recovered: false, result: outcome, httpStatus: status};
+    }
+    token = renewed;
+  }
+}

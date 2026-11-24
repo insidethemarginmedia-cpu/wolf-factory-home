@@ -265,6 +265,7 @@ test('renewal is proven from a cold start, as a restarted runner sees it', async
     WOLF_FACTORY_APP_PRIVATE_KEY: rsaPem,
     WOLF_FACTORY_READER_INSTALLATION_ID: '176017917',
     WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: '176017917',
+    WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: '176017917',
     WOLF_CI_REPOSITORY: repository,
   };
   let minted = 0;
@@ -290,7 +291,9 @@ test('renewal is proven from a cold start, as a restarted runner sees it', async
   assert.equal(report.state, 'VERIFIED');
   assert.equal(report.credentialsPrinted, false);
   assert.ok(report.renewal.every(entry => entry.renews), 'each role renews to a distinct token');
-  assert.equal(minted, 4, 'two roles minted twice each');
+  assert.ok(report.renewal.every(entry => entry.restartRecovered), 'a restarted runner gets a fresh token for every role');
+  assert.ok(report.renewal.every(entry => entry.source === 'github-app'), 'verification only counts when the App issued the token');
+  assert.equal(minted, 6, 'three roles minted twice each');
 });
 
 test('mint leaves no token file when it falls back, so a caller cannot source a missing file', async () => {

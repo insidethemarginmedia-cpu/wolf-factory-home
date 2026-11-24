@@ -11,6 +11,8 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {
   APP_SECRET_NAMES,
+  AUTH_STATES,
+  describeAuthState,
   ROLE_PERMISSIONS,
   inventoryAppSecrets,
   mintInstallationToken,
@@ -116,22 +118,53 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
   }
 
   if (command === 'verify') {
-    // Restart recovery: mint twice in a row and prove the second token is fresh
-    // and valid, exactly as a restarted runner would.
+    // Proves the App path end to end: mint, then re-mint from a cold start the
+    // way a restarted runner would, and require the second token to be fresh.
+    //
+    // Falling back is NOT verification. The previous version treated a fallback
+    // as success and reported VERIFIED while the PAT was doing the work, which
+    // is exactly the false green this command exists to prevent.
     const results = [];
-    for (const role of ['reader', 'publisher']) {
+    for (const role of ['reader', 'publisher', 'dispatcher']) {
       const first = await mintRoleToken({role, env, fetchImpl, now});
       const second = await mintRoleToken({role, env, fetchImpl, now: now + 60 * 60 * 1000});
+      const firstAuth = first.state === 'MINTED' ? describeAuthState({state: 'MINTED', expiresAt: first.expiresAt, now}) : describeAuthState({state: first.state});
+      const secondAuth = second.state === 'MINTED' ? describeAuthState({state: 'MINTED', expiresAt: second.expiresAt, now: now + 60 * 60 * 1000}) : describeAuthState({state: second.state});
       results.push({
         role,
-        first: summary(first),
-        second: summary(second),
+        source: first.selection?.source ?? null,
+        first: {...summary(first), authState: firstAuth.state},
+        second: {...summary(second), authState: secondAuth.state},
+        // A distinct expiry is the observable proof that a second, independent
+        // token was issued rather than the first one being reused.
         renews: first.state === 'MINTED' && second.state === 'MINTED' && first.expiresAt !== second.expiresAt,
+        restartRecovered: secondAuth.state === 'FRESH',
       });
     }
-    const ok = results.every(entry => entry.state === 'MINTED' || entry.renews || entry.first.state === 'FALLBACK');
-    stdout(JSON.stringify({state: ok ? 'VERIFIED' : 'FAILED', renewal: results, credentialsPrinted: false}) + '\n');
-    return ok ? APP_AUTH_EXIT.OK : APP_AUTH_EXIT.DEFECT;
+    const allAppBacked = results.every(entry => entry.source === 'github-app');
+    const allVerified = results.every(entry => entry.renews && entry.restartRecovered);
+    const state = allAppBacked && allVerified ? 'VERIFIED' : allAppBacked ? 'FAILED' : 'NOT_APPLICABLE';
+    stdout(JSON.stringify({
+      state,
+      reason: state === 'VERIFIED' ? null : allAppBacked ? 'APP_RENEWAL_FAILED' : 'APP_AUTH_INCOMPLETE',
+      renewal: results,
+      credentialsPrinted: false,
+    }) + '\n');
+    if (state === 'VERIFIED') return APP_AUTH_EXIT.OK;
+    return state === 'NOT_APPLICABLE' ? APP_AUTH_EXIT.BLOCKED : APP_AUTH_EXIT.DEFECT;
+  }
+
+  if (command === 'state') {
+    // Reports the live auth state for one role without printing the token, so a
+    // run can prove renewal and expiry handling from its own logs.
+    const role = argv[1];
+    if (!role) return APP_AUTH_EXIT.USAGE;
+    const result = await mintRoleToken({role, env, fetchImpl, now});
+    const auth = result.state === 'MINTED'
+      ? describeAuthState({state: 'MINTED', expiresAt: result.expiresAt, now})
+      : describeAuthState({state: result.state});
+    stdout(JSON.stringify({role: normalizeRole(role), state: auth.state, reason: auth.reason, mustRemint: auth.mustRemint, expiresInMs: auth.expiresInMs ?? null, credentialsPrinted: false}) + '\n');
+    return auth.state === AUTH_STATES.FRESH ? APP_AUTH_EXIT.OK : APP_AUTH_EXIT.BLOCKED;
   }
 
   stdout(JSON.stringify({state: 'FAILED', reason: 'APP_AUTH_COMMAND_REQUIRED'}) + '\n');
