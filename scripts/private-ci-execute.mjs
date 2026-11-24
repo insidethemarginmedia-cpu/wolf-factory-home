@@ -234,6 +234,36 @@ export function platformProvisionScript({roles = true} = {}) {
     }
   }
   for (const name of ['auth', 'storage', 'extensions', 'realtime', 'vault', 'public']) statements.push(`create schema if not exists ${name}`);
+  // Supabase's hosted platform ships the auth tables and helpers that the
+  // migrations reference. Supplying their shape is what makes the migrations
+  // runnable off-platform; without it they fail on the first foreign key to
+  // auth.users rather than on anything the repository actually got wrong.
+  statements.push(`create table if not exists auth.users (
+    id uuid primary key default gen_random_uuid(),
+    instance_id uuid,
+    aud varchar(255),
+    role varchar(255),
+    email varchar(255),
+    encrypted_password varchar(255),
+    email_confirmed_at timestamptz,
+    invited_at timestamptz,
+    confirmation_token varchar(255),
+    raw_app_meta_data jsonb,
+    raw_user_meta_data jsonb,
+    is_super_admin boolean,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
+    phone text,
+    confirmed_at timestamptz,
+    last_sign_in_at timestamptz,
+    banned_until timestamptz,
+    deleted_at timestamptz
+  )`);
+  statements.push(`create or replace function auth.uid() returns uuid language sql stable as $f$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $f$`);
+  statements.push(`create or replace function auth.jwt() returns jsonb language sql stable as $f$ select coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb) $f$`);
+  statements.push(`create or replace function auth.role() returns text language sql stable as $f$ select nullif(current_setting('request.jwt.claim.role', true), '') $f$`);
+  statements.push(`create table if not exists storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[], created_at timestamptz default now(), updated_at timestamptz default now())`);
+  statements.push(`create table if not exists storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid, metadata jsonb, created_at timestamptz default now(), updated_at timestamptz default now())`);
   const lines = ['set -uo pipefail', 'failed=0'];
   lines.push('apply() {');
   lines.push('  if psql -v ON_ERROR_STOP=1 -q -c "$1" >/dev/null 2>&1; then return 0; fi');

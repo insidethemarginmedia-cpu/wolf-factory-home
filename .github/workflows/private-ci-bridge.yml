@@ -310,6 +310,21 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - name: Set up the Python runtime the OCR workflows require
+        shell: bash
+        run: |
+          set -euo pipefail
+          # paddlepaddle publishes cp39-cp313 wheels; the runner image default
+          # may be outside that window, which reads as "no matching
+          # distribution". Pin a supported interpreter for the OCR checks.
+          if ! python3 -c 'import sys; sys.exit(0 if (3,9) <= sys.version_info[:2] <= (3,13) else 1)'; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update -qq >/dev/null 2>&1 || true
+              sudo apt-get install -y -qq python3.11 python3.11-venv >/dev/null 2>&1 || true
+            fi
+          fi
+          python3 --version
+          python3 -c 'import sys; print("PYTHON_SUPPORTED=%s" % str((3,9) <= sys.version_info[:2] <= (3,13)).lower())'
       - name: Install private lockfile dependencies without lifecycle scripts
         shell: bash
         run: |
