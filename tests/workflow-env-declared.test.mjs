@@ -69,7 +69,10 @@ export function assignedInShell(block) {
 const PROVIDED = new Set([
   'RUNNER_TEMP', 'RUNNER_OS', 'RUNNER_ARCH', 'RUNNER_TOOL_CACHE', 'HOME', 'PATH', 'PWD',
   'GITHUB_ENV', 'GITHUB_OUTPUT', 'GITHUB_STEP_SUMMARY', 'GITHUB_WORKSPACE', 'GITHUB_SHA',
-  'GITHUB_REPOSITORY', 'GITHUB_TOKEN', 'GITHUB_REF', 'BASH_SOURCE', 'SECONDS', 'RANDOM',
+  'GITHUB_REPOSITORY', 'GITHUB_TOKEN', 'GITHUB_REF', 'GITHUB_PATH', 'BASH_SOURCE', 'SECONDS', 'RANDOM',
+  // Optional runtime configuration: expanded with ${VAR:-default}, so it is
+  // deliberately absent from the workflow environment.
+  'PIP_INDEX_URL',
 ]);
 
 test('the job block reader returns the requested job only', () => {

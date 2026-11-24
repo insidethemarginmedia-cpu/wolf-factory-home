@@ -326,7 +326,7 @@ jobs:
           for candidate in python3.13 python3.12 python3.11 python3.10 python3.9; do
             if command -v "$candidate" >/dev/null 2>&1; then echo "AVAILABLE_INTERPRETER=$candidate:$($candidate --version 2>&1)"; fi
           done
-          echo "PIP_INDEX_CONFIGURED=$([ -n "${PIP_INDEX_URL:-}" ] && echo yes || echo no)"
+          if [ -n "${PIP_INDEX_URL:-}" ]; then echo "PIP_INDEX_CONFIGURED=yes"; else echo "PIP_INDEX_CONFIGURED=no"; fi
 
           supported() { "$1" -c 'import sys; raise SystemExit(0 if (3,9) <= sys.version_info[:2] <= (3,13) else 1)' >/dev/null 2>&1; }
 
