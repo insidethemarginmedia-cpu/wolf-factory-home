@@ -359,15 +359,17 @@ jobs:
           rm -rf /tmp/wolf-ocr-venv
           if "$chosen" -m venv /tmp/wolf-ocr-venv >/dev/null 2>&1; then
             venv_ok=yes
-            echo "/tmp/wolf-ocr-venv/bin" >> "$GITHUB_PATH"
-            PATH="/tmp/wolf-ocr-venv/bin:$PATH"
           elif command -v apt-get >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
             if sudo apt-get install -y -qq python3-venv >/dev/null 2>&1 && "$chosen" -m venv /tmp/wolf-ocr-venv >/dev/null 2>&1; then
               venv_ok=yes
-              echo "/tmp/wolf-ocr-venv/bin" >> "$GITHUB_PATH"
-              PATH="/tmp/wolf-ocr-venv/bin:$PATH"
             fi
           fi
+          # Publishing to GITHUB_PATH is best effort: if the runner has not
+          # provided it, the selected interpreter is used directly instead.
+          if [ "$venv_ok" = yes ] && [ -n "${GITHUB_PATH:-}" ]; then
+            echo "/tmp/wolf-ocr-venv/bin" >> "$GITHUB_PATH" || venv_ok=no
+          fi
+          if [ "$venv_ok" = yes ]; then export PATH="/tmp/wolf-ocr-venv/bin:$PATH"; fi
           echo "OCR_PYTHON_SELECTION=$chosen"
           echo "OCR_VENV_CREATED=$venv_ok"
           "$chosen" -m pip --version >/dev/null 2>&1 || "$chosen" -m ensurepip --upgrade >/dev/null 2>&1 || echo "PIP_BOOTSTRAP_REQUIRED=yes"
