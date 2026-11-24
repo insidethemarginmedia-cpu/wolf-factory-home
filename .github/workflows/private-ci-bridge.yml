@@ -238,6 +238,14 @@ jobs:
           if ! psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc "select 1 from pg_database where datname='wolf_factory_dbos'" | grep -q 1; then
             psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -c 'CREATE DATABASE wolf_factory_dbos'
           fi
+          # Each workflow check runs in its own database: they create roles and
+          # fixtures with identical names and would otherwise interfere.
+          for name in wolf_test_test wolf_test_http_load_evidence wolf_test_postgres_schema wolf_test_postgres_concurrency; do
+            if ! psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc "select 1 from pg_database where datname='$name'" | grep -q 1; then
+              psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -c "CREATE DATABASE \"$name\""
+            fi
+            test "$(psql -h 127.0.0.1 -p 5432 -U postgres -d "$name" -tAc 'select 1')" = '1'
+          done
           test "$(psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc 'select 1')" = '1'
           echo PRIVATE_POSTGRES_DATABASES_READY=YES
       - name: Verify the public bridge and executor contracts

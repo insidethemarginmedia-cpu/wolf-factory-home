@@ -319,7 +319,9 @@ export function schemaBootstrapSteps({root, database, useMigrations = true}) {
 // A step is runnable when the bridge can reproduce it faithfully inside the
 // executor. Anything else (another checkout, an action with a network install)
 // is recorded as skipped with its reason, never silently treated as passing.
-const RUNNABLE_EXECUTABLES = /^\s*(?:sudo\s+)?(psql|node|npm|npx|bash|sh|python3?|git|echo|test|set|export|for|while|if|cat|printf|mkdir|cp|mv|rm|ls|chmod|sleep|true|false|pg_isready|createdb|dropdb|curl|jq)\b/;
+// Package installation and image/OCR tooling are part of what these workflows
+// actually do on a GitHub runner, so they are reproducible here too.
+const RUNNABLE_EXECUTABLES = /^\s*(?:sudo\s+)?(psql|node|npm|npx|bash|sh|python3?|pip3?|git|echo|test|set|export|for|while|if|cat|printf|mkdir|cp|mv|rm|ls|chmod|sleep|true|false|pg_isready|createdb|dropdb|curl|wget|jq|apt-get|apt|dpkg|update-alternatives|tesseract|convert|magick|identify|pdftoppm|unzip|tar)\b/;
 const SKIPPABLE_PREFIXES = [/^\s*uses:/, /\s*\bset\s*\+e\b/, /^\s*git\s+clone\b/];
 
 export function classifyWorkflowStep(step) {
@@ -380,6 +382,9 @@ function buildPlan({root, checks, env}) {
   // workflow uses wolf_factory_dbos. Each check therefore pins its own database
   // explicitly instead of inheriting the job-wide PGDATABASE.
   const schemaDatabase = env.WOLF_CI_SCHEMA_DATABASE || 'wolf_test';
+  // Each workflow check gets its own database. They create roles and fixtures
+  // with the same names, so sharing one database makes them interfere.
+  const isolatedDatabase = check => `${schemaDatabase}_${String(check).replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`;
   const npm = args => ({command: 'npm', args, timeoutMs: 15 * 60 * 1000});
   const node = (args, timeoutMs = 15 * 60 * 1000) => ({command: 'node', args, timeoutMs});
   const bash = (args, timeoutMs = 15 * 60 * 1000) => ({command: 'bash', args, timeoutMs});
@@ -450,23 +455,20 @@ function buildPlan({root, checks, env}) {
   // canonical database evidence" / schema-sequence steps) those ARE the
   // bootstrap. Only the platform surface is provisioned first; mixing in the
   // repository's migrations as well would change what the workflow measures.
+  // These two workflows build their own database fixture, including the
+  // roles and schema they need. Pre-creating the platform surface collides with
+  // their own `create role` statements, so they run unprovisioned and isolated.
   if (checks.includes('postgres-concurrency')) {
-    plan.push({name: 'postgres-concurrency', steps: [
-      ...platformProvisioningSteps({root, database: schemaDatabase}),
-      ...workflowSteps({root, check: 'postgres-concurrency', database: schemaDatabase}),
-    ]});
+    plan.push({name: 'postgres-concurrency', steps: workflowSteps({root, check: 'postgres-concurrency', database: isolatedDatabase('postgres-concurrency')})});
   }
   if (checks.includes('postgres-schema')) {
-    plan.push({name: 'postgres-schema', steps: [
-      ...platformProvisioningSteps({root, database: schemaDatabase}),
-      ...workflowSteps({root, check: 'postgres-schema', database: schemaDatabase}),
-    ]});
+    plan.push({name: 'postgres-schema', steps: workflowSteps({root, check: 'postgres-schema', database: isolatedDatabase('postgres-schema')})});
   }
   if (checks.includes('test')) {
-    plan.push({name: 'test', steps: workflowSteps({root, check: 'test', database: schemaDatabase})});
+    plan.push({name: 'test', steps: workflowSteps({root, check: 'test', database: isolatedDatabase('test')})});
   }
   if (checks.includes('http-load-evidence')) {
-    plan.push({name: 'http-load-evidence', steps: workflowSteps({root, check: 'http-load-evidence', database: schemaDatabase})});
+    plan.push({name: 'http-load-evidence', steps: workflowSteps({root, check: 'http-load-evidence', database: isolatedDatabase('http-load-evidence')})});
   }
   if (checks.includes('ocr-tesseract')) {
     plan.push({name: 'ocr-tesseract', steps: workflowSteps({root, check: 'ocr-tesseract', database: null})});
