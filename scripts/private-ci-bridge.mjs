@@ -505,7 +505,9 @@ async function main(argv) {
     }
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
     const result = await publishPrivateStatusChecks({
-      statusToken: process.env.WOLF_FACTORY_STATUS_TOKEN,
+      // The App-issued publisher token is preferred; the status PAT remains a
+      // fallback until the App can publish. Never both.
+      statusToken: process.env.WOLF_CI_APP_PUBLISHER_TOKEN || process.env.WOLF_FACTORY_STATUS_TOKEN,
       sourceToken: process.env.WOLF_FACTORY_REPO_TOKEN,
       repository: process.env.WOLF_CI_REPOSITORY,
       sha: receipt.sha,
@@ -642,6 +644,22 @@ async function main(argv) {
           ...(step.python ? {python: step.python} : {}),
         })),
       })),
+      authentication: (() => {
+        const file = process.env.WOLF_CI_APP_AUTH_FILE;
+        if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
+        try {
+          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+          return {
+            mode: parsed.appAuthComplete ? 'github-app' : 'pat-fallback',
+            appSecretsComplete: parsed.appAuthComplete ?? false,
+            installationIds: parsed.installations ?? null,
+            fallbacks: parsed.fallback ?? null,
+            credentialsPrinted: false,
+          };
+        } catch {
+          return {state: 'UNREADABLE'};
+        }
+      })(),
       privateStatusCheck: (() => {
         const file = process.env.WOLF_CI_PRIVATE_STATUS_FILE;
         if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};

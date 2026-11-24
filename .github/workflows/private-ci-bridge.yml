@@ -30,14 +30,17 @@ on:
       - 'scripts/private-ci-diagnose.mjs'
       - 'scripts/private-ci-journal.mjs'
       - 'scripts/private-ci-workflow.mjs'
+      - 'scripts/private-ci-app-auth.mjs'
+      - 'scripts/private-ci-app-auth-cli.mjs'
       - 'scripts/private-ci-journal-cli.mjs'
       - 'tests/private-ci-bridge.test.mjs'
       - 'tests/private-ci-inventory.test.mjs'
       - 'tests/private-ci-execute.test.mjs'
       - 'tests/private-ci-publish-receipt.test.mjs'
       - 'tests/private-ci-diagnose.test.mjs'
-      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs'
+      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs'
       - 'tests/private-ci-workflow.test.mjs'
+      - 'tests/private-ci-app-auth.test.mjs'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
       - 'tests/private-controller-preflight-pin.test.mjs'
@@ -112,6 +115,11 @@ jobs:
         env:
           WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+          WOLF_CI_APP_PUBLISHER_TOKEN: ${{ env.WOLF_CI_APP_PUBLISHER_TOKEN }}
+          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-publisher-token.env
           WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
           WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
         run: |
@@ -301,6 +309,52 @@ jobs:
           set -euo pipefail
           node --test tests/private-ci-bridge.test.mjs tests/private-ci-inventory.test.mjs tests/private-ci-execute.test.mjs tests/private-ci-publish-receipt.test.mjs tests/private-ci-diagnose.test.mjs tests/workflow-pins-resolve.test.mjs tests/private-controller-preflight-pin.test.mjs tests/workflow-env-declared.test.mjs tests/private-ci-journal.test.mjs
           echo PRIVATE_CI_EXECUTOR_CONTRACT=PASS
+      - name: Mint the reader installation token with the official action
+        id: app_reader
+        # Declarative alternative to the CLI path below. It is skipped unless the
+        # App secrets exist, so the workflow stays green while the App is being
+        # installed, and it is scoped to the single private repository.
+        if: vars.WOLF_FACTORY_APP_AUTH == 'enabled'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          app-id: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          private-key: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          owner: donraposo1-source
+          repositories: project-wolf
+          permission-contents: read
+          permission-metadata: read
+      - name: Authenticate to the private Factory with a GitHub App installation token
+        shell: bash
+        env:
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
+          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+          WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
+          WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-app-token.env
+          GITHUB_STEP_SUMMARY: ${{ runner.temp }}/wolf-ci-app-auth.md
+        run: |
+          set -euo pipefail
+          # Presence-only inventory first: no value is ever printed.
+          node scripts/private-ci-app-auth-cli.mjs inventory
+          # Reader may come from the App or, until the App is installed, from the
+          # PAT fallback. A non-zero exit is reported, never fatal: the deploy key
+          # remains the working source path either way.
+          if node scripts/private-ci-app-auth-cli.mjs mint reader; then
+            echo PRIVATE_CI_READER_AUTH=app-or-fallback
+          else
+            echo PRIVATE_CI_READER_AUTH=unavailable
+          fi
+          if test -s "$WOLF_CI_TOKEN_FILE"; then
+            cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"
+            rm -f "$WOLF_CI_TOKEN_FILE"
+            echo PRIVATE_CI_READER_TOKEN_EXPORTED=YES
+          else
+            echo PRIVATE_CI_READER_TOKEN_EXPORTED=NO
+          fi
       - name: Clone the private commit at its immutable SHA over the authorized deploy key
         shell: bash
         env:
@@ -355,6 +409,26 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund --prefix /tmp/dbos
           npm run build --prefix /tmp/dbos
           test -f /tmp/dbos/dist/src/index.js
+      - name: Report the authentication posture of this run
+        shell: bash
+        env:
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
+          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+          WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
+          WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+          WOLF_CI_APP_AUTH_FILE: /tmp/wolf-ci-app-auth.json
+          ISSUED_READER_TOKEN: ${{ steps.app_reader.outputs.token != '' }}
+        run: |
+          set -euo pipefail
+          : "${WOLF_CI_APP_AUTH_FILE:?APP_AUTH_FILE_REQUIRED}"
+          node scripts/private-ci-app-auth-cli.mjs inventory > "$WOLF_CI_APP_AUTH_FILE"
+          test -s "$WOLF_CI_APP_AUTH_FILE"
+          node -e 'const i=require(process.env.WOLF_CI_APP_AUTH_FILE); console.log("APP_AUTH_COMPLETE=" + i.appAuthComplete + " PAT_FALLBACK=" + (i.fallback.pat === "present") + " DEPLOY_KEY=" + (i.fallback.deployKey === "present"));'
+          echo "OFFICIAL_ACTION_ISSUED_TOKEN=${ISSUED_READER_TOKEN:-false}"
       - name: Diagnose private CI exit codes and environment keys without publishing source
         shell: bash
         env:
@@ -419,6 +493,11 @@ jobs:
         env:
           WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
           WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+          WOLF_CI_APP_PUBLISHER_TOKEN: ${{ env.WOLF_CI_APP_PUBLISHER_TOKEN }}
+          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-publisher-token.env
           WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
           WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
         run: |
@@ -435,6 +514,7 @@ jobs:
           WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
           WOLF_CI_PRIVATE_PUBLICATION_FILE: /tmp/wolf-ci-private-publication.json
           WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
+          WOLF_CI_APP_AUTH_FILE: /tmp/wolf-ci-app-auth.json
           WOLF_CI_PR: '743'
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}

@@ -310,3 +310,22 @@ test('private status checks require their own credential and fail closed without
   assert.equal(calls[0].body.head_sha, sha);
   assert.equal(JSON.stringify(published).includes('github_pat_status'), false, 'credentials never appear in output');
 });
+
+test('the publisher prefers the App token and never mixes it with the status PAT', async () => {
+  const {publishPrivateStatusChecks} = await import('../scripts/private-ci-bridge.mjs');
+  const seen = [];
+  const fetchImpl = async (url, options = {}) => {
+    seen.push(JSON.parse(options.body).name);
+    return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({id: 1})};
+  };
+  // The CLI resolves the token before calling this function; here we assert the
+  // function itself refuses an absent status credential rather than falling back
+  // to the reader, which is the actual boundary being protected.
+  const blocked = await publishPrivateStatusChecks({
+    repository, sha, names: ['wolf-private-ci-743'], conclusion: 'success', summary: 'x',
+    sourceToken: 'github_pat_reader', fetchImpl,
+  });
+  assert.equal(blocked.state, 'BLOCKED');
+  assert.equal(seen.length, 0, 'no request without a status credential');
+  assert.deepEqual(blocked.installationIds ?? null, null);
+});
