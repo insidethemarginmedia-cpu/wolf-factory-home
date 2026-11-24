@@ -255,6 +255,10 @@ suppressed, not trusted. Duplicates are reported, never retried.
 
 ### 9.6 Live state at the time of writing
 
+Accepting run: `45492528355` on `5a55a7e` — `state: VERIFIED`, 13/13 checks,
+private receipt `PUBLISHED`, every privacy flag `false`.
+
+
 | Field | Value | Meaning |
 | --- | --- | --- |
 | `authentication.mode` | `pat-fallback` | No App secrets yet; the PAT is doing the work |
