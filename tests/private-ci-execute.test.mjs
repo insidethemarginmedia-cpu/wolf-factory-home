@@ -266,3 +266,21 @@ test('every generated shell script is valid bash', async () => {
   assert.match(platformProvisionScript(), /exit 0/);
   fs.rmSync(root, {recursive: true, force: true});
 });
+
+test('schema workflows apply migrations but leave their own roles to the workflow', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const {schemaBootstrapSteps} = await import('../scripts/private-ci-execute.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-ci-noplat-'));
+  fs.mkdirSync(path.join(root, 'supabase', 'migrations'), {recursive: true});
+  fs.writeFileSync(path.join(root, 'supabase', 'migrations', '001.sql'), 'select 1;');
+
+  const withPlatform = schemaBootstrapSteps({root, database: 'db'});
+  assert.equal(withPlatform[0].label, 'platform-provisioning');
+
+  const withoutPlatform = schemaBootstrapSteps({root, database: 'db', platform: false});
+  assert.equal(withoutPlatform.some(step => step.label === 'platform-provisioning'), false);
+  assert.equal(withoutPlatform[0].label, 'schema-bootstrap');
+  fs.rmSync(root, {recursive: true, force: true});
+});

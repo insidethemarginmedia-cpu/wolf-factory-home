@@ -256,12 +256,14 @@ export function platformProvisioningSteps({root, database}) {
   }];
 }
 
-export function schemaBootstrapSteps({root, database, useMigrations = true}) {
+export function schemaBootstrapSteps({root, database, useMigrations = true, platform = true}) {
   const steps = [];
   const migrationFiles = useMigrations ? listMigrations(root) : [];
   // Provision the platform surface first so migration failures are real
-  // migration failures rather than missing-role or missing-schema noise.
-  if (migrationFiles.length) {
+  // migration failures rather than missing-role or missing-schema noise. The
+  // schema/concurrency workflows create those roles themselves, so they opt out
+  // (see buildPlan) to avoid a duplicate-role collision.
+  if (migrationFiles.length && platform) {
     steps.push({
       command: 'bash',
       args: ['-c', platformProvisionScript()],
@@ -458,11 +460,21 @@ function buildPlan({root, checks, env}) {
   // These two workflows build their own database fixture, including the
   // roles and schema they need. Pre-creating the platform surface collides with
   // their own `create role` statements, so they run unprovisioned and isolated.
+  // These workflows build their own fixture, including `create role
+  // authenticated`. The schema still has to exist first (their verify scripts
+  // read public tables), so the ordered migrations run; the platform roles are
+  // left for the workflow to create so its own statements do not collide.
   if (checks.includes('postgres-concurrency')) {
-    plan.push({name: 'postgres-concurrency', steps: workflowSteps({root, check: 'postgres-concurrency', database: isolatedDatabase('postgres-concurrency')})});
+    plan.push({name: 'postgres-concurrency', steps: [
+      ...schemaBootstrapSteps({root, database: isolatedDatabase('postgres-concurrency'), platform: false}),
+      ...workflowSteps({root, check: 'postgres-concurrency', database: isolatedDatabase('postgres-concurrency')}),
+    ]});
   }
   if (checks.includes('postgres-schema')) {
-    plan.push({name: 'postgres-schema', steps: workflowSteps({root, check: 'postgres-schema', database: isolatedDatabase('postgres-schema')})});
+    plan.push({name: 'postgres-schema', steps: [
+      ...schemaBootstrapSteps({root, database: isolatedDatabase('postgres-schema'), platform: false}),
+      ...workflowSteps({root, check: 'postgres-schema', database: isolatedDatabase('postgres-schema')}),
+    ]});
   }
   if (checks.includes('test')) {
     plan.push({name: 'test', steps: workflowSteps({root, check: 'test', database: isolatedDatabase('test')})});
