@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {signReceipt} from '../scripts/private-ci-receipt.mjs';
+import {ALL_REQUIRED_CHECKS} from '../scripts/private-ci-contract.mjs';
 import {
   BRIDGE_REPOSITORIES,
   DEFAULT_REQUIRED_CHECKS,
@@ -20,6 +22,34 @@ const repository = 'donraposo1-source/project-wolf';
 const privateRepo = {full_name: repository, private: true, default_branch: 'main', permissions: {pull: true, push: true, maintain: true, admin: true}};
 const pull = {number: 743, state: 'open', draft: false, head: {sha, ref: 'feat/pr-743'}, base: {ref: 'main', sha: 'b'.repeat(40)}, mergeable_state: 'clean'};
 const workflow = {id: 42, name: 'Wolf Private CI Bridge', path: '.github/workflows/private-ci-bridge.yml', state: 'active'};
+const SIGNING_KEY = 'omega synthetic receipt signing key for bridge tests';
+const TREE_SHA = 'd'.repeat(40);
+const MISSION_ID = 'MISSION-TEST-0001';
+const RESERVATION_KEY = 'e'.repeat(64);
+
+function makeReceipt({checkNames = ALL_REQUIRED_CHECKS, failedNames = [], state = failedNames.length ? 'FAILED' : 'VERIFIED', failure = failedNames.length ? 'synthetic failure' : null, ...overrides} = {}) {
+  const names = [...checkNames];
+  const receipt = {
+    schema: 'wolf.private-ci.receipt/v1',
+    state,
+    sha,
+    treeSha: TREE_SHA,
+    repository,
+    checkout: {sha, treeSha: TREE_SHA, cleanBefore: true, cleanAfter: true, finalSha: sha, finalTreeSha: TREE_SHA},
+    testBinding: {sha, treeSha: TREE_SHA, checks: names},
+    missionBinding: {missionId: MISSION_ID, reservationKey: RESERVATION_KEY, sha},
+    checks: names.map(name => ({name, sha, treeSha: TREE_SHA, status: failedNames.includes(name) ? 'failure' : 'success'})),
+    requiredChecks: names.filter(name => DEFAULT_REQUIRED_CHECKS.includes(name)),
+    extraChecks: names.filter(name => !DEFAULT_REQUIRED_CHECKS.includes(name)),
+    failedChecks: [...failedNames],
+    startedAt: '2026-11-25T00:00:00.000Z',
+    completedAt: '2026-11-25T00:00:01.000Z',
+    failure,
+    sourceIntegrityFailure: null,
+    ...overrides,
+  };
+  return signReceipt(receipt, SIGNING_KEY);
+}
 
 function serve(values) {
   let calls = 0;
@@ -108,22 +138,29 @@ test('an absent commit is denied and never becomes a successful probe', async ()
   assert.equal(result.commit.present, false);
 });
 
-test('receipt binding rejects absent, mismatched, missing and unsuccessful checks', () => {
-  const valid = {
-    sha,
-    repository,
-    checks: DEFAULT_REQUIRED_CHECKS.map(name => ({name, conclusion: 'success'})),
-  };
-  assert.equal(verifyReceiptBinding(valid, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS}).state, 'VERIFIED');
-  assert.equal(verifyReceiptBinding(null, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS}).reason, 'RECEIPT_REQUIRED');
-  assert.equal(verifyReceiptBinding({...valid, sha: 'b'.repeat(40)}, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS}).reason, 'RECEIPT_SHA_MISMATCH');
-  assert.equal(verifyReceiptBinding({...valid, repository: 'other/repo'}, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS}).reason, 'RECEIPT_REPOSITORY_MISMATCH');
-  const missing = verifyReceiptBinding({...valid, checks: valid.checks.slice(1)}, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS});
-  assert.equal(missing.reason, 'RECEIPT_CHECKS_MISSING');
-  assert.deepEqual(missing.missing, ['security']);
-  const failed = verifyReceiptBinding({...valid, checks: valid.checks.map((check, index) => index ? check : {...check, conclusion: 'failure'})}, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS});
-  assert.equal(failed.reason, 'RECEIPT_CHECKS_UNSUCCESSFUL');
+test('receipt binding authenticates schema, mission, tree, exact 13 checks and successful outcomes', () => {
+  const valid = makeReceipt();
+  assert.equal(verifyReceiptBinding(valid, {sha, repository, checks: ALL_REQUIRED_CHECKS, signingKey: SIGNING_KEY, missionId: MISSION_ID, reservationKey: RESERVATION_KEY}).state, 'VERIFIED');
+  assert.equal(verifyReceiptBinding(null, {sha, repository, checks: ALL_REQUIRED_CHECKS, signingKey: SIGNING_KEY}).reason, 'RECEIPT_REQUIRED');
+  assert.equal(verifyReceiptBinding(valid, {sha: 'b'.repeat(40), repository, checks: ALL_REQUIRED_CHECKS, signingKey: SIGNING_KEY}).reason, 'RECEIPT_SHA_MISMATCH');
+  assert.equal(verifyReceiptBinding(valid, {sha, repository, checks: ALL_REQUIRED_CHECKS, signingKey: 'wrong key material of at least 32 bytes'}).reason, 'RECEIPT_SIGNATURE_MISMATCH');
+  const wrongRepo = signReceipt({...valid, repository: 'other/repo', receiptHash: undefined, receiptSignature: undefined}, SIGNING_KEY);
+  assert.equal(verifyReceiptBinding(wrongRepo, {sha, repository, checks: ALL_REQUIRED_CHECKS, signingKey: SIGNING_KEY}).reason, 'RECEIPT_REPOSITORY_MISMATCH');
+  const missingReceipt = makeReceipt({checkNames: ALL_REQUIRED_CHECKS.slice(1)});
+  const missing = verifyReceiptBinding(missingReceipt, {sha, repository, checks: ALL_REQUIRED_CHECKS, signingKey: SIGNING_KEY});
+  assert.equal(missing.reason, 'RECEIPT_TEST_CHECKS_MISMATCH');
+  const failedReceipt = makeReceipt({failedNames: ['security'], failure: 'security:1'});
+  const failed = verifyReceiptBinding(failedReceipt, {sha, repository, checks: ALL_REQUIRED_CHECKS, signingKey: SIGNING_KEY});
+  assert.equal(failed.state, 'FAILED');
+  assert.equal(failed.reason, 'RECEIPT_RUN_FAILED');
   assert.deepEqual(failed.unsuccessful, ['security']);
+});
+
+test('receipt verification never downgrades a mission to only the six base checks', () => {
+  const sixOnly = makeReceipt({checkNames: DEFAULT_REQUIRED_CHECKS});
+  const result = verifyReceiptBinding(sixOnly, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS, signingKey: SIGNING_KEY});
+  assert.equal(result.state, 'REJECTED');
+  assert.equal(result.reason, 'RECEIPT_REQUIRED_CHECK_CONTRACT_MISMATCH');
 });
 
 test('dispatch addresses only the allowlisted repository, immutable SHA and safe inputs', async () => {
@@ -191,22 +228,16 @@ test('check runs are confined to the public runner and private repos to the fact
   assert.throws(() => normalizeRepository('insidethemarginmedia-cpu/wolf-factory-home'), /BRIDGE_REPOSITORY_DENIED/);
 });
 
-test('the verifier accepts the executor receipt format and rejects advisory-only extras', async () => {
-  const {verifyReceiptBinding, DEFAULT_REQUIRED_CHECKS} = await import('../scripts/private-ci-bridge.mjs');
-  const executorReceipt = {
-    schema: 'wolf.private-ci.receipt/v1',
-    state: 'VERIFIED',
-    sha,
-    repository,
-    checks: [
-      ...DEFAULT_REQUIRED_CHECKS.map(name => ({name, status: 'success'})),
-      {name: 'migrations', status: 'success'},
-      {name: 'postgres-concurrency', status: 'advisory-failure'},
-    ],
-  };
-  assert.equal(verifyReceiptBinding(executorReceipt, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS}).state, 'VERIFIED');
-  const broken = {...executorReceipt, checks: executorReceipt.checks.map(check => check.name === 'build' ? {...check, status: 'failure'} : check)};
-  assert.equal(verifyReceiptBinding(broken, {sha, repository, checks: DEFAULT_REQUIRED_CHECKS}).reason, 'RECEIPT_CHECKS_UNSUCCESSFUL');
+test('the verifier accepts only a signed full-contract receipt and rejects failed extras as VERIFIED', () => {
+  const fullChecks = ['security', 'lint', 'typecheck', 'unit', 'integration', 'build', 'migrations', 'postgres-concurrency', 'postgres-schema', 'test', 'http-load-evidence', 'ocr-tesseract', 'ocr-paddle'];
+  const verified = makeReceipt({checkNames: fullChecks});
+  assert.equal(verifyReceiptBinding(verified, {sha, repository, checks: fullChecks, signingKey: SIGNING_KEY, missionId: MISSION_ID, reservationKey: RESERVATION_KEY}).state, 'VERIFIED');
+
+  const fabricated = {...verified, checks: verified.checks.map(check => check.name === 'postgres-concurrency' ? {...check, status: 'advisory-failure'} : check)};
+  assert.equal(verifyReceiptBinding(fabricated, {sha, repository, checks: fullChecks, signingKey: SIGNING_KEY, missionId: MISSION_ID, reservationKey: RESERVATION_KEY}).reason, 'RECEIPT_HASH_MISMATCH');
+
+  const signedFailureClaimedAsVerified = makeReceipt({checkNames: fullChecks, failedNames: ['postgres-concurrency'], state: 'VERIFIED'});
+  assert.equal(verifyReceiptBinding(signedFailureClaimedAsVerified, {sha, repository, checks: fullChecks, signingKey: SIGNING_KEY, missionId: MISSION_ID, reservationKey: RESERVATION_KEY}).reason, 'RECEIPT_VERIFIED_WITH_FAILURE');
 });
 
 test('a fine-grained PAT scoped to one repository is not misreported as denied', async () => {
@@ -300,8 +331,9 @@ test('private status checks require their own credential and fail closed without
     sourceToken: 'github_pat_source',
     statusToken: 'github_pat_status',
     fetchImpl: async (url, options = {}) => {
-      calls.push({url, body: JSON.parse(options.body)});
-      return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({id: 999})};
+      const body = JSON.parse(options.body);
+      calls.push({url, body});
+      return {ok: true, status: 201, headers: {get: () => null}, json: async () => ({id: 999, ...body})};
     },
   });
   assert.equal(published.state, 'PUBLISHED');
@@ -315,8 +347,9 @@ test('the publisher prefers the App token and never mixes it with the status PAT
   const {publishPrivateStatusChecks} = await import('../scripts/private-ci-bridge.mjs');
   const seen = [];
   const fetchImpl = async (url, options = {}) => {
-    seen.push(JSON.parse(options.body).name);
-    return {ok: true, status: 200, headers: {get: () => null}, json: async () => ({id: 1})};
+    const body = JSON.parse(options.body);
+    seen.push(body.name);
+    return {ok: true, status: 201, headers: {get: () => null}, json: async () => ({id: 1, ...body})};
   };
   // The CLI resolves the token before calling this function; here we assert the
   // function itself refuses an absent status credential rather than falling back
@@ -396,8 +429,9 @@ test('an App publisher token removes the STATUS PAT requirement without dropping
   const {publishPrivateStatusChecks} = await import('../scripts/private-ci-bridge.mjs');
   const seen = [];
   const fetchImpl = async (url, options = {}) => {
+    const body = JSON.parse(options.body);
     seen.push({url, auth: options.headers.authorization});
-    return {ok: true, status: 201, headers: {get: () => null}, json: async () => ({id: 1, name: 'wolf-private-ci-743'})};
+    return {ok: true, status: 201, headers: {get: () => null}, json: async () => ({id: 1, ...body})};
   };
   const result = await publishPrivateStatusChecks({
     statusToken: 'ghs_app_publisher', statusIdentity: 'app-installation',

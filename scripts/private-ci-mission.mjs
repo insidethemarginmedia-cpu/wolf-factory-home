@@ -17,7 +17,10 @@
 //   - Bounded failure: every mission has a deadline, and an expired mission is
 //     refused rather than executed late against a stale ref.
 
+import {ALLOWED_CHECKS} from './private-ci-contract.mjs';
+
 export const MISSION_SCHEMA_VERSION = 1;
+export const MISSION_REQUIRED_CHECKS = Object.freeze([...ALLOWED_CHECKS]);
 
 // The only event type the bridge accepts from another repository.
 export const MISSION_EVENT_TYPE = 'wolf-private-ci';
@@ -27,6 +30,8 @@ export const MISSION_STATES = Object.freeze({
   REJECTED: 'REJECTED',
   DUPLICATE: 'DUPLICATE',
   EXPIRED: 'EXPIRED',
+  BLOCKED: 'BLOCKED',
+  RATE_LIMITED: 'RATE_LIMITED',
 });
 
 // Fixed by the contract. A mission cannot override any of these.
@@ -44,6 +49,10 @@ export const MISSION_POLICY = Object.freeze({
   maxPerSenderPerHour: 12,
   // A paid execution is never permitted, whatever the mission says.
   allowPaidExecution: false,
+  // The sender must match the authenticated GitHub actor and this explicit
+  // operator-maintained allowlist. An empty list denies every mission.
+  actorAllowlistRequired: true,
+  requiredChecks: MISSION_REQUIRED_CHECKS,
 });
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
@@ -58,7 +67,7 @@ const REPOSITORY_PATTERN = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
  * Returns a decision, never throws: a rejected mission must produce a durable,
  * inspectable reason rather than a crash that loses the evidence.
  */
-export function validateMission(payload, {now = Date.now(), allowlist = null} = {}) {
+export function validateMission(payload, {now = Date.now(), allowlist = null, actor = null, allowedActors = [], expectedPr = null} = {}) {
   const reject = (reason, detail = null) => ({state: MISSION_STATES.REJECTED, reason, detail, accepted: false});
 
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return reject('MISSION_PAYLOAD_REQUIRED');
@@ -73,6 +82,10 @@ export function validateMission(payload, {now = Date.now(), allowlist = null} = 
   }
   if (typeof payload.repository !== 'string' || !REPOSITORY_PATTERN.test(payload.repository)) return reject('MISSION_REPOSITORY_INVALID');
   if (allowlist && !allowlist.includes(payload.repository)) return reject('MISSION_REPOSITORY_NOT_ALLOWED', {repository: payload.repository});
+  if (typeof actor !== 'string' || !/^[A-Za-z0-9-]{1,39}(?:\[bot\])?$/.test(actor)) return reject('MISSION_ACTOR_REQUIRED');
+  if (!Array.isArray(allowedActors) || !allowedActors.length) return reject('MISSION_ACTOR_ALLOWLIST_REQUIRED');
+  if (!allowedActors.includes(actor)) return reject('MISSION_ACTOR_NOT_ALLOWED');
+  if (payload.requestedBy !== undefined && payload.requestedBy !== actor) return reject('MISSION_REQUESTED_BY_MISMATCH');
 
   // A caller may not select the workflow or the credential. Those are policy, and
   // policy that a payload can override is not policy.
@@ -87,7 +100,14 @@ export function validateMission(payload, {now = Date.now(), allowlist = null} = 
     return reject('MISSION_MAY_NOT_AUTHORISE_PAID_EXECUTION');
   }
 
-  const issuedAt = Number(payload.issuedAt);
+  let issuedAt;
+  if (typeof payload.issuedAt === 'number') {
+    issuedAt = payload.issuedAt;
+  } else if (typeof payload.issuedAt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(payload.issuedAt)) {
+    issuedAt = Date.parse(payload.issuedAt);
+  } else {
+    return reject('MISSION_ISSUED_AT_REQUIRED');
+  }
   if (!Number.isFinite(issuedAt) || issuedAt <= 0) return reject('MISSION_ISSUED_AT_REQUIRED');
   if (issuedAt > now + 5 * 60 * 1000) return reject('MISSION_ISSUED_IN_FUTURE');
   if (now - issuedAt > MISSION_POLICY.maxAgeMs) return reject('MISSION_EXPIRED', {ageMs: now - issuedAt, maxAgeMs: MISSION_POLICY.maxAgeMs});
@@ -96,7 +116,18 @@ export function validateMission(payload, {now = Date.now(), allowlist = null} = 
   if (checks !== null) {
     if (!checks.length || checks.length > 64) return reject('MISSION_CHECKS_INVALID');
     if (checks.some(name => typeof name !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(name))) return reject('MISSION_CHECK_NAME_INVALID');
+    if (new Set(checks).size !== checks.length || checks.some(name => !ALLOWED_CHECKS.includes(name))) return reject('MISSION_CHECK_NAME_NOT_ALLOWED');
+    if (checks.length !== MISSION_REQUIRED_CHECKS.length || MISSION_REQUIRED_CHECKS.some(name => !checks.includes(name))) {
+      return reject('MISSION_CHECKS_NOT_ALLOWED');
+    }
   }
+  const prRaw = payload.pr ?? expectedPr;
+  let pr = null;
+  if (prRaw !== null && prRaw !== undefined && prRaw !== '') {
+    if (!/^[1-9][0-9]{0,5}$/.test(String(prRaw))) return reject('MISSION_PR_INVALID');
+    pr = Number(prRaw);
+  }
+  if (expectedPr !== null && expectedPr !== undefined && pr !== Number(expectedPr)) return reject('MISSION_PR_NOT_ALLOWED');
 
   return {
     state: MISSION_STATES.ACCEPTED,
@@ -107,11 +138,12 @@ export function validateMission(payload, {now = Date.now(), allowlist = null} = 
       sha: payload.sha,
       repository: payload.repository,
       issuedAt,
-      checks: checks ?? null,
+      checks: [...MISSION_REQUIRED_CHECKS],
+      pr,
       // Delivery order matters for an audit trail, and a caller-supplied attempt
       // number is evidence of retries rather than a hint to skip work.
       attempt: Number.isInteger(payload.attempt) && payload.attempt > 0 ? payload.attempt : 1,
-      requestedBy: typeof payload.requestedBy === 'string' ? payload.requestedBy.slice(0, 64) : null,
+      requestedBy: actor,
     },
     policy: MISSION_POLICY,
   };

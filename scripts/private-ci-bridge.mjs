@@ -8,15 +8,43 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {decideFallbackRetirement} from './private-ci-app-auth.mjs';
+import {DEFAULT_REQUIRED_CHECKS, ALL_REQUIRED_CHECKS, ALLOWED_CHECKS, WORKFLOW_CHECKS, normalizeCheckNames} from './private-ci-contract.mjs';
+import {verifyReceiptSignature} from './private-ci-receipt.mjs';
 
+export {DEFAULT_REQUIRED_CHECKS};
 export const BRIDGE_REPOSITORIES = Object.freeze(['donraposo1-source/project-wolf']);
 // The runner that hosts this bridge. It is only ever touched to publish the
 // sanitized receipt and a status check run; no private source reaches it.
 export const BRIDGE_PUBLIC_REPOSITORIES = Object.freeze(['insidethemarginmedia-cpu/wolf-factory-home']);
-export const DEFAULT_REQUIRED_CHECKS = Object.freeze(['security', 'lint', 'typecheck', 'unit', 'integration', 'build']);
 export const BRIDGE_WORKFLOW_PATH = '.github/workflows/private-ci-bridge.yml';
 export const SHA_PATTERN = /^[a-f0-9]{40}$/;
 export const PR_PATTERN = /^[1-9][0-9]*$/;
+
+const SAFE_CHECK_STATUSES = new Set(['success', 'failure']);
+const SAFE_STEP_STATUSES = new Set(['success', 'failure', 'timeout']);
+const SAFE_WORKFLOW_PATHS = new Set(Object.values(WORKFLOW_CHECKS).map(definition => definition.workflow));
+
+/**
+ * Select only fixed-contract names and numeric execution facts from a verified
+ * receipt. Free-form target-controlled fields (commands, args, step labels,
+ * error text, SQL detail and log tails) are never copied into public output.
+ */
+export function sanitizeReceiptChecks(checks) {
+  if (!Array.isArray(checks)) return [];
+  return checks.filter(check => check && ALL_REQUIRED_CHECKS.includes(check.name)).map(check => ({
+    name: check.name,
+    status: SAFE_CHECK_STATUSES.has(check.status) ? check.status : 'failure',
+    durationMs: Number.isSafeInteger(check.durationMs) && check.durationMs >= 0 ? check.durationMs : null,
+    steps: (Array.isArray(check.steps) ? check.steps : []).slice(0, 500).map((step, index) => ({
+      stepIndex: Number.isSafeInteger(step?.stepIndex) && step.stepIndex >= 0 ? step.stepIndex : index,
+      ...(SAFE_WORKFLOW_PATHS.has(step?.workflow) ? {workflow: step.workflow} : {}),
+      exitCode: Number.isInteger(step?.exitCode) ? step.exitCode : null,
+      expectedExitCodes: Array.isArray(step?.expectedExitCodes) ? step.expectedExitCodes.filter(Number.isInteger).slice(0, 16) : [],
+      status: SAFE_STEP_STATUSES.has(step?.status) ? step.status : 'failure',
+      durationMs: Number.isSafeInteger(step?.durationMs) && step.durationMs >= 0 ? step.durationMs : null,
+    })),
+  }));
+}
 
 // Reads a JSON artefact written by an earlier step. Presence reporting only:
 // neither helper can surface a credential, because neither artefact contains one.
@@ -199,12 +227,16 @@ export function normalizeSha(value, env = process.env) {
 }
 
 export function normalizeChecks(value, env = process.env) {
-  const raw = String(value ?? env.WOLF_CI_CHECKS ?? DEFAULT_REQUIRED_CHECKS.join(','));
-  const checks = [...new Set(raw.split(',').map(item => item.trim().toLowerCase()).filter(Boolean))];
-  if (!checks.length) throw Error('BRIDGE_CHECKS_REQUIRED');
-  const allowed = new Set(DEFAULT_REQUIRED_CHECKS);
-  for (const check of checks) if (!allowed.has(check)) throw Error('BRIDGE_CHECK_DENIED');
-  return checks;
+  try {
+    return normalizeCheckNames(value ?? env.WOLF_CI_CHECKS, {
+      defaults: DEFAULT_REQUIRED_CHECKS,
+      allowed: ALLOWED_CHECKS,
+      errorPrefix: 'BRIDGE_CHECKS',
+    });
+  } catch (error) {
+    if (error?.message === 'BRIDGE_CHECKS_DENIED') throw Error('BRIDGE_CHECK_DENIED');
+    throw error;
+  }
 }
 
 export function normalizePr(value, env = process.env) {
@@ -433,7 +465,7 @@ export async function probePrivateRepository({token, repository, sha, pr, fetchI
 
 // Publish a sanitized SHA-bound receipt as a check run. The summary is capped
 // and redacted; it never contains source, logs, tokens, or private URLs.
-export async function createCheckRun({token, repository, sha, name, conclusion = 'success', title, summary, detailsUrl, fetchImpl = globalThis.fetch, surface = 'public'}) {
+export async function createCheckRun({token, repository, sha, name, conclusion = 'success', title, summary, detailsUrl, externalId, fetchImpl = globalThis.fetch, surface = 'public'}) {
   if (!['success', 'failure', 'neutral', 'cancelled', 'timed_out', 'skipped', 'action_required'].includes(conclusion)) throw Error('BRIDGE_CHECK_CONCLUSION_INVALID');
   const body = {
     name,
@@ -441,6 +473,7 @@ export async function createCheckRun({token, repository, sha, name, conclusion =
     status: 'completed',
     conclusion,
     ...(detailsUrl ? {details_url: detailsUrl} : {}),
+    ...(externalId ? {external_id: String(externalId).slice(0, 100)} : {}),
     output: {
       title: redact(title ?? name).slice(0, 255),
       summary: redact(summary ?? '', [token]).slice(0, 65535),
@@ -450,7 +483,13 @@ export async function createCheckRun({token, repository, sha, name, conclusion =
   // `surface` decides which allowlist applies: the public runner hosts the
   // sanitized receipt, the private repository hosts the authenticated check.
   const target = surface === 'private' ? normalizeRepository(repository) : normalizePublicRepository(repository);
-  return githubJson(`${API}/repos/${target}/check-runs`, {token, method: 'POST', body, fetchImpl});
+  const created = await githubJson(`${API}/repos/${target}/check-runs`, {token, method: 'POST', body, fetchImpl});
+  if (!Number.isSafeInteger(Number(created?.id)) || Number(created.id) <= 0
+    || created.head_sha !== body.head_sha || created.name !== name
+    || created.status !== 'completed' || created.conclusion !== conclusion) {
+    throw Error('BRIDGE_CHECK_RUN_BINDING_MISMATCH');
+  }
+  return created;
 }
 
 // Diagnostic for the dispatch path. It performs the cheapest possible probe of
@@ -526,7 +565,7 @@ export async function diagnoseDispatch({token, repository, workflowId, fetchImpl
 // exact permission required rather than silently degrading.
 export const PRIVATE_STATUS_PERMISSION = 'checks: write (Checks: write on donraposo1-source/project-wolf)';
 
-export async function publishPrivateStatusChecks({statusToken, sourceToken, statusIdentity, repository, sha, names, conclusion, summary, fetchImpl = globalThis.fetch, detailsUrl} = {}) {
+export async function publishPrivateStatusChecks({statusToken, sourceToken, statusIdentity, repository, sha, names, conclusion, summary, externalId, fetchImpl = globalThis.fetch, detailsUrl} = {}) {
   const normalizedRepository = normalizeRepository(repository);
   const normalizedSha = normalizeSha(sha);
   const base = {
@@ -562,7 +601,7 @@ export async function publishPrivateStatusChecks({statusToken, sourceToken, stat
   for (const name of names) {
     const checkName = String(name).slice(0, 100);
     try {
-      const created = await createCheckRun({token: statusToken, repository: normalizedRepository, sha: normalizedSha, name: checkName, conclusion, title: 'Wolf private CI', summary, detailsUrl, fetchImpl, surface: 'private'});
+      const created = await createCheckRun({token: statusToken, repository: normalizedRepository, sha: normalizedSha, name: checkName, conclusion, title: 'Wolf private CI', summary, externalId, detailsUrl, fetchImpl, surface: 'private'});
       results.push({name: checkName, state: 'CREATED', id: created?.id ?? null});
     } catch (error) {
       const httpStatus = error?.httpStatus ?? 0;
@@ -601,22 +640,103 @@ export async function dispatchPrivateCi({token, repository, workflowId, ref, sha
 
 // Verify the receipt that the private-side executor attached to the exact SHA.
 // A missing or mismatched SHA is always a hard failure.
-export function verifyReceiptBinding(receipt, {sha, repository, checks} = {}) {
+export function verifyReceiptBinding(receipt, {sha, repository, checks, signingKey, expectedTreeSha, missionId, reservationKey} = {}) {
   const normalizedSha = normalizeSha(sha);
   const normalizedRepository = normalizeRepository(repository);
-  const required = normalizeChecks(checks);
-  if (!receipt || typeof receipt !== 'object') return {state: 'REJECTED', reason: 'RECEIPT_REQUIRED'};
+  let required;
+  try {
+    required = normalizeChecks(checks ?? ALL_REQUIRED_CHECKS.join(','));
+  } catch {
+    return {state: 'REJECTED', reason: 'RECEIPT_CHECKS_INVALID'};
+  }
+  if (required.length !== ALL_REQUIRED_CHECKS.length || ALL_REQUIRED_CHECKS.some(name => !required.includes(name))) {
+    return {state: 'REJECTED', reason: 'RECEIPT_REQUIRED_CHECK_CONTRACT_MISMATCH'};
+  }
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return {state: 'REJECTED', reason: 'RECEIPT_REQUIRED'};
+  if (receipt.schema !== 'wolf.private-ci.receipt/v1') return {state: 'REJECTED', reason: 'RECEIPT_SCHEMA_UNSUPPORTED'};
+  // Authenticate before interpreting any claimed result. A tampered receipt must
+  // not be allowed to produce a more favorable semantic error or pass path.
+  const signature = verifyReceiptSignature(receipt, signingKey);
+  if (!signature.valid) return {state: 'REJECTED', reason: signature.reason};
+  if (!['VERIFIED', 'FAILED'].includes(receipt.state)) return {state: 'REJECTED', reason: 'RECEIPT_STATE_INVALID'};
   if (receipt.sha !== normalizedSha) return {state: 'REJECTED', reason: 'RECEIPT_SHA_MISMATCH'};
   if (receipt.repository !== normalizedRepository) return {state: 'REJECTED', reason: 'RECEIPT_REPOSITORY_MISMATCH'};
-  const observed = new Map((receipt.checks ?? []).map(check => [String(check.name).toLowerCase(), check]));
-  const missing = required.filter(name => !observed.has(name));
+  if (!SHA_PATTERN.test(String(receipt.treeSha ?? ''))) return {state: 'REJECTED', reason: 'RECEIPT_TREE_SHA_REQUIRED'};
+  if (expectedTreeSha && receipt.treeSha !== expectedTreeSha) return {state: 'REJECTED', reason: 'RECEIPT_TREE_SHA_MISMATCH'};
+  const checkout = receipt.checkout;
+  if (!checkout || checkout.sha !== normalizedSha || checkout.treeSha !== receipt.treeSha || checkout.cleanBefore !== true) {
+    return {state: 'REJECTED', reason: 'RECEIPT_CHECKOUT_BINDING_MISMATCH'};
+  }
+  if (checkout.finalSha !== null && checkout.finalSha !== normalizedSha) return {state: 'REJECTED', reason: 'RECEIPT_CHECKOUT_FINAL_SHA_MISMATCH'};
+  if (checkout.finalTreeSha !== null && checkout.finalTreeSha !== receipt.treeSha) return {state: 'REJECTED', reason: 'RECEIPT_CHECKOUT_FINAL_TREE_MISMATCH'};
+  if (receipt.state === 'VERIFIED' && (checkout.cleanAfter !== true || checkout.finalSha !== normalizedSha || checkout.finalTreeSha !== receipt.treeSha || receipt.sourceIntegrityFailure !== null)) {
+    return {state: 'REJECTED', reason: 'RECEIPT_VERIFIED_WITH_DIRTY_CHECKOUT'};
+  }
+  const startedMs = Date.parse(String(receipt.startedAt ?? ''));
+  const completedMs = Date.parse(String(receipt.completedAt ?? ''));
+  if (!Number.isFinite(startedMs) || !Number.isFinite(completedMs) || completedMs < startedMs) {
+    return {state: 'REJECTED', reason: 'RECEIPT_TIMESTAMPS_INVALID'};
+  }
+  if (receipt.testBinding?.sha !== normalizedSha || receipt.testBinding?.treeSha !== receipt.treeSha) {
+    return {state: 'REJECTED', reason: 'RECEIPT_TEST_BINDING_MISMATCH'};
+  }
+  const mission = receipt.missionBinding;
+  if (!mission || typeof mission.missionId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(mission.missionId) || !/^[a-f0-9]{64}$/.test(String(mission.reservationKey ?? '')) || mission.sha !== normalizedSha) {
+    return {state: 'REJECTED', reason: 'RECEIPT_MISSION_BINDING_REQUIRED'};
+  }
+  if (missionId && mission.missionId !== missionId) return {state: 'REJECTED', reason: 'RECEIPT_MISSION_ID_MISMATCH'};
+  if (reservationKey && mission.reservationKey !== reservationKey) return {state: 'REJECTED', reason: 'RECEIPT_MISSION_RESERVATION_MISMATCH'};
+  const boundChecks = Array.isArray(receipt.testBinding?.checks) ? receipt.testBinding.checks : [];
+  if (new Set(boundChecks).size !== boundChecks.length || boundChecks.length !== required.length || required.some(name => !boundChecks.includes(name))) {
+    return {state: 'REJECTED', reason: 'RECEIPT_TEST_CHECKS_MISMATCH'};
+  }
+  const expectedRequired = required.filter(name => DEFAULT_REQUIRED_CHECKS.includes(name));
+  const expectedExtra = required.filter(name => !DEFAULT_REQUIRED_CHECKS.includes(name));
+  if (!Array.isArray(receipt.requiredChecks) || !Array.isArray(receipt.extraChecks)
+    || receipt.requiredChecks.length !== expectedRequired.length || expectedRequired.some((name, index) => receipt.requiredChecks[index] !== name)
+    || receipt.extraChecks.length !== expectedExtra.length || expectedExtra.some((name, index) => receipt.extraChecks[index] !== name)) {
+    return {state: 'REJECTED', reason: 'RECEIPT_CHECK_CATEGORIES_MISMATCH'};
+  }
+  if (!Array.isArray(receipt.checks)) return {state: 'REJECTED', reason: 'RECEIPT_CHECKS_REQUIRED'};
+  const names = receipt.checks.map(check => String(check?.name ?? '').toLowerCase());
+  if (new Set(names).size !== names.length) return {state: 'REJECTED', reason: 'RECEIPT_CHECKS_DUPLICATED'};
+  const missing = required.filter(name => !names.includes(name));
+  const unexpected = names.filter(name => !required.includes(name));
   if (missing.length) return {state: 'REJECTED', reason: 'RECEIPT_CHECKS_MISSING', missing};
-  // Accept both spellings: the older dispatch receipts use `conclusion`, the
-  // executor's SHA-bound receipts use `status`.
-  const outcome = check => check?.conclusion ?? check?.status;
-  const unsuccessful = required.filter(name => outcome(observed.get(name)) !== 'success');
-  if (unsuccessful.length) return {state: 'REJECTED', reason: 'RECEIPT_CHECKS_UNSUCCESSFUL', unsuccessful};
-  return {state: 'VERIFIED', sha: normalizedSha, repository: normalizedRepository, checks: required};
+  if (unexpected.length) return {state: 'REJECTED', reason: 'RECEIPT_CHECKS_UNEXPECTED', unexpected};
+  const mismatched = receipt.checks.filter(check => check.sha !== normalizedSha || check.treeSha !== receipt.treeSha).map(check => check.name);
+  if (mismatched.length) return {state: 'REJECTED', reason: 'RECEIPT_CHECK_SOURCE_MISMATCH', mismatched};
+  const unsuccessful = receipt.checks.filter(check => check.status !== 'success').map(check => check.name);
+  const failedChecks = Array.isArray(receipt.failedChecks) ? receipt.failedChecks : null;
+  if (!failedChecks || failedChecks.some(name => typeof name !== 'string') || new Set(failedChecks).size !== failedChecks.length) {
+    return {state: 'REJECTED', reason: 'RECEIPT_FAILED_CHECKS_REQUIRED'};
+  }
+  if (!Object.hasOwn(receipt, 'sourceIntegrityFailure') || (receipt.sourceIntegrityFailure !== null && typeof receipt.sourceIntegrityFailure !== 'string')) {
+    return {state: 'REJECTED', reason: 'RECEIPT_SOURCE_INTEGRITY_FIELD_INVALID'};
+  }
+  const expectedFailedChecks = [...unsuccessful];
+  if (receipt.sourceIntegrityFailure !== null) expectedFailedChecks.push('source-integrity');
+  if (failedChecks.length !== expectedFailedChecks.length || [...failedChecks].sort().some((name, index) => name !== [...expectedFailedChecks].sort()[index])) {
+    return {state: 'REJECTED', reason: 'RECEIPT_FAILED_CHECKS_MISMATCH'};
+  }
+  if (receipt.state === 'VERIFIED' && (unsuccessful.length || failedChecks.length || receipt.failure !== null || receipt.sourceIntegrityFailure !== null)) {
+    return {state: 'REJECTED', reason: 'RECEIPT_VERIFIED_WITH_FAILURE', unsuccessful};
+  }
+  if (receipt.state === 'FAILED' && (!expectedFailedChecks.length || typeof receipt.failure !== 'string' || !receipt.failure.trim())) {
+    return {state: 'REJECTED', reason: 'RECEIPT_FAILED_WITHOUT_FAILURE'};
+  }
+  return {
+    state: receipt.state,
+    ...(receipt.state === 'FAILED' ? {reason: 'RECEIPT_RUN_FAILED'} : {}),
+    sha: normalizedSha,
+    treeSha: receipt.treeSha,
+    repository: normalizedRepository,
+    checks: required,
+    unsuccessful,
+    failedChecks,
+    receiptHash: signature.receiptHash,
+    signatureAlgorithm: signature.algorithm,
+  };
 }
 
 function writeProbeOutput(result) {
@@ -671,6 +791,18 @@ async function main(argv) {
       return BRIDGE_EXIT.OK;
     }
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+    const verification = verifyReceiptBinding(receipt, {
+      sha: process.env.WOLF_CI_SHA,
+      repository: process.env.WOLF_CI_REPOSITORY,
+      checks: process.env.WOLF_CI_CHECKS,
+      signingKey: process.env.WOLF_CI_RECEIPT_SIGNING_KEY,
+      missionId: process.env.WOLF_CI_MISSION_ID,
+      reservationKey: process.env.WOLF_CI_MISSION_RESERVATION,
+    });
+    if (!['VERIFIED', 'FAILED'].includes(verification.state)) {
+      process.stdout.write(JSON.stringify({state: 'BLOCKED', reason: 'RECEIPT_NOT_AUTHENTIC', verification: {state: verification.state, reason: verification.reason}, privateStatusWritten: false}) + '\n');
+      return BRIDGE_EXIT.OK;
+    }
     const appPublisherToken = process.env.WOLF_CI_APP_PUBLISHER_TOKEN;
     // Once the fallback is retired, a missing App token is a hard stop. Falling
     // through to the PAT here would leave the receipt claiming retirement while the
@@ -695,10 +827,11 @@ async function main(argv) {
       statusIdentity: appPublisherToken ? 'app-installation' : process.env.WOLF_FACTORY_STATUS_TOKEN ? 'status-pat' : 'none',
       sourceToken: process.env.WOLF_FACTORY_REPO_TOKEN,
       repository: process.env.WOLF_CI_REPOSITORY,
-      sha: receipt.sha,
+      sha: process.env.WOLF_CI_SHA,
       names: [`wolf-private-ci-${process.env.WOLF_CI_PR ?? 'head'}`],
-      conclusion: receipt.state === 'VERIFIED' ? 'success' : 'failure',
-      summary: 'SHA-bound private CI receipt: ' + receipt.state + ' (' + (receipt.receiptHash ?? '').slice(0, 16) + ')',
+      conclusion: verification.state === 'VERIFIED' ? 'success' : 'failure',
+      externalId: process.env.GITHUB_RUN_ID,
+      summary: 'Authenticated SHA-bound private CI receipt: ' + verification.state + ' (' + (receipt.receiptHash ?? '').slice(0, 16) + ')',
     });
     process.stdout.write(JSON.stringify(result) + '\n');
     return BRIDGE_EXIT.OK;
@@ -798,37 +931,29 @@ async function main(argv) {
       return BRIDGE_EXIT.CONFIGURATION_REQUIRED;
     }
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+    const verification = verifyReceiptBinding(receipt, {
+      sha: process.env.WOLF_CI_SHA,
+      repository: process.env.WOLF_CI_REPOSITORY,
+      checks: process.env.WOLF_CI_CHECKS,
+      signingKey: process.env.WOLF_CI_RECEIPT_SIGNING_KEY,
+      missionId: process.env.WOLF_CI_MISSION_ID,
+      reservationKey: process.env.WOLF_CI_MISSION_RESERVATION,
+    });
+    const authenticatedReceipt = ['VERIFIED', 'FAILED'].includes(verification.state);
+    const publishedState = authenticatedReceipt ? verification.state : 'BLOCKED';
     // The private-side publication is recorded by the previous step so its
     // real outcome (never silently "success") is part of the public receipt.
     const privatePublication = process.env.WOLF_CI_PRIVATE_PUBLICATION_FILE && fs.existsSync(process.env.WOLF_CI_PRIVATE_PUBLICATION_FILE)
       ? (() => { try { return JSON.parse(fs.readFileSync(process.env.WOLF_CI_PRIVATE_PUBLICATION_FILE, 'utf8')); } catch { return {state: 'UNREADABLE'}; } })()
       : {state: 'NOT_REPORTED'};
     const summary = {
-      state: receipt.state,
-      repository: receipt.repository,
-      sha: receipt.sha,
+      state: publishedState,
+      repository: authenticatedReceipt ? receipt.repository : process.env.WOLF_CI_REPOSITORY,
+      sha: authenticatedReceipt ? receipt.sha : process.env.WOLF_CI_SHA,
       pullRequestNumber: process.env.WOLF_CI_PR ? Number(process.env.WOLF_CI_PR) : null,
-      receiptHash: receipt.receiptHash ?? null,
-      checks: (receipt.checks ?? []).map(check => ({
-        name: check.name,
-        status: check.status,
-        durationMs: check.durationMs,
-        steps: (check.steps ?? []).map(step => ({
-          // Attribution lets a failure be traced to the exact private workflow
-          // step without publishing the step's command or output.
-          stepName: step.workflowStep?.stepName ?? step.label ?? null,
-          workflow: step.workflowStep?.workflow ?? null,
-          command: step.command,
-          exitCode: step.exitCode,
-          status: step.status,
-          durationMs: step.durationMs,
-          ...(step.errorClass ? {errorClass: step.errorClass} : {}),
-          ...(step.sqlstate ? {sqlstate: step.sqlstate} : {}),
-          ...(step.errorLine ? {errorLine: step.errorLine} : {}),
-          ...(step.sqlDetail ? {sqlDetail: step.sqlDetail} : {}),
-          ...(step.python ? {python: step.python} : {}),
-        })),
-      })),
+      receiptHash: authenticatedReceipt ? receipt.receiptHash : null,
+      targetVerification: {state: verification.state, reason: verification.reason ?? null},
+      checks: authenticatedReceipt ? sanitizeReceiptChecks(receipt.checks) : [],
       authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
       dispatchVerification: reconcileDispatch({
         probe: readDispatchVerification(process.env.WOLF_CI_DISPATCH_FILE),
@@ -880,8 +1005,9 @@ async function main(argv) {
         sha,
         name: `wolf-private-ci-${summary.pullRequestNumber ?? 'head'}`,
         conclusion: summary.state === 'VERIFIED' ? 'success' : 'failure',
-        title: 'Private CI bridge SHA-bound receipt',
-        summary: 'SHA-bound private CI receipt: ' + summary.state,
+        externalId: process.env.GITHUB_RUN_ID,
+        title: 'Private CI bridge authenticated SHA-bound receipt',
+        summary: 'Authenticated SHA-bound private CI receipt: ' + summary.state + (verification.reason ? ' (' + verification.reason + ')' : ''),
       });
       checkRun = {state: 'CREATED', id: created?.id ?? null};
     } catch (error) {
@@ -895,7 +1021,7 @@ async function main(argv) {
     const body = '```json\n' + JSON.stringify(summary, null, 2) + '\n```';
     await githubJson(`${API}/repos/${repository}/commits/${sha}/comments`, {token, method: 'POST', body: {body}});
     process.stdout.write(JSON.stringify({state: 'PUBLISHED', ...summary}) + '\n');
-    return BRIDGE_EXIT.OK;
+    return verification.state === 'VERIFIED' ? BRIDGE_EXIT.OK : verification.state === 'FAILED' ? BRIDGE_EXIT.DEFECT : BRIDGE_EXIT.DENIED;
   }
   if (command === 'verify-receipt') {
     const receiptPath = process.env.WOLF_CI_RECEIPT;
@@ -904,6 +1030,10 @@ async function main(argv) {
       sha: process.env.WOLF_CI_SHA,
       repository: process.env.WOLF_CI_REPOSITORY,
       checks: process.env.WOLF_CI_CHECKS,
+      signingKey: process.env.WOLF_CI_RECEIPT_SIGNING_KEY,
+      missionId: process.env.WOLF_CI_MISSION_ID,
+      reservationKey: process.env.WOLF_CI_MISSION_RESERVATION,
+      expectedTreeSha: process.env.WOLF_CI_EXPECTED_TREE_SHA,
     });
     process.stdout.write(JSON.stringify(result) + '\n');
     return result.state === 'VERIFIED' ? BRIDGE_EXIT.OK : BRIDGE_EXIT.DENIED;

@@ -1,0 +1,273 @@
+{
+  "schemaVersion": "wolf.omega.p0.evidence/v1",
+  "recordedAt": "2026-11-25T10:53:23Z",
+  "reportPath": "docs/private-ci-omega-p0-evidence.md",
+  "verdict": "BLOCKED_NOT_ACCEPTED",
+  "scope": {
+    "publicRepository": "insidethemarginmedia-cpu/wolf-factory-home",
+    "privateTargetRepository": "donraposo1-source/project-wolf",
+    "sessionBranch": "arena/156d9fee-wolf-factory-home",
+    "sessionHead": "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
+    "verifiedBaseBranch": "arena/38f3a7f7-wolf-factory-home",
+    "verifiedBaseHead": "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
+    "worktreeWasCleanAtAuditStart": true,
+    "privateSourceFetchedByThisAudit": false,
+    "privateTargetReadAccess": "UNAVAILABLE_HTTP_404_CURRENT_GH_IDENTITY",
+    "authorizedTargetSha": null,
+    "reportedPinnedTargetSha": "8d319fc50be4e4d225e3bb80de963583899c25ec",
+    "targetPrHeadSha": null,
+    "sourceCodeChanged": false,
+    "auditInitiatedDispatch": false,
+    "preexistingHomeRunReportedDispatch": true,
+    "mergePerformed": false,
+    "paidOperationPerformed": false,
+    "reportArtifactsAddedUncommitted": [
+      "docs/private-ci-omega-p0-evidence.md",
+      "docs/checkpoints/private-ci-omega-p0/OMEGA-P0-VERIFICATION-20261125.json"
+    ]
+  },
+  "remoteRefs": {
+    "main": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+    "arena/38f3a7f7-wolf-factory-home": "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
+    "feat/public-runtime-probe-20261022": "20f1872da5f8e32cb4b5285fb28e591a8652a586",
+    "sessionBranchPublished": false,
+    "existingHomePR2": {
+      "state": "OPEN",
+      "headBranch": "arena/38f3a7f7-wolf-factory-home",
+      "headSha": "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
+      "baseBranch": "feat/public-runtime-probe-20261022",
+      "baseSha": "20f1872da5f8e32cb4b5285fb28e591a8652a586",
+      "modifiedByAudit": false
+    }
+  },
+  "reportedHomeRun": {
+    "runId": "45540160074",
+    "runNumber": 87,
+    "event": "push",
+    "headSha": "6a7f982e29fee2775fd92be7e725805df5d973bd",
+    "startedAt": "2026-11-25T03:27:57Z",
+    "completedAt": "2026-11-25T03:36:30Z",
+    "executeJobId": "138956444632",
+    "executeJobStartedAt": "2026-11-25T03:27:59Z",
+    "executeJobCompletedAt": "2026-11-25T03:36:29Z",
+    "homeCheckRun": {
+      "id": "138959628052",
+      "name": "wolf-private-ci-743",
+      "conclusion": "success",
+      "headSha": "6a7f982e29fee2775fd92be7e725805df5d973bd",
+      "reportedSummary": "SHA-bound private CI receipt: VERIFIED"
+    },
+    "publishedHomeCommitCommentClaim": {
+      "targetRepository": "donraposo1-source/project-wolf",
+      "targetSha": "8d319fc50be4e4d225e3bb80de963583899c25ec",
+      "prNumber": 743,
+      "state": "VERIFIED",
+      "receiptHash": "71ae171d0d6311e17e1e63e5c3be745621b755c869491d1056e7e181e7a6a8ab",
+      "independentlyReadFromTarget": false
+    },
+    "diagnosisCheckRun": {
+      "id": "138956973754",
+      "name": "wolf-app-diagnosis",
+      "conclusion": "neutral",
+      "reportedAcceptance": "7 PASS",
+      "reportedDispatchHttpStatus": 204,
+      "reportedDispatchWorkflow": ".github/workflows/actionlint.yml",
+      "reportedMinimalPermissionDispatcherProbeHttpStatus": 422,
+      "targetWorkflowCompletionVerified": false
+    },
+    "privateProbeCheckRun": {
+      "id": "138956482808",
+      "name": "wolf-private-ci-probe",
+      "conclusion": "success",
+      "reportedTargetSha": "8d319fc50be4e4d225e3bb80de963583899c25ec",
+      "reportedPrivateSourceFetched": false,
+      "prWorkflowAndCheckReads": "HTTP_403"
+    },
+    "sanitizedInventoryFinding": {
+      "sshAccess": true,
+      "commitPresent": true,
+      "pullRequestHeadMatchesPinnedSha": false,
+      "pullRequestHeadRefObserved": true,
+      "exactPullRequestHeadShaPublished": false,
+      "reportedPrivateSourceFetched": false,
+      "implementationReadsSelectedPrivateBlobs": true,
+      "implementationPublishesFullSourceBodies": false,
+      "inventoryStateDespiteHeadMismatch": "INVENTORIED"
+    },
+    "controllerRevisionMatchesCurrentCheckout": false,
+    "fullUnfilteredExecuteJobLogAvailable": false,
+    "exactPrivateCheckoutInExecuteJobIndependentlyObserved": false
+  },
+  "currentHomeControllerAtSessionHead": {
+    "workflowPath": ".github/workflows/private-ci-bridge.yml",
+    "staticPrivateShaPin": "8d319fc50be4e4d225e3bb80de963583899c25ec",
+    "staticPinOccurrences": 3,
+    "executorCheckNames": 13,
+    "bridgeDefaultRequiredCheckNames": 6,
+    "executorPrecedesMissionValidation": true,
+    "requestShaComparedToExecutorPin": false,
+    "settlementBindsReceiptToRequestSha": false,
+    "publisherCallsReceiptVerifier": false,
+    "readerTokenExportedBeforeTargetCommandExecution": true,
+    "credentialExposureAuditResultForWorkflow": "CLEAR",
+    "inventoryReadsSelectedPrivateBlobs": true,
+    "inventoryFailsOnPullRequestHeadMismatch": false,
+    "missionIso8601IssuedAtAccepted": false,
+    "missionWorkflowJournalPathMatches": false,
+    "dispatchFallsBackToFirstDiscoverableWorkflow": true,
+    "dispatchCanReturnPassWithoutNewRun": true,
+    "dispatchWaitsForSuccessfulWorkflowCompletion": false,
+    "sessionBranchPushTriggerConfigured": false
+  },
+  "reproductions": [
+    {
+      "id": "OMEGA-01",
+      "severity": "P0",
+      "surface": "receipt-verifier",
+      "result": "verifyReceiptBinding returned VERIFIED for a fabricated object with unsupported schema, state FAILED, invalid receiptHash, six successful default checks, and an additional failed postgres-concurrency check",
+      "syntheticOnly": true,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-02",
+      "severity": "P0",
+      "surface": "private-ci-executor",
+      "result": "executePrivateCi returned a VERIFIED receipt for arbitrary 40-hex SHA from a temporary non-Git root with a passing local workflow stub",
+      "syntheticOnly": true,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-03",
+      "severity": "P0",
+      "surface": "credential-isolation",
+      "result": "A fake WOLF_CI_APP_READER_TOKEN inherited from the executor parent was visible to a synthetic target workflow command; the shipped-workflow credential audit still returned CLEAR",
+      "syntheticOnly": true,
+      "realCredentialUsed": false,
+      "realCredentialExfiltrationObserved": false,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-04",
+      "severity": "P0",
+      "surface": "mission-sha-ordering",
+      "result": "Current workflow source runs executor before mission validation and journals REQUEST_SHA separately from static WOLF_CI_SHA; settlement checks receipt state but not requested SHA binding",
+      "syntheticOnly": false,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-05",
+      "severity": "P0",
+      "surface": "mission-contract",
+      "result": "Documented ISO-8601 issuedAt rejected with MISSION_ISSUED_AT_REQUIRED because validation converts it with Number()",
+      "syntheticOnly": true,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-06",
+      "severity": "P0",
+      "surface": "mission-dedupe",
+      "result": "Two identical synthetic mission deliveries with absent workflow JSONL journal both returned ACCEPTED; workflow journal CLI uses a different JSON path and mission CLI writes a separate output record",
+      "syntheticOnly": true,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-07",
+      "severity": "P0",
+      "surface": "credential-exposure-audit",
+      "result": "auditCredentialExposure returned CLEAR for the shipped workflow despite reader-token export and subsequent target-command execution; presence of auth CLI name satisfies masking heuristic",
+      "syntheticOnly": false,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-08",
+      "severity": "P1",
+      "surface": "required-check-binding",
+      "result": "Executor config requests 13 checks; bridge verifier's normalization allowlist contains six, rejects the 13-name list, and current publisher does not invoke verifier",
+      "syntheticOnly": false,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-09",
+      "severity": "P1",
+      "surface": "inventory-source-flag",
+      "result": "Inventory reports privateSourceFetched=false while cloning and reading selected workflow and package.json blobs to derive metadata; full source bodies are not published",
+      "syntheticOnly": false,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-10",
+      "severity": "P1",
+      "surface": "inventory-pr-head-gate",
+      "result": "Inventory records pullRequestHeadMatches=false but still returns state INVENTORIED",
+      "syntheticOnly": false,
+      "liveTargetImpactVerified": false
+    },
+    {
+      "id": "OMEGA-11",
+      "severity": "P1",
+      "surface": "dispatch-acceptance",
+      "result": "Current App dispatcher can select the first discoverable workflow and return PASS after HTTP 204 without requiring a new run, successful completion, or exact-SHA check",
+      "syntheticOnly": false,
+      "liveTargetImpactVerified": false
+    }
+  ],
+  "tests": {
+    "nodeVersion": "v22.22.3",
+    "focusedCommand": "node --test tests/private-ci-bridge.test.mjs tests/private-ci-execute.test.mjs tests/private-ci-mission.test.mjs tests/private-ci-mission-cli.test.mjs tests/private-ci-journal.test.mjs tests/private-ci-app-exposure.test.mjs tests/private-ci-app-acceptance.test.mjs",
+    "focusedPassed": 96,
+    "focusedFailed": 0,
+    "focusedInventoryTestsIncluded": false,
+    "priorFullHomeSuitePassed": 299,
+    "priorFullHomeSuiteFailed": 0,
+    "targetBuildRun": false,
+    "actionlintAvailable": false,
+    "shellcheckAvailable": false,
+    "exactShaAcceptance": false
+  },
+  "skills": {
+    "repositoryLocalLoaderFound": false,
+    "currentSkillsValidated": 0,
+    "historicalCheckpoint": "docs/checkpoints/integrations/COMPOSIO-UNIFIED-FACTORY-ACCESS-20261104.md",
+    "historicalClaimedSkills": [
+      "Recovery",
+      "Debugging",
+      "Repair",
+      "Testing",
+      "Security",
+      "MCP",
+      "Python"
+    ],
+    "currentPrivateLoaderValidated": false
+  },
+  "factoryEvidence": {
+    "currentFactoryOrFactory2State": "UNKNOWN_PRIVATE_ACCESS_UNAVAILABLE",
+    "historicalCheckpointDate": "2026-11-04",
+    "historicalPrivateHead": "4c9726d2a964ad32b01263b4a5e3b9a7014660fe",
+    "historicalPrivateRunId": "41738678409",
+    "historicalMissionAcceptance": false,
+    "historicalCheckpointIsCurrentAcceptance": false
+  },
+  "executionGatesMinutes": {
+    "15": "NOT_FOUND_OR_VERIFIED",
+    "60": "MISSION_MAX_AGE_ONLY_NOT_EXECUTION_DURATION",
+    "480": "NOT_FOUND_OR_VERIFIED",
+    "homeExecuteJobObservedDurationMinutes": 8.5,
+    "arenaSessionDurationUsed": false
+  },
+  "economicPolicy": {
+    "workflowDeclaresEurSpendZero": true,
+    "workflowDeclaresCostUnknownDeny": true,
+    "workflowDeclaresPaidFallbackDeny": true,
+    "workflowDeclaresTrialCreditDeny": true,
+    "liveBillingEvidenceAvailable": false,
+    "providerNetworkDenialEnforced": false,
+    "receiptInferenceFlagIndependentlyMeasured": false,
+    "julesUseAllowed": false
+  },
+  "handoff": {
+    "responsibleTeamContacted": false,
+    "reason": "Private target and PR #743 API reads are unavailable to current GitHub identity; no unauthorized comment or issue was created",
+    "requestedNextStep": "Authorize read-only access through the existing GitHub connection/App to the private repository, current PR head, workflow/check-runs, and existing skill loader",
+    "noNewAppPatPrivateKeyOrPaidFallbackRequested": true
+  }
+}

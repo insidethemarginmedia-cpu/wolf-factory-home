@@ -1,33 +1,23 @@
-// Isolated executor for the six required private CI checks.
+// Isolated executor for the fixed private CI check contract.
 //
-// Private source is cloned only into the ephemeral runner temp directory. Every
-// command's stdout/stderr is captured to a mode-0600 log file that is deleted at
-// the end of the job. The only published values are check names, exit codes,
-// durations and a SHA-bound receipt hash. No source, log, diff or credential is
-// printed or uploaded.
+// Private source is cloned only into the ephemeral runner temp directory. In
+// GitHub Actions, target-controlled commands run as a separate unprivileged OS
+// user with a filtered environment, preventing same-uid /proc reads of the
+// executor's signing-key environment. Every command's output is captured to a
+// mode-0600 log file deleted at job end. Only check names, exit codes, durations
+// and a signed SHA/tree-bound receipt are published.
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
 import {buildWorkflowPlan, parseWorkflowJobs} from './private-ci-workflow.mjs';
+import {DEFAULT_REQUIRED_CHECKS, EXTRA_CHECKS, WORKFLOW_CHECKS, ALLOWED_CHECKS, normalizeCheckNames} from './private-ci-contract.mjs';
+import {RECEIPT_SCHEMA, signReceipt} from './private-ci-receipt.mjs';
 
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
+const SOURCE_REPOSITORY = 'donraposo1-source/project-wolf';
 
-export const REQUIRED_CHECKS = Object.freeze(['security', 'lint', 'typecheck', 'unit', 'integration', 'build']);
-export const EXTRA_CHECKS = Object.freeze(['migrations', 'postgres-concurrency']);
-// The six original Wolf workflows that must run with their own commands.
-// `port` selects the Postgres cluster for the check. Roles are cluster-scoped
-// in PostgreSQL, so two workflows that both create `authenticated` cannot share
-// one cluster without colliding - exactly as they do not share a runner in the
-// private repository, where each workflow declares its own service container.
-export const WORKFLOW_CHECKS = Object.freeze({
-  test: {workflow: '.github/workflows/test.yml', database: 'wolf_test', port: 5432},
-  'postgres-schema': {workflow: '.github/workflows/postgres-schema.yml', database: 'wolf_test', port: 5433},
-  'postgres-concurrency': {workflow: '.github/workflows/postgres-concurrency-evidence.yml', database: 'wolf_test', port: 5434},
-  'http-load-evidence': {workflow: '.github/workflows/http-load-evidence.yml', database: 'wolf_test', port: 5432},
-  'ocr-tesseract': {workflow: '.github/workflows/ocr-tesseract.yml', database: null, port: null},
-  'ocr-paddle': {workflow: '.github/workflows/ocr-paddle.yml', database: null, port: null},
-});
+export const REQUIRED_CHECKS = DEFAULT_REQUIRED_CHECKS;
+export {EXTRA_CHECKS, WORKFLOW_CHECKS};
 
 export function normalizeSha(value) {
   const sha = String(value ?? '').trim().toLowerCase();
@@ -35,11 +25,144 @@ export function normalizeSha(value) {
   return sha;
 }
 
-export function normalizeChecks(value, allowed = [...REQUIRED_CHECKS, ...EXTRA_CHECKS, ...Object.keys(WORKFLOW_CHECKS)]) {
-  const checks = [...new Set(String(value ?? [...REQUIRED_CHECKS].join(',')).split(',').map(item => item.trim().toLowerCase()).filter(Boolean))];
-  if (!checks.length) throw Error('EXECUTOR_CHECKS_REQUIRED');
-  for (const check of checks) if (!allowed.includes(check)) throw Error('EXECUTOR_CHECK_DENIED');
-  return checks;
+export function normalizeChecks(value, allowed = ALLOWED_CHECKS) {
+  try {
+    return normalizeCheckNames(value, {defaults: REQUIRED_CHECKS, allowed, errorPrefix: 'EXECUTOR_CHECKS'});
+  } catch (error) {
+    if (error?.message === 'EXECUTOR_CHECKS_DENIED') throw Error('EXECUTOR_CHECK_DENIED');
+    throw error;
+  }
+}
+
+const GIT_ENV = Object.freeze({
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_OPTIONAL_LOCKS: '0',
+});
+
+function git(root, args) {
+  // The checkout is owned by the untrusted execution identity in Actions. Mark
+  // only this exact path safe for the trusted, read-only before/after checks.
+  const result = spawnSync('git', [
+    '-c', `safe.directory=${root}`,
+    '-c', 'core.fsmonitor=false',
+    '-c', 'core.hooksPath=/dev/null',
+    ...args,
+  ], {
+    cwd: root,
+    env: {...GIT_ENV, PATH: process.env.PATH ?? ''},
+    encoding: 'utf8',
+    timeout: 30000,
+  });
+  return {status: result.status ?? 1, stdout: String(result.stdout ?? '').trim(), stderr: String(result.stderr ?? '')};
+}
+
+function normalizeOrigin(value) {
+  return String(value ?? '').trim()
+    .replace(/^git@github\.com:/i, 'https://github.com/')
+    .replace(/^ssh:\/\/git@github\.com\//i, 'https://github.com/')
+    .replace(/\.git$/i, '')
+    .toLowerCase();
+}
+
+/** Bind the executor's working tree to the requested immutable Git commit. */
+export function inspectCheckout({root, sha} = {}) {
+  const expectedSha = normalizeSha(sha);
+  if (typeof root !== 'string' || !root.trim()) throw Error('EXECUTOR_CHECKOUT_REQUIRED');
+  let rootPath;
+  try { rootPath = fs.realpathSync(root); } catch { throw Error('EXECUTOR_CHECKOUT_REQUIRED'); }
+  const top = git(rootPath, ['rev-parse', '--show-toplevel']);
+  if (top.status !== 0) throw Error('EXECUTOR_CHECKOUT_REQUIRED');
+  let topPath;
+  try { topPath = fs.realpathSync(top.stdout); } catch { throw Error('EXECUTOR_CHECKOUT_REQUIRED'); }
+  if (topPath !== rootPath) throw Error('EXECUTOR_CHECKOUT_ROOT_MISMATCH');
+  const origin = git(rootPath, ['remote', 'get-url', 'origin']);
+  if (origin.status !== 0) throw Error('EXECUTOR_CHECKOUT_ORIGIN_REQUIRED');
+  if (normalizeOrigin(origin.stdout) !== `https://github.com/${SOURCE_REPOSITORY}`) throw Error('EXECUTOR_CHECKOUT_REPOSITORY_MISMATCH');
+  const head = git(rootPath, ['rev-parse', '--verify', 'HEAD^{commit}']);
+  if (head.status !== 0 || !SHA_PATTERN.test(head.stdout)) throw Error('EXECUTOR_CHECKOUT_HEAD_UNREADABLE');
+  if (head.stdout !== expectedSha) throw Error('EXECUTOR_CHECKOUT_SHA_MISMATCH');
+  const tree = git(rootPath, ['rev-parse', '--verify', `${expectedSha}^{tree}`]);
+  if (tree.status !== 0 || !SHA_PATTERN.test(tree.stdout)) throw Error('EXECUTOR_CHECKOUT_TREE_UNREADABLE');
+  const status = git(rootPath, ['status', '--porcelain=v1', '--untracked-files=all']);
+  if (status.status !== 0) throw Error('EXECUTOR_CHECKOUT_STATUS_UNREADABLE');
+  if (status.stdout) throw Error('EXECUTOR_CHECKOUT_DIRTY');
+  return {root: rootPath, sha: head.stdout, treeSha: tree.stdout, clean: true};
+}
+
+const PARENT_ENV_ALLOWLIST = Object.freeze([
+  'PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'RUNNER_TEMP', 'CI', 'LANG', 'LC_ALL', 'TZ',
+]);
+const CHILD_FORBIDDEN_ENV = /(^GITHUB_|^GH_|^ACTIONS_|^RUNNER_|TOKEN|SECRET|PRIVATE[_-]?KEY|DEPLOY[_-]?KEY|SIGNING[_-]?KEY|HMAC[_-]?KEY|CREDENTIAL|AUTHORIZATION|^WOLF_FACTORY_|^WOLF_CI_APP_)/i;
+const CHILD_EXPLICIT_ALWAYS_ALLOW = new Set([
+  'PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE', 'PGSSLMODE',
+  'DBOS_SHA', 'WOLF_CI_SCHEMA_DATABASE', 'WOLF_DBOS_SYSTEM_DATABASE_URL',
+  'WOLF_DBOS_FIXTURE_ROOT', 'WOLF_DBOS_SDK_ENTRYPOINT', 'EUR_SPEND',
+  'COST_UNKNOWN', 'PAID_FALLBACK', 'TRIAL_CREDIT',
+]);
+
+/**
+ * Build the exact environment given to target-workflow commands. Credentials
+ * from GitHub, the App, or the bridge are never inherited. Only runner basics
+ * and explicit non-bridge test settings cross the process boundary.
+ */
+export function workflowChildEnvironment({parent = process.env, env = {}, stepEnv = {}, isolatedHome = null, safeGitDirectory = null} = {}) {
+  const child = {};
+  for (const name of PARENT_ENV_ALLOWLIST) {
+    if (typeof parent?.[name] === 'string' && !CHILD_FORBIDDEN_ENV.test(name)) child[name] = parent[name];
+  }
+  for (const [name, value] of Object.entries({...env, ...stepEnv})) {
+    if (value === undefined || value === null || CHILD_FORBIDDEN_ENV.test(name)) continue;
+    if (PARENT_ENV_ALLOWLIST.includes(name)) continue;
+    if (!CHILD_EXPLICIT_ALWAYS_ALLOW.has(name) && !/^WOLF_DBOS_[A-Z0-9_]+$/.test(name)) continue;
+    child[name] = String(value);
+  }
+  if (typeof isolatedHome === 'string' && isolatedHome.trim()) {
+    const temp = path.join(isolatedHome, 'tmp');
+    child.HOME = isolatedHome;
+    child.TMPDIR = temp;
+    child.TMP = temp;
+    child.TEMP = temp;
+  }
+  if (typeof safeGitDirectory === 'string' && path.isAbsolute(safeGitDirectory)) {
+    // The checkout metadata is runner-owned/read-only. Give target workflows
+    // only the exact safe.directory exception they need for read-only Git use.
+    child.GIT_CONFIG_COUNT = '1';
+    child.GIT_CONFIG_KEY_0 = 'safe.directory';
+    child.GIT_CONFIG_VALUE_0 = path.resolve(safeGitDirectory);
+    child.GIT_OPTIONAL_LOCKS = '0';
+    child.GIT_TERMINAL_PROMPT = '0';
+  }
+  return child;
+}
+
+const SANDBOX_USER_PATTERN = /^[a-z_][a-z0-9_-]{0,31}$/;
+
+/**
+ * Cross the OS user boundary before executing target-controlled commands. Merely
+ * filtering the child environment is insufficient: a same-uid process can read
+ * its parent's original environment through /proc/<pid>/environ. The sudo wrapper
+ * itself receives only PATH; `env -i` installs the already-filtered values after
+ * switching to the dedicated untrusted identity.
+ */
+export function buildUntrustedInvocation(command, args = [], {user, env = {}} = {}) {
+  if (typeof user !== 'string' || !SANDBOX_USER_PATTERN.test(user) || user === 'root') {
+    throw Error('EXECUTOR_UNTRUSTED_USER_INVALID');
+  }
+  if (typeof command !== 'string' || !command.trim() || !Array.isArray(args)) throw Error('EXECUTOR_UNTRUSTED_COMMAND_INVALID');
+  for (const name of Object.keys(env)) {
+    if (CHILD_FORBIDDEN_ENV.test(name)) throw Error('EXECUTOR_SANDBOX_ENV_DENIED');
+  }
+  const assignments = Object.entries(env).map(([name, value]) => {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || value === undefined || value === null) throw Error('EXECUTOR_SANDBOX_ENV_INVALID');
+    return `${name}=${String(value)}`;
+  });
+  return {
+    command: '/usr/bin/sudo',
+    args: ['-n', '-u', user, '--', '/usr/bin/env', '-i', ...assignments, command, ...args.map(String)],
+    env: {PATH: process.env.PATH ?? '/usr/bin:/bin'},
+  };
 }
 
 export function redact(text) {
@@ -163,11 +286,14 @@ function errorLine(text) {
   return errorDetail(text).errorLine;
 }
 
-function run(command, args, {cwd, env, timeoutMs, logPath}) {
+function run(command, args, {cwd, env, timeoutMs, logPath, untrustedUser = null}) {
   const started = Date.now();
-  const result = spawnSync(command, args, {
+  const invocation = untrustedUser
+    ? buildUntrustedInvocation(command, args, {user: untrustedUser, env: env ?? {}})
+    : {command, args, env: env ?? {}};
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd,
-    env: {...process.env, ...env},
+    env: invocation.env,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
     timeout: timeoutMs,
@@ -175,8 +301,10 @@ function run(command, args, {cwd, env, timeoutMs, logPath}) {
   const durationMs = Date.now() - started;
   const output = String(result.stdout ?? '') + String(result.stderr ?? '');
   if (logPath) {
-    fs.mkdirSync(path.dirname(logPath), {recursive: true, mode: 0o700});
-    fs.writeFileSync(logPath, redact(output) + '\n', {mode: 0o600});
+    // The parent creates a private log directory before the first untrusted
+    // command runs. O_EXCL makes a child-created symlink or pre-existing path a
+    // hard failure rather than a write-through into a trusted file.
+    fs.writeFileSync(logPath, redact(output) + '\n', {mode: 0o600, flag: 'wx'});
   }
   return {
     command: path.basename(command),
@@ -419,18 +547,23 @@ export function workflowSteps({root, check, fromStepIndex = 0, database, extraEn
     if (!verdict.runnable) {
       steps.push({
         command: 'node',
-        args: ['--input-type=module', '-e', `console.log(${JSON.stringify(JSON.stringify({skippedStep: step.name ?? null, reason: verdict.reason}))})`],
+        // A step the controller cannot reproduce is not a pass. Exit 78 keeps
+        // the required check red without copying the target action text into evidence.
+        args: ['--input-type=module', '-e', "console.error('EXECUTOR_WORKFLOW_STEP_NOT_REPRODUCIBLE'); process.exit(78);"],
         env: {},
         timeoutMs: 60 * 1000,
         required: true,
-        label: `skip:${step.name ?? verdict.reason}`,
+        label: `unsupported:${step.name ?? verdict.reason}`,
         skippedReason: verdict.reason,
       });
       continue;
     }
     steps.push({
       command: 'bash',
-      args: ['-c', step.run],
+      // Match GitHub's Bash runner semantics. Without `-e -o pipefail`, an early
+      // command or pipeline failure could be masked by a later successful echo and
+      // the required check would be reported as a pass.
+      args: ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', step.run],
       env: {...clusterEnv, ...extraEnv},
       timeoutMs: 20 * 60 * 1000,
       required: true,
@@ -557,57 +690,169 @@ function buildPlan({root, checks, env}) {
   return plan;
 }
 
-export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = {}, runnerTemp = process.env.RUNNER_TEMP} = {}) {
+function assertArtifactOutsideCheckout(root, artifact, label) {
+  if (!artifact) return;
+  const relative = path.relative(path.resolve(root), path.resolve(artifact));
+  if (relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))) {
+    throw Error(`EXECUTOR_${label}_MUST_BE_OUTSIDE_CHECKOUT`);
+  }
+}
+
+function preparePrivateLogDirectory(root, directory) {
+  const absolute = path.resolve(directory);
+  const parent = path.dirname(absolute);
+  fs.mkdirSync(parent, {recursive: true, mode: 0o700});
+  const realParent = fs.realpathSync(parent);
+  const actualPath = path.join(realParent, path.basename(absolute));
+  assertArtifactOutsideCheckout(root, actualPath, 'LOG_DIR');
+  try {
+    fs.lstatSync(absolute);
+    throw Error('EXECUTOR_LOG_DIR_ALREADY_EXISTS');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  fs.mkdirSync(absolute, {mode: 0o700});
+  const stat = fs.lstatSync(absolute);
+  if (!stat.isDirectory() || stat.isSymbolicLink()
+    || (typeof process.getuid === 'function' && stat.uid !== process.getuid())) {
+    throw Error('EXECUTOR_LOG_DIR_NOT_PRIVATE');
+  }
+  fs.chmodSync(absolute, 0o700);
+  if (fs.lstatSync(absolute).mode & 0o077) throw Error('EXECUTOR_LOG_DIR_NOT_PRIVATE');
+  return absolute;
+}
+
+function stopUntrustedProcesses(user) {
+  const sudo = '/usr/bin/sudo';
+  const processEnv = {PATH: process.env.PATH ?? '/usr/bin:/bin'};
+  const invoke = (tool, args) => spawnSync(sudo, ['-n', tool, ...args], {
+    env: processEnv,
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  const killed = invoke('/usr/bin/pkill', ['-KILL', '-u', user]);
+  if (killed.error || ![0, 1].includes(killed.status)) throw Error('EXECUTOR_UNTRUSTED_PROCESS_CLEANUP_FAILED');
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const remaining = invoke('/usr/bin/pgrep', ['-u', user]);
+    if (remaining.status === 1) return;
+    if (remaining.error || remaining.status !== 0) throw Error('EXECUTOR_UNTRUSTED_PROCESS_CLEANUP_FAILED');
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+  throw Error('EXECUTOR_UNTRUSTED_PROCESS_CLEANUP_FAILED');
+}
+
+export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = {}, runnerTemp = process.env.RUNNER_TEMP, signingKey = process.env.WOLF_CI_RECEIPT_SIGNING_KEY, missionId = process.env.WOLF_CI_MISSION_ID, missionReservation = process.env.WOLF_CI_MISSION_RESERVATION, untrustedUser = process.env.WOLF_CI_UNTRUSTED_USER ?? null, untrustedHome = process.env.WOLF_CI_UNTRUSTED_HOME ?? null} = {}) {
   const normalizedSha = normalizeSha(sha);
   const normalizedChecks = normalizeChecks(checks);
+  if (typeof signingKey !== 'string' || Buffer.byteLength(signingKey, 'utf8') < 32) throw Error('EXECUTOR_RECEIPT_SIGNING_KEY_REQUIRED');
+  if (typeof missionId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(missionId) || !/^[a-f0-9]{64}$/.test(String(missionReservation ?? ''))) {
+    throw Error('EXECUTOR_MISSION_BINDING_REQUIRED');
+  }
+  if (!logDir) throw Error('EXECUTOR_LOG_DIR_REQUIRED');
+  if (untrustedUser) {
+    if (!SANDBOX_USER_PATTERN.test(untrustedUser) || untrustedUser === 'root') throw Error('EXECUTOR_UNTRUSTED_USER_INVALID');
+    if (typeof untrustedHome !== 'string' || !path.isAbsolute(untrustedHome)) throw Error('EXECUTOR_UNTRUSTED_HOME_REQUIRED');
+  } else if (untrustedHome) {
+    throw Error('EXECUTOR_UNTRUSTED_USER_REQUIRED');
+  }
+  const checkout = inspectCheckout({root, sha: normalizedSha});
+  const checkoutRoot = checkout.root;
+  assertArtifactOutsideCheckout(checkoutRoot, logDir, 'LOG_DIR');
+  assertArtifactOutsideCheckout(checkoutRoot, receiptPath, 'RECEIPT');
+  const trustedLogDir = preparePrivateLogDirectory(checkoutRoot, logDir);
   const startedAt = new Date().toISOString();
   const results = [];
   let failure = null;
   // Every requested check is blocking. There is no advisory tier: a check that
   // runs must be able to fail the run, or the receipt would not mean anything.
-  const plan = buildPlan({root, checks: normalizedChecks, env});
+  const plan = buildPlan({root: checkoutRoot, checks: normalizedChecks, env});
   for (const group of plan) {
     const groupStarted = Date.now();
     const steps = [];
     for (const step of group.steps) {
-      const logPath = path.join(logDir, `${group.name}-${steps.length + 1}.log`);
-      const result = run(step.command, step.args, {cwd: root, env: {...env, ...(step.env ?? {})}, timeoutMs: step.timeoutMs, logPath});
+      const logPath = path.join(trustedLogDir, `${group.name}-${steps.length + 1}.log`);
+      const result = run(step.command, step.args, {
+        cwd: checkoutRoot,
+        env: workflowChildEnvironment({parent: process.env, env, stepEnv: step.env, isolatedHome: untrustedHome, safeGitDirectory: checkoutRoot}),
+        timeoutMs: step.timeoutMs,
+        logPath,
+        untrustedUser,
+      });
       const expected = step.expected ?? [0];
       const passed = expected.includes(result.exitCode) && !result.timedOut;
-      steps.push({
-        command: result.command,
-        args: result.args,
+      const stepStatus = passed ? 'success' : result.timedOut ? 'timeout' : 'failure';
+      const workflowPath = step.workflowStep?.workflow;
+      const safeStep = {
+        stepIndex: steps.length,
+        ...(typeof workflowPath === 'string' && Object.values(WORKFLOW_CHECKS).some(definition => definition.workflow === workflowPath) ? {workflow: workflowPath} : {}),
         exitCode: result.exitCode,
         expectedExitCodes: expected,
         durationMs: result.durationMs,
-        logBytes: result.logBytes,
-        status: passed ? 'success' : result.timedOut ? 'timeout' : 'failure',
-        ...(step.workflowStep ? {workflowStep: step.workflowStep} : {}),
-        ...(step.label ? {label: step.label} : {}),
-        ...(result.status === 'success' ? {} : {errorClass: result.errorClass, errorLine: result.errorLine, sqlstate: result.sqlstate ?? null, sqlDetail: result.sqlDetail ?? null, ...(result.python ? {python: result.python} : {}), logTail: redact(result.logTail).slice(0, 4000)}),
-      });
+        status: stepStatus,
+      };
+      // Target-controlled command text, step labels and output belong only in the
+      // mode-0600 ephemeral log. A signed receipt carries no free-form target data.
+      if (!passed) {
+        safeStep.errorClass = result.errorClass;
+        if (/^[0-9A-Z]{5}$/.test(String(result.sqlstate ?? ''))) safeStep.sqlstate = result.sqlstate;
+      }
+      steps.push(safeStep);
       if (!passed && step.required) failure = `${group.name}:${steps.length}`;
     }
     results.push({
       name: group.name,
+      sha: checkout.sha,
+      treeSha: checkout.treeSha,
       status: steps.every(step => step.status === 'success') ? 'success' : 'failure',
       durationMs: Date.now() - groupStarted,
       steps,
     });
     process.stdout.write(`WOLF_CI_CHECK=${JSON.stringify({name: group.name, status: results.at(-1).status, steps: steps.map(step => ({exitCode: step.exitCode, status: step.status}))})}\n`);
   }
-  const receipt = {
-    schema: 'wolf.private-ci.receipt/v1',
+  let checkoutAfter = null;
+  let sourceIntegrityFailure = null;
+  if (untrustedUser) {
+    try {
+      // Background descendants can outlive a shell step. Revoke their write
+      // access before the trusted process measures the final source tree.
+      stopUntrustedProcesses(untrustedUser);
+    } catch {
+      sourceIntegrityFailure = 'EXECUTOR_UNTRUSTED_PROCESS_CLEANUP_FAILED';
+    }
+  }
+  try {
+    checkoutAfter = inspectCheckout({root: checkoutRoot, sha: normalizedSha});
+    if (checkoutAfter.treeSha !== checkout.treeSha) sourceIntegrityFailure ??= 'EXECUTOR_CHECKOUT_TREE_CHANGED';
+  } catch (error) {
+    sourceIntegrityFailure ??= error?.message ?? 'EXECUTOR_CHECKOUT_POSTCHECK_FAILED';
+  }
+  if (sourceIntegrityFailure) failure ??= 'SOURCE_INTEGRITY_CHANGED';
+  const failedChecks = results.filter(check => check.status !== 'success').map(check => check.name);
+  if (sourceIntegrityFailure) failedChecks.push('source-integrity');
+  const unsignedReceipt = {
+    schema: RECEIPT_SCHEMA,
     state: failure ? 'FAILED' : 'VERIFIED',
-    sha: normalizedSha,
-    repository: 'donraposo1-source/project-wolf',
+    sha: checkout.sha,
+    treeSha: checkout.treeSha,
+    repository: SOURCE_REPOSITORY,
+    checkout: {
+      sha: checkout.sha,
+      treeSha: checkout.treeSha,
+      cleanBefore: checkout.clean,
+      cleanAfter: Boolean(checkoutAfter?.clean) && !sourceIntegrityFailure,
+      finalSha: checkoutAfter?.sha ?? null,
+      finalTreeSha: checkoutAfter?.treeSha ?? null,
+    },
+    testBinding: {sha: checkout.sha, treeSha: checkout.treeSha, checks: normalizedChecks},
+    missionBinding: {missionId, reservationKey: missionReservation, sha: checkout.sha},
     checks: results,
     requiredChecks: normalizedChecks.filter(check => REQUIRED_CHECKS.includes(check)),
     extraChecks: normalizedChecks.filter(check => EXTRA_CHECKS.includes(check)),
-    failedChecks: results.filter(check => check.status !== 'success').map(check => check.name),
+    failedChecks,
     startedAt,
     completedAt: new Date().toISOString(),
     failure,
+    sourceIntegrityFailure,
     // Set when this run took over an expired lease from another runner.
     recoveredFrom: process.env.WOLF_CI_RECOVERED_FROM || null,
     privateLogsPublished: false,
@@ -615,7 +860,7 @@ export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = 
     inferencePerformed: false,
     refUpdated: false,
   };
-  receipt.receiptHash = createHash('sha256').update(JSON.stringify({sha: receipt.sha, checks: receipt.checks})).digest('hex');
+  const receipt = signReceipt(unsignedReceipt, signingKey);
   if (receiptPath) {
     fs.mkdirSync(path.dirname(receiptPath), {recursive: true, mode: 0o700});
     fs.writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n', {mode: 0o600, flag: 'wx'});
@@ -625,12 +870,19 @@ export function executePrivateCi({root, sha, checks, logDir, receiptPath, env = 
 
 if (process.argv[1] && import.meta.url === new URL('file://' + process.argv[1]).href) {
   try {
+    const untrustedUser = process.env.WOLF_CI_UNTRUSTED_USER ?? null;
+    const untrustedHome = process.env.WOLF_CI_UNTRUSTED_HOME ?? null;
+    if (process.env.GITHUB_ACTIONS === 'true' && (!untrustedUser || !untrustedHome)) {
+      throw Error('EXECUTOR_UNTRUSTED_IDENTITY_REQUIRED');
+    }
     const receipt = executePrivateCi({
       root: process.env.WOLF_CI_PRIVATE_ROOT,
       sha: process.env.WOLF_CI_SHA,
       checks: process.env.WOLF_CI_CHECKS,
       logDir: process.env.WOLF_CI_LOG_DIR,
       receiptPath: process.env.WOLF_CI_RECEIPT,
+      untrustedUser,
+      untrustedHome,
       env: {
         EUR_SPEND: '0', COST_UNKNOWN: 'DENY', PAID_FALLBACK: 'DENY', TRIAL_CREDIT: 'DENY',
         ...(process.env.PGHOST ? {PGHOST: process.env.PGHOST} : {}),

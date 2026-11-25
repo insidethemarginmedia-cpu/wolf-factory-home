@@ -1,6 +1,8 @@
 # Wolf Private CI Bridge — Acceptance Evidence
 
-Status: **OPERATIONAL — thirteen checks execute at an immutable SHA and publish authenticated, SHA-bound receipts.**
+> **Status correction (2026-11-25): this evidence is historical, not current acceptance.** The prior run and the private SHA `8d319fc50be4e4d225e3bb80de963583899c25ec` are not independently confirmed as the current PR #743 head. The current GitHub CLI identity receives HTTP 404 for PR #743 and the user-supplied newer SHA `a866a4d62baf7b834283d11f5868b3d288729f18`; no private source/run was re-executed. Current status is **BLOCKED / NOT ACCEPTED**. See [`docs/private-ci-omega-p0-evidence.md`](private-ci-omega-p0-evidence.md) and [`docs/checkpoints/private-ci-omega-p0/OMEGA-P0.02-INITIAL-REVALIDATION-20261125.md`](checkpoints/private-ci-omega-p0/OMEGA-P0.02-INITIAL-REVALIDATION-20261125.md).
+
+Status at the time of the original evidence: **REPORTED OPERATIONAL — thirteen checks were claimed to execute at the then-pinned SHA and publish receipts. This claim is not independently verified for current PR #743.**
 
 This document records public, non-sensitive facts only: workflow names, commit
 SHAs, check names, exit codes, durations and timestamps. No private Wolf source,
@@ -428,17 +430,25 @@ git rev-list --max-parents=0 (each)               -> main 3742bcc / branch 20f18
 The second `POST` rules out a branch-ref workaround: the 403 is token capability,
 so automation cannot dispatch a branch at all.
 
-The last two rows are the constraint that a merge-based plan misses. `main` is a
-**single orphan commit** with no shared history with this branch, so there is no
-fast-forward and no ordinary merge. PR #2 targets
-`feat/public-runtime-probe-20261022`, **not** `main`; merging it would not put the
-trigger on the default branch.
+### History correction — 2026-11-25
 
-**The single required Founder action** is to land the bridge workflow, and the
-`scripts/` it imports, on `main` — either by adopting this history as the default
-branch (settings change, reversible, no rewrite) or by committing those files
-onto `main` directly. The `scripts/` must travel with the workflow or it fails at
-its first `node` call. Nothing else is outstanding.
+The earlier “no merge base / orphan root” inference in the rows above is
+**superseded**. This checkout is shallow and marks the branch, `main`, and the
+feature base as graft boundaries, so local `git merge-base` / root enumeration
+was inconclusive. The read-only GitHub Compare API for
+`main...arena/38f3a7f7-wolf-factory-home` returns **diverged**, `ahead_by=251`,
+`behind_by=2`, with common ancestor
+`da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd`. No history rewrite is required or
+authorized. PR #2 still targets `feat/public-runtime-probe-20261022`, not `main`;
+its default-branch placement and permissions are separate questions.
+
+The earlier “single required Founder action” is historical, not current guidance.
+The old recommendation that a landing could not be a merge was based on the
+shallow-history error. A normal PR/merge is graph-compatible, but no merge,
+default-branch change, dispatch, or production action is authorized here. Current
+private target acceptance remains BLOCKED because PR #743 and its check runs
+cannot be read from the current identity. The old App/permission success statements
+in this document are historical and have not been revalidated.
 
 Once the trigger is on `main`, a mission is:
 

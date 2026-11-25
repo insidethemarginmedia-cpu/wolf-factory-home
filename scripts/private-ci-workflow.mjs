@@ -105,7 +105,17 @@ export function parseWorkflowJobs(text) {
   const jobs = jobStarts.map((start, position) => {
     const end = jobStarts[position + 1]?.index ?? lines.length;
     const body = lines.slice(start.index, end);
+    const jobUses = body.find(line => /^ {4}uses:/.test(line));
     const stepsAt = body.findIndex(line => /^ {4}steps:\s*$/.test(line));
+    if (jobUses) {
+      if (stepsAt !== -1) throw Error('WORKFLOW_JOB_REUSABLE_USES_WITH_STEPS');
+      const uses = unquote(stripComment(jobUses.replace(/^ {4}uses:\s*/, '')));
+      if (!uses) throw Error('WORKFLOW_JOB_REUSABLE_USES_REQUIRED');
+      return {
+        name: start.name,
+        steps: [{name: null, uses, run: null, env: {}, with: {}}],
+      };
+    }
     if (stepsAt === -1) return {name: start.name, steps: []};
     const steps = [];
     let cursor = stepsAt + 1;

@@ -94,8 +94,9 @@ export function assertLeastPrivilege(role, permissions) {
   for (const [name, level] of Object.entries(requested)) {
     const permitted = allowed[name];
     if (!permitted) throw Error(`APP_PERMISSION_NOT_ALLOWED:${name}`);
-    if (permitted === 'read' && level !== 'read') throw Error(`APP_PERMISSION_TOO_BROAD:${name}`);
     if (!['read', 'write', 'admin'].includes(level)) throw Error(`APP_PERMISSION_INVALID:${name}`);
+    if (permitted === 'read' && level !== 'read') throw Error(`APP_PERMISSION_TOO_BROAD:${name}`);
+    if (permitted === 'write' && level === 'admin') throw Error(`APP_PERMISSION_TOO_BROAD:${name}`);
   }
   return {...requested};
 }
@@ -184,18 +185,34 @@ export async function mintInstallationToken({
   } catch {
     return {state: 'FAILED', role: normalizedRole, reason: 'APP_RESPONSE_INVALID'};
   }
-  if (typeof payload?.token !== 'string' || !payload.token) {
-    return {state: 'FAILED', role: normalizedRole, reason: 'APP_TOKEN_MISSING'};
+  if (typeof payload?.token !== 'string' || !/^[A-Za-z0-9_-]{1,8192}$/.test(payload.token)) {
+    return {state: 'FAILED', role: normalizedRole, reason: 'APP_TOKEN_FORMAT_INVALID'};
   }
   const expiresAt = typeof payload.expires_at === 'string' ? payload.expires_at : null;
-  const granted = payload.permissions && typeof payload.permissions === 'object'
+  const expiryMs = expiresAt ? Date.parse(expiresAt) : NaN;
+  if (!Number.isFinite(expiryMs) || expiryMs <= now) {
+    return {state: 'FAILED', role: normalizedRole, reason: 'APP_TOKEN_EXPIRY_INVALID'};
+  }
+  const granted = payload.permissions && typeof payload.permissions === 'object' && !Array.isArray(payload.permissions)
     ? Object.fromEntries(Object.entries(payload.permissions).sort().map(([key, value]) => [key, String(value)]))
     : null;
-  // The response is the authority on what was actually granted.
+  // The response is the authority on what was actually granted. Missing,
+  // widened, or extra permissions all deny use; least privilege is exact, not a
+  // lower bound on requested keys.
+  if (!granted) return {state: 'DENIED', role: normalizedRole, reason: 'APP_GRANT_METADATA_MISSING'};
   for (const [name, level] of Object.entries(requestPermissions)) {
-    if (granted && granted[name] !== level) {
+    if (granted[name] !== level) {
       return {state: 'DENIED', role: normalizedRole, reason: `APP_GRANT_DIFFERS:${name}`, granted};
     }
+  }
+  const extraPermissions = Object.keys(granted).filter(name => !Object.hasOwn(requestPermissions, name));
+  if (extraPermissions.length) {
+    return {state: 'DENIED', role: normalizedRole, reason: 'APP_GRANT_HAS_UNREQUESTED_PERMISSION', extraPermissions};
+  }
+  const repositoryScoped = Array.isArray(payload.repositories) && payload.repositories.length === 1
+    && payload.repositories[0]?.full_name === repository;
+  if (!repositoryScoped) {
+    return {state: 'DENIED', role: normalizedRole, reason: 'APP_REPOSITORY_SCOPE_MISMATCH'};
   }
   return {
     state: 'MINTED',
@@ -203,9 +220,7 @@ export async function mintInstallationToken({
     token: payload.token,
     expiresAt,
     permissions: granted,
-    repositoryScoped: Array.isArray(payload.repositories) && payload.repositories.length === 1
-      ? payload.repositories[0].full_name === repository
-      : false,
+    repositoryScoped,
     // Explicitly absent from the result: the private key and the JWT.
   };
 }
@@ -230,7 +245,7 @@ export function inventoryAppSecrets(env = process.env) {
       deployKey: present('WOLF_FACTORY_DEPLOY_KEY'),
     },
     // App auth wins only when every role can be minted independently.
-    appAuthComplete: [present(APP_SECRET_NAMES.appId), present(APP_SECRET_NAMES.privateKey), present(APP_SECRET_NAMES.reader), present(APP_SECRET_NAMES.publisher)]
+    appAuthComplete: [present(APP_SECRET_NAMES.appId), present(APP_SECRET_NAMES.privateKey), present(APP_SECRET_NAMES.reader), present(APP_SECRET_NAMES.publisher), present(APP_SECRET_NAMES.dispatcher)]
       .every(value => value === 'present'),
     secretsReadable: false,
     credentialsPrinted: false,

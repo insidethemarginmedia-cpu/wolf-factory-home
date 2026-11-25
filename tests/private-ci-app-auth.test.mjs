@@ -39,6 +39,7 @@ test('roles map to the minimum permission set and cannot be widened', () => {
   assert.throws(() => assertLeastPrivilege('reader', {contents: 'write'}), /APP_PERMISSION_TOO_BROAD:contents/);
   // Publisher must not smuggle in contents or actions.
   assert.throws(() => assertLeastPrivilege('publisher', {contents: 'read'}), /APP_PERMISSION_NOT_ALLOWED:contents/);
+  assert.throws(() => assertLeastPrivilege('publisher', {checks: 'admin'}), /APP_PERMISSION_TOO_BROAD:checks/);
   assert.throws(() => assertLeastPrivilege('dispatcher', {checks: 'write'}), /APP_PERMISSION_NOT_ALLOWED:checks/);
   assert.throws(() => assertLeastPrivilege('owner'), /APP_ROLE_DENIED/);
   assert.deepEqual(assertLeastPrivilege('publisher'), {checks: 'write', metadata: 'read'});
@@ -88,7 +89,7 @@ test('minting requests a repository-scoped, least-privilege token', async () => 
         status: 201,
         json: async () => ({
           token: 'ghs_fixture_installation_token',
-          expires_at: '2026-11-24T13:00:00Z',
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
           permissions: {checks: 'write', metadata: 'read'},
           repositories: [{full_name: repository}],
         }),
@@ -117,12 +118,37 @@ test('a token that arrives with different permissions is refused', async () => {
     fetchImpl: async () => ({
       ok: true,
       status: 201,
-      json: async () => ({token: 'ghs_x', expires_at: '2026-11-24T13:00:00Z', permissions: {contents: 'write', metadata: 'read'}, repositories: [{full_name: repository}]}),
+      json: async () => ({token: 'ghs_x', expires_at: new Date(Date.now() + 3600_000).toISOString(), permissions: {contents: 'write', metadata: 'read'}, repositories: [{full_name: repository}]}),
     }),
   });
   assert.equal(result.state, 'DENIED');
   assert.match(result.reason, /APP_GRANT_DIFFERS:contents/);
   assert.equal(result.token, undefined, 'a denied mint must not yield a usable token');
+});
+
+test('a token is denied unless its scope, expiry and complete permission grant match the request', async () => {
+  const valid = {
+    token: 'ghs_synthetic_reader_token',
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    permissions: {contents: 'read', metadata: 'read'},
+    repositories: [{full_name: repository}],
+  };
+  const cases = [
+    [{...valid, permissions: {...valid.permissions, checks: 'write'}}, 'APP_GRANT_HAS_UNREQUESTED_PERMISSION'],
+    [{...valid, permissions: undefined}, 'APP_GRANT_METADATA_MISSING'],
+    [{...valid, repositories: [{full_name: 'someone/else'}]}, 'APP_REPOSITORY_SCOPE_MISMATCH'],
+    [{...valid, token: 'ghs_ok; touch /tmp/pwned'}, 'APP_TOKEN_FORMAT_INVALID'],
+    [{...valid, expires_at: 'not-an-expiry'}, 'APP_TOKEN_EXPIRY_INVALID'],
+  ];
+  for (const [body, reason] of cases) {
+    const result = await mintInstallationToken({
+      role: 'reader', appId: '1', privateKey: rsaPem, installationId: '99', repository,
+      fetchImpl: async () => ({ok: true, status: 201, json: async () => body}),
+    });
+    assert.equal(result.reason, reason);
+    assert.notEqual(result.state, 'MINTED');
+    assert.equal(result.token, undefined, 'denied token material is never returned');
+  }
 });
 
 test('missing key material fails closed without requesting anything', async () => {
@@ -194,6 +220,19 @@ test('the secret inventory reports presence only', () => {
   assert.equal(inventory.installations.reader, 'absent');
   assert.equal(inventory.fallback.pat, 'present');
   assert.equal(inventory.appAuthComplete, false, 'an app without role installation ids is not complete');
+  const complete = inventoryAppSecrets({
+    WOLF_FACTORY_APP_ID: '4187077',
+    WOLF_FACTORY_APP_PRIVATE_KEY: 'synthetic-key',
+    WOLF_FACTORY_READER_INSTALLATION_ID: '1',
+    WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: '1',
+    WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: '1',
+  });
+  assert.equal(complete.appAuthComplete, true, 'all three role installation IDs are required and reported');
+  const noDispatcher = inventoryAppSecrets({
+    WOLF_FACTORY_APP_ID: '4187077', WOLF_FACTORY_APP_PRIVATE_KEY: 'synthetic-key',
+    WOLF_FACTORY_READER_INSTALLATION_ID: '1', WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: '1',
+  });
+  assert.equal(noDispatcher.appAuthComplete, false, 'a missing dispatcher installation is incomplete');
   const serialized = JSON.stringify(inventory);
   assert.equal(serialized.includes('secret-material'), false);
   assert.equal(serialized.includes('github_pat_x'), false);
@@ -233,6 +272,32 @@ test('the CLI masks the token before writing it and never prints it', async () =
   const file = fs.readFileSync(env.WOLF_CI_TOKEN_FILE, 'utf8');
   assert.match(file, new RegExp(`^${ROLE_ENV.publisher}=ghs_fixture_secret_token$`, 'm'));
   assert.equal(fs.statSync(env.WOLF_CI_TOKEN_FILE).mode & 0o777, 0o600, 'token file is root-only');
+  fs.rmSync(dir, {recursive: true, force: true});
+});
+
+test('token-file creation is exclusive and cannot follow an untrusted symlink', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const {writeTokenFile} = await import('../scripts/private-ci-app-auth-cli.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-app-token-file-'));
+  const target = path.join(dir, 'attacker-controlled.env');
+  const tokenPath = path.join(dir, 'token.env');
+  fs.writeFileSync(target, 'do-not-overwrite\n', {mode: 0o666});
+  fs.symlinkSync(target, tokenPath);
+  assert.throws(() => writeTokenFile(tokenPath, 'WOLF_CI_APP_PUBLISHER_TOKEN', 'ghs_synthetic_token'), /TOKEN_FILE_PATH_ALREADY_EXISTS/);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'do-not-overwrite\n');
+  assert.throws(() => writeTokenFile(path.join(process.cwd(), '.wolf-ci-test-token'), 'WOLF_CI_APP_PUBLISHER_TOKEN', 'ghs_synthetic_token'), /TOKEN_FILE_MUST_BE_OUTSIDE_CHECKOUT/);
+  assert.equal(fs.existsSync(path.join(process.cwd(), '.wolf-ci-test-token')), false);
+  assert.throws(() => writeTokenFile(path.join(dir, 'shell.env'), 'WOLF_CI_APP_PUBLISHER_TOKEN', 'ghs_ok;touch_/tmp/pwned'), /TOKEN_FILE_VALUE_INVALID/);
+
+  // The trust boundary is the actual Actions workspace, even if the CLI happens
+  // to run from a different current directory.
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-app-workspace-'));
+  const workspaceToken = path.join(workspace, 'token.env');
+  assert.throws(() => writeTokenFile(workspaceToken, 'WOLF_CI_APP_PUBLISHER_TOKEN', 'ghs_synthetic_token', {workspace}), /TOKEN_FILE_MUST_BE_OUTSIDE_CHECKOUT/);
+  assert.equal(fs.existsSync(workspaceToken), false);
+  fs.rmSync(workspace, {recursive: true, force: true});
   fs.rmSync(dir, {recursive: true, force: true});
 });
 

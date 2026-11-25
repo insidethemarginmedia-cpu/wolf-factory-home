@@ -39,6 +39,36 @@ test('the audit recognises a token used without a masking path', () => {
   assert.ok(audit.findings.some(finding => finding.vector === 'token-unmasked'));
 });
 
+test('the audit follows job-wide environments into target execution', () => {
+  const unsafe = [
+    'jobs:',
+    '  execute:',
+    '    env:',
+    '      WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}',
+    '    steps:',
+    '      - name: Execute private commands',
+    '        run: node scripts/private-ci-execute.mjs',
+  ].join('\n');
+  const audit = auditCredentialExposure(unsafe);
+  assert.equal(audit.state, 'EXPOSURE_RISK');
+  assert.ok(audit.findings.some(finding => finding.vector === 'target-process-job-environment'));
+});
+
+test('the receipt signer is not trusted in an execution step without OS-user isolation', () => {
+  const unsafe = [
+    'jobs:',
+    '  execute:',
+    '    steps:',
+    '      - name: Execute private commands',
+    '        env:',
+    '          WOLF_CI_RECEIPT_SIGNING_KEY: ${{ secrets.WOLF_CI_RECEIPT_SIGNING_KEY }}',
+    '        run: node scripts/private-ci-execute.mjs',
+  ].join('\n');
+  const audit = auditCredentialExposure(unsafe);
+  assert.equal(audit.state, 'EXPOSURE_RISK');
+  assert.ok(audit.findings.some(finding => finding.vector === 'target-process-environment'));
+});
+
 test('the credential detector recognises the shapes that matter', () => {
   assert.equal(looksLikeCredential('ghs_' + 'a'.repeat(30)), true);
   assert.equal(looksLikeCredential('ghp_' + 'b'.repeat(30)), true);
@@ -51,33 +81,40 @@ test('the workflow never uploads an artefact', () => {
   assert.equal(/upload-artifact/.test(workflow), false, 'nothing is uploaded, so nothing can leak through one');
 });
 
-test('the publisher token is minted inside the execute job, before it is published', () => {
-  // The mint was first inserted into the probe job, where it could never reach the
-  // publish step. A job-scoped assertion is the only thing that catches a step
-  // landing in the wrong job - a plain indexOf finds the probe job's publish step
-  // first and proves nothing.
-  // Parsed with the in-repo workflow reader rather than PyYAML: a test that needs a
-  // package the runner does not have passes locally and fails in CI, which is
-  // exactly what happened here.
+test('the publisher token is minted in a protected directory and only a successful mint is sourced', () => {
   const {parseWorkflowJobs} = require('../scripts/private-ci-workflow.mjs');
   const parsed = Object.fromEntries(parseWorkflowJobs(workflow).map(job => [job.name, job.steps.map(step => step.name)]));
-
   const execute = parsed.execute;
-  const mintAt = execute.indexOf('Mint the publisher token for the private check');
-  const publishAt = execute.indexOf('Publish the authenticated check to the private commit');
-  assert.ok(mintAt >= 0, 'the mint step must exist in the execute job');
-  assert.ok(publishAt >= 0, 'the publish step must exist in the execute job');
-  assert.ok(mintAt < publishAt, 'the token must be minted before the step that uses it');
-
-  // And it must not be duplicated into another job.
+  const prepareName = 'Prepare a separate OS identity for target-code execution';
+  const executeName = 'Execute the required checks with source-bound receipts and isolated child environments';
+  const mintName = 'Mint the publisher token for the private check';
+  const publishName = 'Publish the authenticated check to the private commit';
+  const prepareAt = execute.indexOf(prepareName);
+  const executeAt = execute.indexOf(executeName);
+  const mintAt = execute.indexOf(mintName);
+  const publishAt = execute.indexOf(publishName);
+  assert.ok(prepareAt >= 0 && executeAt > prepareAt && mintAt > executeAt && publishAt > mintAt);
   for (const [job, steps] of Object.entries(parsed)) {
-    if (job === 'execute') continue;
-    assert.equal(steps.includes('Mint the publisher token for the private check'), false, `the mint must not live in ${job}`);
+    if (job !== 'execute') assert.equal(steps.includes(mintName), false, `the mint must not live in ${job}`);
   }
 
-  const mintBlock = workflow.slice(
-    workflow.indexOf('name: Mint the publisher token for the private check'),
-    workflow.indexOf('name: Mint the publisher token for the private check') + 2200,
-  );
-  assert.match(mintBlock, /GITHUB_ENV/, 'it must reach later steps through GITHUB_ENV');
+  const prepareStart = workflow.indexOf('name: ' + prepareName);
+  const executeStart = workflow.indexOf('name: ' + executeName, prepareStart);
+  const mintStart = workflow.indexOf('name: ' + mintName, executeStart);
+  const publishStart = workflow.indexOf('name: ' + publishName, mintStart);
+  const publishEnd = workflow.indexOf('      - name: Publish the sanitized public receipt', publishStart);
+  const prepareBlock = workflow.slice(prepareStart, executeStart);
+  const mintBlock = workflow.slice(mintStart, publishStart);
+  const publishBlock = workflow.slice(publishStart, publishEnd);
+  assert.match(prepareBlock, /WOLF_CI_APP_TOKEN_DIR: \$\{\{ runner\.temp \}\}\/wolf-ci-app-token-/);
+  assert.match(prepareBlock, /mkdir -m 700 -- "\$WOLF_CI_APP_TOKEN_DIR"/);
+  assert.match(mintBlock, /WOLF_CI_TOKEN_FILE: \$\{\{ runner\.temp \}\}\/wolf-ci-app-token-.*publisher-token\.env/);
+  assert.match(mintBlock, /app_token_minted=true/);
+  assert.match(mintBlock, /app_token_minted=false/);
+  assert.doesNotMatch(mintBlock, /GITHUB_ENV/, 'the token is not exported job-wide');
+  assert.match(publishBlock, /steps\.publisher_mint\.outputs\.app_token_minted/);
+  assert.match(publishBlock, /\. \"\$WOLF_CI_TOKEN_FILE\"/);
+  assert.match(publishBlock, /unset WOLF_CI_APP_PUBLISHER_TOKEN/);
+  assert.match(publishBlock, /rm -f \"\$WOLF_CI_TOKEN_FILE\"/);
+  assert.doesNotMatch(publishBlock, /\/tmp\/wolf-ci-publisher-token\.env/);
 });

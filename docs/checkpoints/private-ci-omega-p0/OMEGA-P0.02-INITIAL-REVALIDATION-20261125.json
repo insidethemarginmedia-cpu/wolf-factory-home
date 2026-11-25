@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "wolf.omega.p0.02.initial-revalidation/v1",
+  "recordedAt": "2026-11-25T11:13:38Z",
+  "verdict": "BLOCKED_NOT_ACCEPTED",
+  "priorEvidence": {
+    "markdown": "docs/private-ci-omega-p0-evidence.md",
+    "structuredCheckpoint": "docs/checkpoints/private-ci-omega-p0/OMEGA-P0-VERIFICATION-20261125.json",
+    "originalFindingCount": 11,
+    "evidenceCommit": "339b9dc",
+    "evidenceCommitMessage": "docs: preserve Omega P0 verification evidence"
+  },
+  "session": {
+    "branch": "arena/156d9fee-wolf-factory-home",
+    "headAtRevalidation": "339b9dc",
+    "baseCommit": "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
+    "branchStatus": "ACTIVE",
+    "branchPublished": false,
+    "noBranchSwitch": true,
+    "noHistoryRewrite": true
+  },
+  "privateTarget": {
+    "repository": "donraposo1-source/project-wolf",
+    "prNumber": 743,
+    "userReportedState": "OPEN",
+    "userReportedBase": "main",
+    "userReportedHead": "a866a4d62baf7b834283d11f5868b3d288729f18",
+    "prApiReadStatus": 404,
+    "reportedHeadCommitApiReadStatus": 404,
+    "headIndependentlyVerified": false,
+    "currentGitHubCliIdentity": "donraposo1-source",
+    "latestAuthorizedTargetSha": null,
+    "sourceFetchedByThisRevalidation": false,
+    "privateWorkflowExecuted": false,
+    "liveTargetDispatchInitiated": false,
+    "targetCheckRunsRead": false,
+    "previousHomeReceiptSha": "8d319fc50be4e4d225e3bb80de963583899c25ec",
+    "previousHomeReceiptShaPrHeadComparison": "FALSE_IN_PRIOR_INVENTORY_SNAPSHOT; CURRENT_HEAD_UNKNOWN"
+  },
+  "githubApp": {
+    "id": 5913418,
+    "slug": "wolf-factory-automation",
+    "owner": "insidethemarginmedia-cpu",
+    "metadataRead": true,
+    "targetInstallationVerified": false,
+    "appCredentialsAvailableToThisSession": "NOT_CONFIRMED",
+    "newAppCreated": false,
+    "newPatCreated": false,
+    "privateKeyOrTokenPrinted": false
+  },
+  "skills": {
+    "loaded": 0,
+    "expected": 7,
+    "repositoryLocalSkillFilesOrLoaderFound": false,
+    "historicalCheckpoint": "docs/checkpoints/integrations/COMPOSIO-UNIFIED-FACTORY-ACCESS-20261104.md",
+    "historicalOnly": true,
+    "claimOfCurrentActivation": false
+  },
+  "homeHistoryReconciliation": {
+    "checkoutIsShallow": true,
+    "shallowBoundaries": [
+      "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
+      "20f1872da5f8e32cb4b5285fb28e591a8652a586",
+      "3742bcc76ee2a5a8ff09897dda6611d50a4ef053"
+    ],
+    "priorLocalMergeBaseOutput": null,
+    "githubCompareQuery": "main...arena/38f3a7f7-wolf-factory-home",
+    "githubCompareStatus": "diverged",
+    "aheadBy": 251,
+    "behindBy": 2,
+    "sharedMergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+    "orphanHistoryClaim": "SUPERSEDED_SHALLOW_CHECKOUT_ARTIFACT",
+    "pr2": {
+      "number": 2,
+      "state": "OPEN",
+      "headBranch": "arena/38f3a7f7-wolf-factory-home",
+      "headSha": "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
+      "baseBranch": "feat/public-runtime-probe-20261022",
+      "baseSha": "20f1872da5f8e32cb4b5285fb28e591a8652a586"
+    },
+    "historyRewritten": false
+  },
+  "historyCorrectionsAdded": [
+    "docs/integration-contract.md",
+    "docs/private-ci-bridge-evidence.md",
+    "docs/checkpoints/private-ci-omega-p0/OMEGA-P0.02-INITIAL-REVALIDATION-20261125.md"
+  ],
+  "environment": {
+    "githubConnectorStatus": "UNSUPPORTED",
+    "existingGhCliAvailable": true,
+    "connectedAppsForTurn": ["supabase", "vercel"],
+    "zeroCostPolicy": {
+      "eurSpend": 0,
+      "costUnknown": "DENY",
+      "paidFallback": "DENY"
+    }
+  },
+  "nextSafeGate": "Do not dispatch or run private source until exact PR head, workflow/check-run access, and a durable admission backend are authorized and independently verified. Continue local repairs and adversarial tests only."
+}

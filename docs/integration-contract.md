@@ -5,9 +5,9 @@ For **Factory**, **Factory 2** and **LEGO Wolf Development**.
 This document is the complete interface. If you need something not described
 here, that is a contract change, not a configuration detail.
 
-Status: the bridge runs and is verified on this branch; the cross-repository
-trigger is **blocked on one Founder action** (see §5). Everything below says
-exactly which parts are live and which are pending.
+> **Status correction (2026-11-25): this document contains stale acceptance claims.** The current private PR #743 head and target check runs are not accessible to the current GitHub identity, and the Home bridge has not been independently accepted for the claimed target SHA. Treat the operational claims below as historical until revalidated. See [`docs/private-ci-omega-p0-evidence.md`](private-ci-omega-p0-evidence.md) and [`docs/checkpoints/private-ci-omega-p0/OMEGA-P0.02-INITIAL-REVALIDATION-20261125.md`](checkpoints/private-ci-omega-p0/OMEGA-P0.02-INITIAL-REVALIDATION-20261125.md).
+
+Status: the bridge was reported as running and verified at the time this contract was written; the current exact-SHA target acceptance is **BLOCKED / NOT VERIFIED**. The history/dispatch discussion in §5 is likewise historical and subject to the correction below.
 
 ---
 
@@ -51,36 +51,50 @@ service, and a caller who cannot read it cannot leak it.
 | Field | Type | Required | Rule |
 | --- | --- | --- | --- |
 | `schemaVersion` | integer | yes | Must be `1` |
-| `missionId` | string | yes | Your own stable id, `[A-Za-z0-9._:-]`, ≤ 120 chars |
+| `missionId` | string | yes | 8–128 characters; first character alphanumeric, remaining characters `[A-Za-z0-9._:-]` |
 | `repository` | string | yes | Must be `donraposo1-source/project-wolf` |
 | `sha` | string | yes | **Full 40 hex characters.** Abbreviations, tags and branch names are rejected |
 | `issuedAt` | ISO-8601 string | yes | Must be within 1 hour of arrival |
+| `pr` | integer | optional | When supplied, must be the configured target PR `743` |
+| `checks` | string array | optional | If supplied, must equal the fixed 13-check contract; callers cannot choose a subset |
+| `requestedBy` | string | optional | If supplied, must match the authenticated GitHub actor |
+
+The authenticated sender must also be present in the Home repository's explicit
+`WOLF_CI_MISSION_ALLOWED_ACTORS` allowlist. An empty or missing allowlist denies
+admission.
 
 Any of `workflow`, `workflowFile`, `token`, `permissions`, `credentials`,
 `ref` or `paid` present in the payload — **even set to `false`** — causes
 rejection. You cannot name a workflow, redirect the ref, supply a credential or
 authorise spending. Those are not configurable.
 
-### 2.3 Idempotency
+### 2.3 Idempotency and durable reservation
 
-The identity key is **`missionId@sha`**.
+The identity key is **`missionId@sha`** (the target repository is fixed by
+policy). Before any private-target access, the Home controller creates a
+write-once reservation ref in its own repository. Reusing the key is therefore
+suppressed across workflow runs, not merely within one runner's temporary files.
 
 | Situation | Result |
 | --- | --- |
-| New `missionId@sha` | `ACCEPTED` — work starts |
-| Same `missionId@sha` re-sent | `DUPLICATE` — success, **no new work** |
-| Same `missionId`, different `sha` | New work (a new commit is a new mission) |
+| New `missionId@sha` with a free sender slot | `ACCEPTED` — reservation is durable before target access |
+| Same `missionId@sha` re-sent | `DUPLICATE` — **no new work**, even if the prior run did not complete |
+| Same `missionId`, different `sha` | New identity and reservation; target PR-head validation still applies |
+| Hourly sender cap reached | `RATE_LIMITED`; the mission key remains durably consumed |
 
-`issuedAt` and `attempt` are **excluded** from the key, so retrying a delivery
-never duplicates work. Send the same payload again to retry; do not invent a new
-`missionId` to work around a duplicate response — that is the failure mode the
-key exists to prevent.
+`issuedAt` and `attempt` are excluded from the identity key. A durable reservation
+is not automatically released or re-armed after a failed/blocked run. To request
+an intentional retry, use a **fresh `missionId`** for the same SHA; this is a new
+mission and counts against the sender's hourly limit. A repeated delivery with
+the old ID cannot be used to retry.
 
-### 2.4 Retries — your responsibility
+### 2.4 Retries — caller responsibility
 
-The service does not call you back and does not retry on your behalf beyond the
-bounds in §4. Poll the receipt (§3) and resend the **identical** payload if the
-run did not start.
+The current admission path does not retry target execution automatically and
+does not call the sender back. Read the published workflow result and decide
+whether a new attempt is warranted. If the initial admission outcome is unknown,
+reusing the same key is safe but can only return `DUPLICATE`; use a fresh ID only
+when an additional execution is deliberately authorized.
 
 ## 3. How to read the result
 
@@ -123,14 +137,15 @@ security defect — report it, do not consume it.
 | --- | --- |
 | Mission age | 1 hour |
 | Missions per sender | 12 per hour |
-| Retry attempts | 3, bounded |
-| Never retried | `PAT_FALLBACK_RETIRED`, `PERMISSION_OR_RATE_LIMIT`, `NOT_FOUND_OR_NO_ACCESS` |
+| Automatic retries | none in the current admission path |
+| Sender rate limit | 12 durable reservations per authenticated actor per UTC hour |
 
-Non-retryable failures mean **stop and escalate**, not "try again". Permission
-and not-found errors are a statement about your token, not transient weather.
-
-Every rejection is journaled with its reason, including payloads that never
-became missions. A refusal always leaves evidence.
+Admission and target execution are not automatically retried. A caller may
+request a new attempt only with a fresh `missionId`, and only when the
+per-sender cap allows it. Invalid payloads and actor/allowlist refusals are
+rejected before any target access; they are not written to the durable mission
+reservation refs. Once a reservation is created, duplicate and rate-limit
+outcomes remain deduplicated even if a later ledger call or execution fails.
 
 ## 5. Current status — what is live and what is blocked
 
@@ -161,32 +176,47 @@ automation. Each step below was measured:
 | `git merge-base HEAD origin/main` | **no merge base — unrelated histories** |
 | `git rev-list --max-parents=0` (each) | `main` root `3742bcc`; this branch root `20f1872` |
 
-The last two rows are the real constraint and they are easy to miss. `main` is a
-**single orphan commit** with no shared history with this branch, so there is no
-fast-forward and no ordinary merge. PR #2 targets
-`feat/public-runtime-probe-20261022`, **not** `main` — merging it would not put
-the trigger on the default branch.
+### History correction — 2026-11-25
 
-**Required Founder action — one, and it must be a landing, not a merge.** Land
-`.github/workflows/private-ci-bridge.yml` and the `scripts/` it imports on
-`main`. Two workable shapes:
+The “no merge base / orphan root” conclusion in the earlier rows was produced by
+a shallow checkout: `.git/shallow` marked the branch and `main` commits as graft
+boundaries. The read-only GitHub Compare API for
+`main...arena/38f3a7f7-wolf-factory-home` reports **diverged**, `ahead_by=251`,
+`behind_by=2`, and shared merge base
+`da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd`. The orphan-history inference is
+**superseded**; no history rewrite is needed or authorized. PR #2 still targets
+`feat/public-runtime-probe-20261022`, not `main`, so default-branch workflow
+placement and permissions remain a separate issue that must be revalidated.
+
+**Historical proposal (not current guidance or authorization).** The original
+“must be a landing, not a merge” recommendation was based on the false orphan
+inference. A conventional PR/merge is graph-compatible; whether it is currently
+permitted or sufficient to put the bridge on the default branch is unverified.
+Do not change the default branch, merge, or dispatch on the basis of this old
+section. The original alternatives are retained below as historical context:
+
+Land `.github/workflows/private-ci-bridge.yml` and the `scripts/` it imports on
+`main`. Two shapes proposed at the time:
 
 1. **Adopt this history as default (preferred).** Set the repository default
    branch to `feat/public-runtime-probe-20261022`, or fast-forward `main` to that
    tip. This is a settings change, reversible, and needs no history rewrite.
 2. **Copy the files onto `main`.** Commit the bridge workflow plus the
-   `scripts/` it imports onto `main` as a new commit. This keeps the orphan
-   history and is a vanilla file commit; the `scripts/` must travel with it or
-   the workflow fails at its first `node` call.
+   `scripts/` it imports onto `main` as a new commit. The original note said this
+   would keep “orphan history”; that rationale was wrong because the branches
+   share history. A normal commit on `main` would not rewrite its existing
+   history. The `scripts/` must travel with the workflow or it will fail at its
+   first `node` call.
 
-Either shape is small. Nothing else is outstanding: the App, its permissions, the
-installation IDs, the receipt publisher and the retirement enforcement are all
-verified working from this branch.
+The following sentence in the original assessment (“Nothing else is outstanding”)
+is also historical and is **not current acceptance**: this audit could not verify
+the App installation, private PR, exact target run, receipt publisher, or current
+Factory state. The earlier `2xx`/zero-runs observation was point-in-time; current
+dispatch behavior must be revalidated. No dispatch was initiated in this audit.
 
-**Until then, do not dispatch.** The API answers 2xx and nothing runs. That
-silent acceptance is the most dangerous property of this integration — it looks
-like success and produces no work. No mission has been simulated to claim
-otherwise.
+**Current control:** do not dispatch the private target until the private PR head,
+workflow identity, durable mission admission, exact source tree, and final
+check-run are readable and bound to the same SHA.
 
 ## 6. What you must not do
 

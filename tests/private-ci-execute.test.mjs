@@ -3,31 +3,56 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {REQUIRED_CHECKS, executePrivateCi, normalizeChecks, normalizeSha} from '../scripts/private-ci-execute.mjs';
+
+const SIGNING_KEY = 'omega synthetic receipt signing key for tests only';
+const MISSION = {missionId: 'MISSION-TEST-0001', missionReservation: 'c'.repeat(64)};
 
 function fixtureRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-ci-executor-'));
   fs.mkdirSync(path.join(root, 'scripts'), {recursive: true});
   fs.writeFileSync(path.join(root, 'scripts', 'run-actionlint.sh'), '#!/usr/bin/env bash\nset -euo pipefail\necho "fixture-private-secret-value"\n', {mode: 0o700});
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({name: 'fixture', scripts: {build: 'node -e "process.exit(0)"', test: 'node -e "process.exit(0)"'}}));
+  execFileSync('git', ['init', '-q'], {cwd: root});
+  execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:donraposo1-source/project-wolf.git'], {cwd: root});
+  execFileSync('git', ['config', 'user.name', 'Wolf CI Fixture'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'fixture@example.invalid'], {cwd: root});
   return root;
 }
 
-test('executor accepts only the six required plus two explicit extra checks', () => {
+function commitFixture(root) {
+  execFileSync('git', ['add', '-A'], {cwd: root});
+  execFileSync('git', ['commit', '-qm', 'fixture'], {cwd: root});
+  return execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
+}
+
+function artifacts() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-ci-executor-artifacts-'));
+}
+
+test('executor accepts the fixed 13-check contract while retaining six base checks', async () => {
+  const {ALLOWED_CHECKS, EXTRA_CHECKS} = await import('../scripts/private-ci-contract.mjs');
   assert.equal(normalizeSha('A'.repeat(40)), 'a'.repeat(40));
   assert.throws(() => normalizeSha('abc'), /EXECUTOR_SHA_MALFORMED/);
   assert.deepEqual(normalizeChecks('security,lint,typecheck,unit,integration,build'), [...REQUIRED_CHECKS]);
+  assert.deepEqual(normalizeChecks(ALLOWED_CHECKS.join(',')), [...ALLOWED_CHECKS]);
+  assert.equal(ALLOWED_CHECKS.length, 13);
+  assert.equal(EXTRA_CHECKS.length, 7);
   assert.throws(() => normalizeChecks(''), /EXECUTOR_CHECKS_REQUIRED/);
   assert.throws(() => normalizeChecks('deploy'), /EXECUTOR_CHECK_DENIED/);
 });
 
 test('a passing lint check produces a verified SHA-bound receipt without private output', () => {
   const root = fixtureRoot();
-  const logDir = path.join(root, 'logs');
-  const receiptPath = path.join(root, 'receipt.json');
-  const receipt = executePrivateCi({root, sha: 'a'.repeat(40), checks: 'lint', logDir, receiptPath});
+  const sha = commitFixture(root);
+  const output = artifacts();
+  const logDir = path.join(output, 'logs');
+  const receiptPath = path.join(output, 'receipt.json');
+  const receipt = executePrivateCi({root, sha, checks: 'lint', logDir, receiptPath, signingKey: SIGNING_KEY, ...MISSION});
   assert.equal(receipt.state, 'VERIFIED');
-  assert.equal(receipt.sha, 'a'.repeat(40));
+  assert.equal(receipt.sha, sha);
+  assert.equal(receipt.treeSha, execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {cwd: root, encoding: 'utf8'}).trim());
   assert.equal(receipt.checks.length, 1);
   assert.equal(receipt.checks[0].name, 'lint');
   assert.equal(receipt.checks[0].status, 'success');
@@ -36,17 +61,22 @@ test('a passing lint check produces a verified SHA-bound receipt without private
   assert.equal(fs.readFileSync(receiptPath, 'utf8').includes('fixture-private-secret-value'), false);
   const log = fs.readFileSync(path.join(logDir, 'lint-1.log'), 'utf8');
   assert.equal(log.includes('fixture-private-secret-value'), true, 'private output stays in the ephemeral log');
+  assert.equal(typeof receipt.receiptSignature?.value, 'string');
   fs.rmSync(root, {recursive: true, force: true});
+  fs.rmSync(output, {recursive: true, force: true});
 });
 
 test('a failing check fails the receipt closed', () => {
   const root = fixtureRoot();
   fs.writeFileSync(path.join(root, 'scripts', 'run-actionlint.sh'), '#!/usr/bin/env bash\nexit 7\n', {mode: 0o700});
-  const receipt = executePrivateCi({root, sha: 'b'.repeat(40), checks: 'lint', logDir: path.join(root, 'logs'), receiptPath: path.join(root, 'receipt.json')});
+  const sha = commitFixture(root);
+  const output = artifacts();
+  const receipt = executePrivateCi({root, sha, checks: 'lint', logDir: path.join(output, 'logs'), receiptPath: path.join(output, 'receipt.json'), signingKey: SIGNING_KEY, ...MISSION});
   assert.equal(receipt.state, 'FAILED');
   assert.equal(receipt.checks[0].steps[0].exitCode, 7);
   assert.equal(receipt.checks[0].status, 'failure');
   fs.rmSync(root, {recursive: true, force: true});
+  fs.rmSync(output, {recursive: true, force: true});
 });
 
 test('psql sequence extraction follows the private workflow and rejects escape paths', async () => {
@@ -82,19 +112,29 @@ test('a failing extra check fails the verdict instead of being downgraded', asyn
     '      - name: Measure',
     '        run: node -e "process.exit(9)"',
   ].join('\n'));
+  execFileSync('git', ['init', '-q'], {cwd: root});
+  execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:donraposo1-source/project-wolf.git'], {cwd: root});
+  execFileSync('git', ['config', 'user.name', 'Wolf CI Fixture'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'fixture@example.invalid'], {cwd: root});
+  const sha = commitFixture(root);
+  const output = artifacts();
   const receipt = executePrivateCi({
     root,
-    sha: 'a'.repeat(40),
+    sha,
     checks: 'unit,postgres-concurrency',
-    logDir: path.join(root, 'logs'),
+    logDir: path.join(output, 'logs'),
+    receiptPath: path.join(output, 'receipt.json'),
     env: {},
-    runnerTemp: root,
+    runnerTemp: output,
+    signingKey: SIGNING_KEY,
+    ...MISSION,
   });
   assert.equal(receipt.state, 'FAILED', 'a failing extra check must fail the run');
   assert.equal(receipt.failure, 'postgres-concurrency:1');
   assert.deepEqual(receipt.failedChecks, ['postgres-concurrency']);
   assert.equal(receipt.checks.find(check => check.name === 'postgres-concurrency').status, 'failure');
   fs.rmSync(root, {recursive: true, force: true});
+  fs.rmSync(output, {recursive: true, force: true});
 });
 
 test('psql sequence extraction follows the private workflow and rejects escape paths', async () => {
@@ -170,9 +210,10 @@ test('workflow steps are taken from the workflow definition, not invented', asyn
 
   const steps = workflowSteps({root, check: 'postgres-concurrency', database: 'wolf_test'});
   assert.equal(steps.length, 3);
-  assert.match(steps[0].args[1], /psql -f scripts\/verify-invoice-core\.sql/);
+  assert.equal(steps[0].args.slice(0, 6).join(' '), '--noprofile --norc -e -o pipefail -c');
+  assert.match(steps[0].args.at(-1), /psql -f scripts\/verify-invoice-core\.sql/);
   assert.equal(steps[0].env.PGDATABASE, 'wolf_test');
-  assert.match(steps[1].args[1], /measure-postgres-concurrency\.mjs/);
+  assert.match(steps[1].args.at(-1), /measure-postgres-concurrency\.mjs/);
   assert.equal(steps[2].skippedReason, 'STEP_USES_EXTERNAL_ACTION', 'an external action is recorded, never silently passed');
 
   assert.equal(classifyWorkflowStep({run: 'echo hi'}).runnable, true);
@@ -180,6 +221,50 @@ test('workflow steps are taken from the workflow definition, not invented', asyn
   assert.equal(classifyWorkflowStep({uses: 'x/y@z'}).reason, 'STEP_USES_EXTERNAL_ACTION');
   assert.equal(classifyWorkflowStep({}).reason, 'STEP_HAS_NO_COMMAND');
   fs.rmSync(root, {recursive: true, force: true});
+});
+
+test('workflow steps retain GitHub Bash fail-fast and pipefail semantics', () => {
+  const root = fixtureRoot();
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), {recursive: true});
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'test.yml'), [
+    'jobs:',
+    '  verify:',
+    '    steps:',
+    '      - name: A failed command cannot be hidden by a later echo',
+    '        run: |',
+    '          false',
+    '          echo this-must-not-turn-the-step-green',
+  ].join('\n'));
+  const sha = commitFixture(root);
+  const output = artifacts();
+  const receipt = executePrivateCi({root, sha, checks: 'test', logDir: path.join(output, 'logs'), signingKey: SIGNING_KEY, ...MISSION});
+  assert.equal(receipt.state, 'FAILED');
+  assert.equal(receipt.checks[0].steps[0].exitCode, 1);
+  assert.equal(receipt.checks[0].status, 'failure');
+  fs.rmSync(root, {recursive: true, force: true});
+  fs.rmSync(output, {recursive: true, force: true});
+});
+
+test('an external workflow action cannot be reported as a successful required check', () => {
+  const root = fixtureRoot();
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), {recursive: true});
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'test.yml'), [
+    'jobs:',
+    '  verify:',
+    '    steps:',
+    '      - name: Setup required runtime',
+    '        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
+  ].join('\n'));
+  const sha = commitFixture(root);
+  const output = artifacts();
+  const receipt = executePrivateCi({root, sha, checks: 'test', logDir: path.join(output, 'logs'), signingKey: SIGNING_KEY, ...MISSION});
+  assert.equal(receipt.state, 'FAILED');
+  assert.equal(receipt.checks[0].status, 'failure');
+  assert.equal(receipt.checks[0].steps[0].exitCode, 78);
+  assert.equal(receipt.checks[0].steps[0].status, 'failure');
+  assert.equal(JSON.stringify(receipt).includes('actions/setup-node'), false, 'unsupported target action text is not copied into the receipt');
+  fs.rmSync(root, {recursive: true, force: true});
+  fs.rmSync(output, {recursive: true, force: true});
 });
 
 test('an absent workflow fails closed rather than reporting a pass', async () => {
@@ -195,7 +280,7 @@ test('an absent workflow fails closed rather than reporting a pass', async () =>
   fs.rmSync(root, {recursive: true, force: true});
 });
 
-test('postgres failures publish a SQLSTATE and never the offending statement', async () => {
+test('postgres diagnostic parsing extracts SQLSTATE without retaining the offending statement', async () => {
   const {errorDetail} = await import('../scripts/private-ci-execute.mjs');
   const output = [
     'MIGRATION_FAILED_PATH_CLASS=supabase/migrations/002.sql',
@@ -216,7 +301,7 @@ test('postgres failures publish a SQLSTATE and never the offending statement', a
   assert.equal(structured.sqlstate, '42P01');
 });
 
-test('each workflow result names the workflow step that produced it', async () => {
+test('workflow results retain fixed workflow attribution without exposing target step text', async () => {
   const fs = await import('node:fs');
   const os = await import('node:os');
   const path = await import('node:path');
@@ -230,14 +315,55 @@ test('each workflow result names the workflow step that produced it', async () =
     '      - name: Say hello',
     '        run: echo hello-from-wolf',
   ].join('\n'));
-  const receipt = executePrivateCi({root, sha: 'a'.repeat(40), checks: 'test', logDir: path.join(root, 'logs'), env: {}, runnerTemp: root});
+  execFileSync('git', ['init', '-q'], {cwd: root});
+  execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:donraposo1-source/project-wolf.git'], {cwd: root});
+  execFileSync('git', ['config', 'user.name', 'Wolf CI Fixture'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'fixture@example.invalid'], {cwd: root});
+  const sha = commitFixture(root);
+  const output = artifacts();
+  const receipt = executePrivateCi({root, sha, checks: 'test', logDir: path.join(output, 'logs'), receiptPath: path.join(output, 'receipt.json'), env: {}, runnerTemp: output, signingKey: SIGNING_KEY, ...MISSION});
   assert.equal(receipt.state, 'VERIFIED');
   const step = receipt.checks[0].steps[0];
-  assert.equal(step.workflowStep.stepName, 'Say hello');
-  assert.equal(step.workflowStep.workflow, '.github/workflows/test.yml');
-  assert.equal(step.workflowStep.stepIndex, 0);
-  assert.ok(fs.readFileSync(path.join(root, 'logs', 'test-1.log'), 'utf8').includes('hello-from-wolf'), 'workflow output reaches the private log');
+  assert.equal(step.stepIndex, 0);
+  assert.equal(step.workflow, '.github/workflows/test.yml');
+  assert.equal(step.command, undefined);
+  assert.equal(step.args, undefined);
+  assert.equal(step.stepName, undefined);
+  assert.ok(fs.readFileSync(path.join(output, 'logs', 'test-1.log'), 'utf8').includes('hello-from-wolf'), 'workflow output reaches the private log');
+  assert.doesNotMatch(JSON.stringify(receipt), /hello-from-wolf|Say hello/, 'target command output and private step labels stay out of the signed receipt');
   fs.rmSync(root, {recursive: true, force: true});
+  fs.rmSync(output, {recursive: true, force: true});
+});
+
+test('failed target output and free-form workflow labels never enter a signed receipt', () => {
+  const root = fixtureRoot();
+  const secretOutput = 'PRIVATE_TARGET_DIAGNOSTIC_CANARY_OMEGA';
+  const privateLabel = 'PRIVATE_TARGET_STEP_LABEL_CANARY_OMEGA';
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), {recursive: true});
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'test.yml'), [
+    'jobs:',
+    '  verify:',
+    '    steps:',
+    `      - name: ${privateLabel}`,
+    '        run: |',
+    `          printf '%s\\n' '${secretOutput}' >&2`,
+    '          exit 23',
+  ].join('\n'));
+  const sha = commitFixture(root);
+  const output = artifacts();
+  const logDir = path.join(output, 'logs');
+  const receipt = executePrivateCi({root, sha, checks: 'test', logDir, receiptPath: path.join(output, 'receipt.json'), signingKey: SIGNING_KEY, ...MISSION});
+  assert.equal(receipt.state, 'FAILED');
+  const step = receipt.checks[0].steps[0];
+  assert.deepEqual(Object.keys(step).sort(), ['durationMs', 'errorClass', 'exitCode', 'expectedExitCodes', 'stepIndex', 'status', 'workflow'].sort());
+  assert.equal(step.exitCode, 23);
+  assert.equal(step.status, 'failure');
+  assert.ok(fs.readFileSync(path.join(logDir, 'test-1.log'), 'utf8').includes(secretOutput), 'untrusted output remains in the private log');
+  const serialized = fs.readFileSync(path.join(output, 'receipt.json'), 'utf8');
+  assert.doesNotMatch(serialized, new RegExp(`${secretOutput}|${privateLabel}`));
+  assert.doesNotMatch(serialized, /printf|stderr|logTail|errorLine|sqlDetail|args/);
+  fs.rmSync(root, {recursive: true, force: true});
+  fs.rmSync(output, {recursive: true, force: true});
 });
 
 test('every generated shell script is valid bash', async () => {
@@ -254,7 +380,7 @@ test('every generated shell script is valid bash', async () => {
   fs.writeFileSync(path.join(root, 'supabase', 'migrations', '001.sql'), 'select 1;');
   fs.writeFileSync(path.join(root, 'supabase', 'tests', 'verify.sql'), 'select 1;');
   for (const step of schemaBootstrapSteps({root, database: 'wolf_test'})) {
-    if (step.command === 'bash' && step.args[0] === '-c') scripts.push(step.args[1]);
+    if (step.command === 'bash' && step.args.includes('-c')) scripts.push(step.args[step.args.indexOf('-c') + 1]);
   }
 
   const file = path.join(root, 'script.sh');

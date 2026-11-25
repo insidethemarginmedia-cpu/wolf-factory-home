@@ -1,7 +1,7 @@
 // Read-only inventory of the private repository CI surface over the explicitly
-// authorized repository-scoped SSH deploy key. No source file content, diff,
-// log, credential or command output is published: only workflow/job names,
-// package script names and immutable-ref metadata.
+// authorized repository-scoped SSH deploy key. Selected workflow and package
+// metadata file contents are read to derive names; no file body, diff, log,
+// credential or command output is published.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import {spawnSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
+const ALLOWED_REPOSITORIES = new Set(['donraposo1-source/project-wolf']);
 const HOST_KEY = 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl';
 
 export function normalizeSha(value) {
@@ -63,18 +64,28 @@ function redact(text) {
     .slice(0, 4000);
 }
 
-export async function inventoryPrivateRepository({repository, sha, pr, deployKey, runnerTemp = process.env.RUNNER_TEMP, fetchImpl = globalThis.fetch} = {}) {
+export async function inventoryPrivateRepository({repository, sha, pr, deployKey, runnerTemp = process.env.RUNNER_TEMP, fetchImpl = globalThis.fetch, runImpl = run} = {}) {
   const normalizedSha = normalizeSha(sha);
   const base = {
     state: 'INVENTORIED',
     repository,
     sha: normalizedSha,
     pullRequestNumber: pr ? Number(pr) : null,
+    // `privateSourceFetched` means selected source-file content was fetched, not
+    // that a full tree was materialized. The separate field makes that scope
+    // explicit in sanitized output.
     privateSourceFetched: false,
+    privateFileContentsRead: false,
+    fullPrivateSourceFetched: false,
+    selectedPrivateFilesRead: [],
+    sourceFetchScope: 'none',
     sourcePublished: false,
+    privateSourcePublished: false,
     inferencePerformed: false,
     refUpdated: false,
   };
+  if (!ALLOWED_REPOSITORIES.has(repository)) return {...base, state: 'DENIED', reason: 'INVENTORY_REPOSITORY_DENIED'};
+  if (!/^[1-9][0-9]{0,5}$/.test(String(pr ?? ''))) return {...base, state: 'BLOCKED', reason: 'PULL_REQUEST_NUMBER_REQUIRED'};
   if (typeof deployKey !== 'string' || !/^-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(deployKey.trim())) {
     return {...base, state: 'BLOCKED', reason: 'DEPLOY_KEY_REQUIRED'};
   }
@@ -83,6 +94,7 @@ export async function inventoryPrivateRepository({repository, sha, pr, deployKey
   const hostsPath = path.join(root, 'known_hosts');
   const clonePath = path.join(root, 'private');
   const env = {...process.env};
+  const runCommand = runImpl;
   try {
     fs.writeFileSync(keyPath, deployKey.trim() + '\n', {mode: 0o600, flag: 'wx'});
     fs.writeFileSync(hostsPath, HOST_KEY + '\n', {mode: 0o600, flag: 'wx'});
@@ -91,43 +103,66 @@ export async function inventoryPrivateRepository({repository, sha, pr, deployKey
     env.GIT_SSH_COMMAND = ssh;
     env.GIT_TERMINAL_PROMPT = '0';
     const remote = `git@github.com:${repository}.git`;
-    const refs = run('git', ['ls-remote', remote], {cwd: root, env});
+    const pullRef = `refs/pull/${pr}/head`;
+    // Read only the configured PR head instead of enumerating every private ref.
+    const refs = await runCommand('git', ['ls-remote', remote, pullRef], {cwd: root, env});
     if (refs.status !== 0) {
       return {...base, state: 'DENIED', reason: 'DEPLOY_KEY_REMOTE_DENIED', detail: redact(refs.stderr)};
     }
     const refLines = refs.stdout.split('\n').filter(Boolean);
-    const pullRef = pr ? `refs/pull/${pr}/head` : null;
-    const pullLine = pullRef ? refLines.find(line => line.endsWith('\t' + pullRef)) : null;
-    const pullHeadSha = pullLine ? pullLine.split('\t')[0] : null;
-    const clone = run('git', ['clone', '--quiet', '--filter=blob:none', '--no-checkout', remote, clonePath], {cwd: root, env});
+    const pullLine = refLines.find(line => line.endsWith('\t' + pullRef));
+    const pullHeadSha = pullLine ? pullLine.split('\t')[0].toLowerCase() : null;
+    if (!pullHeadSha) return {...base, state: 'BLOCKED', reason: 'PULL_REQUEST_HEAD_UNAVAILABLE', pullRequestHeadMatches: null};
+    if (pullHeadSha !== normalizedSha) return {...base, state: 'BLOCKED', reason: 'PULL_REQUEST_HEAD_MISMATCH', pullRequestHeadMatches: false};
+    const clone = await runCommand('git', ['clone', '--quiet', '--filter=blob:none', '--no-checkout', remote, clonePath], {cwd: root, env});
     if (clone.status !== 0) {
       return {...base, state: 'DENIED', reason: 'DEPLOY_KEY_CLONE_DENIED', detail: redact(clone.stderr)};
     }
-    const commit = run('git', ['cat-file', '-t', normalizedSha], {cwd: clonePath, env});
-    if (commit.status !== 0 || commit.stdout.trim() !== 'commit') {
-      return {...base, state: 'DENIED', reason: 'PRIVATE_COMMIT_NOT_FOUND', pullHeadMatches: pullHeadSha === normalizedSha};
+    const fetched = await runCommand('git', ['fetch', '--quiet', '--filter=blob:none', 'origin', pullRef], {cwd: clonePath, env});
+    if (fetched.status !== 0) return {...base, state: 'DENIED', reason: 'PULL_REQUEST_REF_FETCH_DENIED', pullRequestHeadMatches: false, detail: redact(fetched.stderr)};
+    const fetchedHead = await runCommand('git', ['rev-parse', '--verify', 'FETCH_HEAD^{commit}'], {cwd: clonePath, env});
+    if (fetchedHead.status !== 0 || fetchedHead.stdout.trim().toLowerCase() !== normalizedSha) {
+      return {...base, state: 'BLOCKED', reason: 'PULL_REQUEST_HEAD_CHANGED_DURING_INVENTORY', pullRequestHeadMatches: false};
     }
-    const tree = run('git', ['ls-tree', '-r', '--name-only', normalizedSha, '--', '.github/workflows'], {cwd: clonePath, env});
+    const commit = await runCommand('git', ['cat-file', '-t', normalizedSha], {cwd: clonePath, env});
+    if (commit.status !== 0 || commit.stdout.trim() !== 'commit') {
+      return {...base, state: 'BLOCKED', reason: 'PRIVATE_COMMIT_NOT_FOUND', pullRequestHeadMatches: true};
+    }
+    const tree = await runCommand('git', ['ls-tree', '-r', '--name-only', normalizedSha, '--', '.github/workflows'], {cwd: clonePath, env});
     const workflowFiles = tree.status === 0 ? tree.stdout.split('\n').filter(file => /^\.github\/workflows\/[^/]+\.(ya?ml)$/.test(file)).sort() : [];
     const workflows = [];
     for (const file of workflowFiles) {
-      const shown = run('git', ['show', `${normalizedSha}:${file}`], {cwd: clonePath, env});
+      const shown = await runCommand('git', ['show', `${normalizedSha}:${file}`], {cwd: clonePath, env});
       if (shown.status !== 0) continue;
+      base.privateSourceFetched = true;
+      base.privateFileContentsRead = true;
+      base.selectedPrivateFilesRead.push(file);
+      base.sourceFetchScope = 'selected workflow and package metadata file contents only; no full source-tree checkout';
       workflows.push({path: file, ...parseWorkflowMetadata(shown.stdout)});
     }
-    const packageShown = run('git', ['show', `${normalizedSha}:package.json`], {cwd: clonePath, env});
+    const packageShown = await runCommand('git', ['show', `${normalizedSha}:package.json`], {cwd: clonePath, env});
+    if (packageShown.status === 0) {
+      base.privateSourceFetched = true;
+      base.privateFileContentsRead = true;
+      base.selectedPrivateFilesRead.push('package.json');
+      base.sourceFetchScope = 'selected workflow and package metadata file contents only; no full source-tree checkout';
+    }
     const packageScripts = packageShown.status === 0 ? parsePackageScripts(packageShown.stdout) : [];
     const hasPackageJson = packageShown.status === 0;
-    const hasLockfile = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock'].some(file => {
-      return run('git', ['cat-file', '-e', `${normalizedSha}:${file}`], {cwd: clonePath, env}).status === 0;
-    });
-    const scriptTree = run('git', ['ls-tree', '-r', '--name-only', normalizedSha, '--', 'scripts'], {cwd: clonePath, env});
+    let hasLockfile = false;
+    for (const file of ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock']) {
+      if ((await runCommand('git', ['cat-file', '-e', `${normalizedSha}:${file}`], {cwd: clonePath, env})).status === 0) {
+        hasLockfile = true;
+        break;
+      }
+    }
+    const scriptTree = await runCommand('git', ['ls-tree', '-r', '--name-only', normalizedSha, '--', 'scripts'], {cwd: clonePath, env});
     const scriptCandidates = scriptTree.status === 0
       ? scriptTree.stdout.split('\n').filter(file => /(?:dbos|kct|schema|postgres|migration|security|lint|test|build)/i.test(file)).sort().slice(0, 200)
       : [];
     const workflowCommands = [];
     for (const workflow of workflows) {
-      const shown = run('git', ['show', `${normalizedSha}:${workflow.path}`], {cwd: clonePath, env});
+      const shown = await runCommand('git', ['show', `${normalizedSha}:${workflow.path}`], {cwd: clonePath, env});
       if (shown.status !== 0) continue;
       const runBlocks = [...shown.stdout.matchAll(/(?:^|\n)\s*run:\s*(?:\|[-+]?|>[-+]?)?\s*\n([\s\S]*?)(?=\n\s{0,8}(?:[a-zA-Z_-]+:|-[ ]name:|jobs:|$))/g)].map(match => match[1]);
       const commands = [];
@@ -139,7 +174,9 @@ export async function inventoryPrivateRepository({repository, sha, pr, deployKey
           const executable = parts[0]?.replace(/^.*\//, '') ?? '';
           const firstArg = parts[1] ?? '';
           if (!['node', 'npm', 'npx', 'python', 'python3', 'bash', 'sh', 'docker', 'psql', 'git', 'echo', 'test', 'set', 'export'].includes(executable)) continue;
-          commands.push({executable, firstArg: firstArg.replace(/^['"]|['"]$/g, '').slice(0, 160), referencesScripts: /(?:^|\/)scripts\//.test(firstArg)});
+          // Retain only the executable category and a boolean path signal. An
+          // argument may contain a literal secret, URL or private command value.
+          commands.push({executable, referencesScripts: /(?:^|\/)scripts\//.test(firstArg)});
         }
       }
       workflowCommands.push({path: workflow.path, commands});
@@ -149,6 +186,11 @@ export async function inventoryPrivateRepository({repository, sha, pr, deployKey
     return {
       ...base,
       state: 'INVENTORIED',
+      privateSourceFetched: base.privateSourceFetched,
+      privateFileContentsRead: base.privateFileContentsRead,
+      fullPrivateSourceFetched: base.fullPrivateSourceFetched,
+      selectedPrivateFilesRead: base.selectedPrivateFilesRead,
+      sourceFetchScope: base.sourceFetchScope,
       sshAccess: true,
       commitPresent: true,
       pullRequestHeadMatches: pullHeadSha ? pullHeadSha === normalizedSha : null,
@@ -195,6 +237,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       pr: process.env.WOLF_CI_PR,
       deployKey: process.env.WOLF_CI_DEPLOY_KEY,
     });
+    if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `state=${result.state}\n`, {mode: 0o600});
     result.publication = await publish(result);
     if (process.env.WOLF_CI_PROBE_OUTPUT) {
       try {

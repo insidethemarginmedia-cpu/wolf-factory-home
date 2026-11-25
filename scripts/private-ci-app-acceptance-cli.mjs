@@ -100,14 +100,15 @@ export async function runAcceptance({env = process.env, fetchImpl = globalThis.f
     fetchImpl,
   }));
 
-  // 5. Real dispatch. `settleMs` is short here because the acceptance step runs
-  // inside the very workflow being dispatched, which is already busy; the point
-  // is the 204 and the run count, not a second execution.
+  // 5. Real dispatch. The acceptance probe sends one request, then requires a
+  // newly created completed run and a successful check bound to the exact target
+  // SHA. Durable mission admission, not a second probe dispatch, owns deduplication.
   checks.push(await checkDispatch({
     token: dispatcherToken,
     // Contents are read with the reader credential; the dispatcher holds
     // actions:write only and must not be given more just to inspect a file.
     readToken: readerToken,
+    checkToken: publisherToken,
     repository,
     workflow: env.WOLF_ACCEPTANCE_WORKFLOW || null,
     ref: env.WOLF_ACCEPTANCE_REF || 'main',

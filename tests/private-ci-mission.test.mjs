@@ -1,16 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {validateMission, missionKey, missionRecord, dedupe, nextAttempt, MISSION_STATES, MISSION_POLICY, MISSION_SCHEMA_VERSION} from '../scripts/private-ci-mission.mjs';
+import {validateMission as validateMissionCore, missionKey, missionRecord, dedupe, nextAttempt, MISSION_STATES, MISSION_POLICY, MISSION_SCHEMA_VERSION, MISSION_REQUIRED_CHECKS} from '../scripts/private-ci-mission.mjs';
 
 const NOW = Date.parse('2026-11-25T00:00:00Z');
 const SHA = '8d319fc50be4e4d225e3bb80de963583899c25ec';
+const REPOSITORY = 'donraposo1-source/project-wolf';
+const ACTOR = 'wolf-factory-automation[bot]';
+function validateMission(payload, options = {}) {
+  return validateMissionCore(payload, {now: NOW, allowlist: [REPOSITORY], actor: ACTOR, allowedActors: [ACTOR], expectedPr: 743, ...options});
+}
 const base = {
   schemaVersion: MISSION_SCHEMA_VERSION,
   missionId: 'MISSION-2026-11-25-0001',
   sha: SHA,
-  repository: 'donraposo1-source/project-wolf',
+  repository: REPOSITORY,
+  pr: 743,
   issuedAt: NOW - 60_000,
-  requestedBy: 'factory-2',
+  requestedBy: ACTOR,
 };
 
 test('a well-formed mission is accepted and bound to one exact SHA', () => {

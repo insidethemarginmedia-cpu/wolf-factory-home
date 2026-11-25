@@ -69,6 +69,22 @@ test('a step with no run or uses is preserved rather than dropped', () => {
   assert.equal(jobs[1].steps[0].run, null);
 });
 
+test('job-level reusable workflows are preserved as non-runnable steps instead of disappearing', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-reusable-'));
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), {recursive: true});
+  const reusable = 'owner/repo/.github/workflows/required-check.yml@0123456789abcdef0123456789abcdef01234567';
+  const workflowPath = '.github/workflows/caller.yml';
+  fs.writeFileSync(path.join(root, workflowPath), ['jobs:', '  required:', `    uses: ${reusable}`].join('\n'));
+  const parsed = parseWorkflowJobs(fs.readFileSync(path.join(root, workflowPath), 'utf8'));
+  assert.equal(parsed[0].steps[0].uses, reusable);
+  const plan = buildWorkflowPlan(root, workflowPath);
+  assert.equal(plan.jobs[0].steps.length, 1);
+  assert.equal(plan.jobs[0].steps[0].uses, reusable);
+  assert.throws(() => parseWorkflowJobs(['jobs:', '  invalid:', `    uses: ${reusable}`, '    steps:', '      - run: echo invalid'].join('\n')), /WORKFLOW_JOB_REUSABLE_USES_WITH_STEPS/);
+  assert.throws(() => parseWorkflowJobs(['jobs:', '  invalid:', '    uses:'].join('\n')), /WORKFLOW_JOB_REUSABLE_USES_REQUIRED/);
+  fs.rmSync(root, {recursive: true, force: true});
+});
+
 test('local composite actions are inlined in place', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-composite-'));
   fs.mkdirSync(path.join(root, '.github', 'actions', 'verify'), {recursive: true});

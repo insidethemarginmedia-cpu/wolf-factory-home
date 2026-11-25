@@ -3,45 +3,130 @@ import test from 'node:test';
 import {generateKeyPairSync} from 'node:crypto';
 import {
   checkRenewalWithClock,
-  inventoryEnvironment, checkExactShaRead, checkPrivateCheckPublication, checkDispatch,
-  checkExpiryAndDenial, summarise, ACCEPTANCE_STATES,
+  inventoryEnvironment,
+  checkExactShaRead,
+  checkPrivateCheckPublication,
+  checkDispatch,
+  checkExpiryAndDenial,
+  parseInputNames,
+  summarise,
+  ACCEPTANCE_STATES,
+  DEFAULT_DISPATCH_SETTLE_MS,
+  DEFAULT_DISPATCH_POLL_INTERVAL_MS,
+  auditCredentialExposure,
 } from '../scripts/private-ci-app-acceptance.mjs';
 
 const SHA = 'a'.repeat(40);
-
-// Builds a contents-API response for a workflow file declaring workflow_dispatch.
-const contents = (names = ['sha', 'pr']) => ({
-  ok: true,
-  status: 200,
-  json: async () => ({
-    encoding: 'base64',
-    content: Buffer.from(['name: w', 'on:', '  workflow_dispatch:', ...(names.length ? ['    inputs:', ...names.map(n => '      ' + n + ': {required: false}')] : [])].join('\n')).toString('base64'),
-  }),
-});
-
+const RUN_SHA = 'b'.repeat(40);
 const repo = 'donraposo1-source/project-wolf';
-// A throwaway RSA key: the loader rejects anything that is not a real RSA PEM,
-// which is why a placeholder string cannot stand in here.
+const workflowPath = '.github/workflows/private-ci.yml';
+const workflowId = 77;
+const runId = 101;
 const {privateKey: acceptanceRsa} = generateKeyPairSync('rsa', {modulusLength: 2048});
 const rsaPem = acceptanceRsa.export({type: 'pkcs1', format: 'pem'});
 
-test('the environment inventory reports presence and nothing else', () => {
+function workflowContents({inputs = ['sha', 'pr'], dispatch = true} = {}) {
+  const lines = ['name: Private CI', 'on:'];
+  if (dispatch) lines.push('  workflow_dispatch:');
+  if (dispatch && inputs.length) {
+    lines.push('    inputs:');
+    for (const name of inputs) lines.push(`      ${name}:`, '        required: false');
+  }
+  lines.push('jobs:', '  verify:', '    steps:', '      - run: echo verified');
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({encoding: 'base64', content: Buffer.from(lines.join('\n')).toString('base64')}),
+  };
+}
+
+function completedRun(overrides = {}) {
+  return {
+    id: runId,
+    workflow_id: workflowId,
+    event: 'workflow_dispatch',
+    head_branch: 'main',
+    head_sha: RUN_SHA,
+    created_at: new Date().toISOString(),
+    status: 'completed',
+    conclusion: 'success',
+    ...overrides,
+  };
+}
+
+function correlatedCheck(overrides = {}) {
+  return {
+    id: 9001,
+    external_id: String(runId),
+    name: 'wolf-private-ci-743',
+    head_sha: SHA,
+    status: 'completed',
+    conclusion: 'success',
+    ...overrides,
+  };
+}
+
+function dispatchFixture({
+  workflowStatus = 200,
+  contentOptions = {},
+  preRuns = [],
+  postRuns = [],
+  runDetails = null,
+  checkRuns = [],
+  dispatchStatus = 204,
+} = {}) {
+  const calls = [];
+  let runListCalls = 0;
+  let checkListCalls = 0;
+  let dispatchCalls = 0;
+  const detailsById = new Map((postRuns.length ? postRuns : runDetails ? [runDetails] : []).map(run => [Number(run.id), run]));
+  if (runDetails) detailsById.set(Number(runDetails.id), runDetails);
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({url, init});
+    if (url.endsWith(`/actions/workflows/${workflowPath.split('/').at(-1)}`)) {
+      return {ok: workflowStatus === 200, status: workflowStatus, json: async () => workflowStatus === 200 ? {id: workflowId, path: workflowPath, state: 'active'} : {}};
+    }
+    if (url.includes(`/contents/${workflowPath}`)) return workflowContents(contentOptions);
+    if (url.includes(`/actions/workflows/${workflowId}/runs?per_page=100`)) {
+      runListCalls += 1;
+      const rows = runListCalls === 1 ? preRuns : postRuns;
+      return {ok: true, status: 200, json: async () => ({total_count: rows.length, workflow_runs: rows})};
+    }
+    if (url.includes(`/actions/runs/${runId}`)) {
+      const run = detailsById.get(runId);
+      return {ok: Boolean(run), status: run ? 200 : 404, json: async () => run ?? {}};
+    }
+    if (url.includes(`/commits/${SHA}/check-runs`)) {
+      checkListCalls += 1;
+      const currentChecks = typeof checkRuns === 'function' ? checkRuns(checkListCalls) : checkRuns;
+      return {ok: true, status: 200, json: async () => ({check_runs: currentChecks})};
+    }
+    if (url.endsWith('/dispatches')) {
+      dispatchCalls += 1;
+      return {ok: dispatchStatus === 204, status: dispatchStatus, json: async () => ({message: dispatchStatus === 204 ? '' : 'synthetic dispatch failure'})};
+    }
+    return {ok: false, status: 404, json: async () => ({})};
+  };
+  return {calls, fetchImpl, counts: () => ({dispatchCalls, runListCalls})};
+}
+
+test('environment inventory reports presence only', () => {
   const inventory = inventoryEnvironment({WOLF_FACTORY_APP_ID: '1', WOLF_FACTORY_APP_PRIVATE_KEY: rsaPem, WOLF_FACTORY_READER_INSTALLATION_ID: '2'});
   assert.equal(inventory.appId, 'present');
   assert.equal(inventory.privateKey, 'present');
   assert.equal(inventory.installations.publisher, 'absent');
   assert.equal(inventory.fallback.pat, 'absent');
-  assert.equal(JSON.stringify(inventory).includes('"k"'), false, 'no value is echoed');
+  assert.equal(JSON.stringify(inventory).includes(rsaPem), false);
   assert.equal(inventory.credentialsPrinted, false);
 });
 
-test('reading the exact SHA passes only when the returned SHA matches', async () => {
-  const matching = await checkExactShaRead({token: 't', repository: repo, sha: SHA, fetchImpl: async () => ({ok: true, status: 200, json: async () => ({sha: SHA, commit: {tree: {sha: 'b'.repeat(40)}}})})});
+test('exact-SHA read passes only for the exact returned commit and tree metadata', async () => {
+  const matching = await checkExactShaRead({token: 'reader', repository: repo, sha: SHA, fetchImpl: async () => ({ok: true, status: 200, json: async () => ({sha: SHA, commit: {tree: {sha: 'c'.repeat(40)}}})})});
   assert.equal(matching.state, ACCEPTANCE_STATES.PASS);
-  assert.equal(matching.sourceFetched, false, 'no source is fetched');
+  assert.equal(matching.sourceFetched, false);
 
-  const wrong = await checkExactShaRead({token: 't', repository: repo, sha: SHA, fetchImpl: async () => ({ok: true, status: 200, json: async () => ({sha: 'c'.repeat(40)})})});
-  assert.equal(wrong.state, ACCEPTANCE_STATES.FAIL, 'a different commit is a failure, not a pass');
+  const wrong = await checkExactShaRead({token: 'reader', repository: repo, sha: SHA, fetchImpl: async () => ({ok: true, status: 200, json: async () => ({sha: RUN_SHA})})});
+  assert.equal(wrong.state, ACCEPTANCE_STATES.FAIL);
   assert.equal(wrong.reason, 'SHA_MISMATCH');
 });
 
@@ -51,62 +136,167 @@ test('a missing reader token is blocked, never treated as a pass', async () => {
   assert.equal(result.reason, 'READER_TOKEN_ABSENT');
 });
 
-test('the private check is published to the exact SHA and duplicates are keyed by external_id', async () => {
+test('check publication passes only for a completed success on the exact SHA', async () => {
   let body = null;
   const result = await checkPrivateCheckPublication({
-    token: 'ghs_pub', repository: repo, sha: SHA,
-    fetchImpl: async (url, init) => {
+    token: 'publisher', repository: repo, sha: SHA,
+    fetchImpl: async (_url, init) => {
       body = JSON.parse(init.body);
-      return {ok: true, status: 201, json: async () => ({id: 99, head_sha: SHA, conclusion: 'success'})};
+      return {ok: true, status: 201, json: async () => ({id: 99, head_sha: SHA, status: 'completed', conclusion: 'success'})};
     },
   });
   assert.equal(result.state, ACCEPTANCE_STATES.PASS);
   assert.equal(body.head_sha, SHA);
   assert.equal(body.external_id, 'wolf-acceptance-' + SHA.slice(0, 12));
   assert.equal(result.publishedToExactSha, true);
+
+  const wrongSha = await checkPrivateCheckPublication({token: 'publisher', repository: repo, sha: SHA, fetchImpl: async () => ({ok: true, status: 201, json: async () => ({id: 100, head_sha: RUN_SHA, status: 'completed', conclusion: 'success'})})});
+  assert.equal(wrongSha.state, ACCEPTANCE_STATES.FAIL);
+  assert.equal(wrongSha.reason, 'CHECK_SHA_MISMATCH');
+  const incomplete = await checkPrivateCheckPublication({token: 'publisher', repository: repo, sha: SHA, fetchImpl: async () => ({ok: true, status: 201, json: async () => ({id: 101, head_sha: SHA, status: 'in_progress', conclusion: null})})});
+  assert.equal(incomplete.state, ACCEPTANCE_STATES.FAIL);
+  assert.equal(incomplete.reason, 'CHECK_NOT_SUCCESSFULLY_COMPLETED');
 });
 
 test('a 403 on check publication is blocked and names the missing permission', async () => {
-  const result = await checkPrivateCheckPublication({token: 't', repository: repo, sha: SHA, fetchImpl: async () => ({ok: false, status: 403, json: async () => ({})})});
+  const result = await checkPrivateCheckPublication({token: 'publisher', repository: repo, sha: SHA, fetchImpl: async () => ({ok: false, status: 403, json: async () => ({})})});
   assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
   assert.equal(result.reason, 'CHECKS_WRITE_ABSENT');
 });
 
-test('a dispatch reports whether it actually created a run', async () => {
-  let runs = 4;
-  const fetchImpl = async (url, init = {}) => {
-    if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: runs})};
-    if (url.includes('/contents/')) return contents(['sha', 'pr']);
-    if (url.includes('/dispatches')) {
-      runs += 1;
-      return {ok: true, status: 204, json: async () => ({})};
-    }
-    throw Error('unexpected ' + url);
-  };
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'private-ci.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
-  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
-  assert.equal(result.runsBefore, 4);
-  assert.equal(result.runsAfterFirst, 5);
-  assert.equal(result.createdRun, true, 'a dispatch that creates no run must not look successful');
+test('HTTP 204 without a newly created correlated run is blocked, not accepted', async () => {
+  const mock = dispatchFixture();
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, sleep: async () => {}, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'DISPATCH_ACK_WITHOUT_CORRELATED_RUN');
+  assert.equal(mock.counts().dispatchCalls, 1, 'one acceptance call sends exactly one dispatch');
 });
 
-test('a refused dispatch is blocked, not a pass', async () => {
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'w.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl: async url => (url.includes('/runs') ? {ok: true, status: 200, json: async () => ({total_count: 1})} : {ok: false, status: 403, json: async () => ({})})});
+test('a configured-workflow 404 never falls back to an unrelated workflow', async () => {
+  const mock = dispatchFixture({workflowStatus: 404});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, settleMs: 0, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'CONFIGURED_WORKFLOW_NOT_FOUND');
+  assert.equal(mock.calls.some(call => call.url.includes('/workflows?')), false);
+  assert.equal(mock.counts().dispatchCalls, 0);
+});
+
+test('a non-dispatchable workflow is blocked before any dispatch', async () => {
+  const mock = dispatchFixture({contentOptions: {dispatch: false}});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, settleMs: 0, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'CONFIGURED_WORKFLOW_NOT_DISPATCHABLE');
+  assert.equal(mock.counts().dispatchCalls, 0);
+});
+
+test('workflow dispatch must declare the SHA input; the bridge never drops it to retry', async () => {
+  const mock = dispatchFixture({contentOptions: {inputs: ['pr']}});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'WORKFLOW_SHA_INPUT_NOT_DECLARED');
+  assert.equal(mock.counts().dispatchCalls, 0);
+});
+
+test('dispatch PASS requires a new completed run and its exact-SHA correlated check', async () => {
+  const run = completedRun();
+  const mock = dispatchFixture({postRuns: [run], runDetails: run, checkRuns: [correlatedCheck()]});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, sleep: async () => {}, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
+  assert.equal(result.runId, runId);
+  assert.equal(result.runSha, RUN_SHA, 'workflow host SHA is distinct from the exact target SHA input');
+  assert.equal(result.targetSha, SHA);
+  assert.equal(result.targetCheckRunId, 9001);
+  assert.equal(result.targetCheckExternalId, String(runId));
+  assert.deepEqual(result.deliveredInputs, ['sha', 'pr']);
+  const dispatchCall = mock.calls.find(call => call.url.endsWith('/dispatches'));
+  assert.deepEqual(JSON.parse(dispatchCall.init.body).inputs, {sha: SHA, pr: '743'});
+  assert.ok(mock.calls.filter(call => call.url.includes(`/contents/${workflowPath}`)).every(call => call.init.headers.authorization === 'Bearer reader'));
+  assert.ok(mock.calls.filter(call => call.url.endsWith('/dispatches')).every(call => call.init.headers.authorization === 'Bearer dispatcher'));
+  assert.ok(mock.calls.filter(call => call.url.includes(`/commits/${SHA}/check-runs`)).every(call => call.init.headers.authorization === 'Bearer publisher'));
+});
+
+test('dispatch waits for eventual visibility of the completed correlated target check', async () => {
+  const run = completedRun();
+  const mock = dispatchFixture({
+    postRuns: [run],
+    runDetails: run,
+    checkRuns: call => call < 2 ? [] : [correlatedCheck()],
+  });
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 1000, pollIntervalMs: 1, sleep: async () => {}, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
+  assert.equal(result.targetCheckRunId, 9001);
+  assert.equal(mock.calls.filter(call => call.url.includes(`/commits/${SHA}/check-runs`)).length, 2);
+});
+
+test('a successful new workflow run without its exact target check remains blocked', async () => {
+  const run = completedRun();
+  const mock = dispatchFixture({postRuns: [run], runDetails: run, checkRuns: []});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, sleep: async () => {}, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'TARGET_CHECK_RUN_NOT_CORRELATED');
+});
+
+test('a target check with another run id cannot be mistaken for the dispatched run', async () => {
+  const run = completedRun();
+  const mock = dispatchFixture({postRuns: [run], runDetails: run, checkRuns: [correlatedCheck({external_id: '999'})]});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, sleep: async () => {}, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'TARGET_CHECK_RUN_NOT_CORRELATED');
+});
+
+test('an old or wrong-branch run is not correlated to a fresh dispatch', async () => {
+  const oldRun = completedRun({created_at: '2020-01-01T00:00:00.000Z'});
+  const wrongBranch = completedRun({id: 102, head_branch: 'other'});
+  const mock = dispatchFixture({postRuns: [oldRun, wrongBranch], runDetails: wrongBranch, checkRuns: []});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, sleep: async () => {}, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'DISPATCH_ACK_WITHOUT_CORRELATED_RUN');
+});
+
+test('a correlated run must complete successfully', async () => {
+  const failed = completedRun({conclusion: 'failure'});
+  const mock = dispatchFixture({postRuns: [failed], runDetails: failed, checkRuns: []});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, sleep: async () => {}, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.FAIL);
+  assert.equal(result.reason, 'DISPATCH_RUN_NOT_SUCCESSFUL');
+});
+
+test('a 403 dispatch response is blocked and is not retried with a weaker input set', async () => {
+  const mock = dispatchFixture({dispatchStatus: 403});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, fetchImpl: mock.fetchImpl});
   assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
   assert.equal(result.reason, 'ACTIONS_WRITE_ABSENT');
+  assert.equal(mock.counts().dispatchCalls, 1);
 });
 
-test('renewal requires a distinct token per role, not just a second call', async () => {
-  // A faithful fixture: GitHub issues a 1-hour token, so the expiry must be
-  // relative to the clock the token was minted on. Returning a fixed offset made
-  // the simulated restart look like an expiry, which was the fixture's bug.
+test('a dispatch HTTP failure preserves its API message and never retries without inputs', async () => {
+  const mock = dispatchFixture({dispatchStatus: 422});
+  const result = await checkDispatch({token: 'dispatcher', readToken: 'reader', checkToken: 'publisher', repository: repo, workflow: 'private-ci.yml', sha: SHA, pr: '743', settleMs: 0, fetchImpl: mock.fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.FAIL);
+  assert.equal(result.reason, 'DISPATCH_FAILED');
+  assert.equal(result.apiMessage, 'synthetic dispatch failure');
+  assert.equal(mock.counts().dispatchCalls, 1);
+});
+
+test('dispatch settlement is long enough to observe a completed run without excessive polling', () => {
+  assert.equal(DEFAULT_DISPATCH_SETTLE_MS, 15 * 60 * 1000);
+  assert.equal(DEFAULT_DISPATCH_POLL_INTERVAL_MS, 5 * 1000);
+});
+
+test('the input parser excludes the inputs mapping key and nested metadata', () => {
+  const block = '    inputs:\n      sha:\n        required: false\n      pr:\n        required: false\n';
+  assert.deepEqual(parseInputNames(block), ['sha', 'pr']);
+  assert.deepEqual(parseInputNames('    description: no inputs here'), []);
+});
+
+test('renewal requires a distinct token per role and restart recovery', async () => {
   let counter = 0;
   let mintClock = Date.now();
   const env = {
     WOLF_FACTORY_APP_ID: '1', WOLF_FACTORY_APP_PRIVATE_KEY: rsaPem, WOLF_CI_REPOSITORY: repo,
     WOLF_FACTORY_READER_INSTALLATION_ID: '2', WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: '2', WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: '2',
   };
-  const fetchImpl = async (url, init = {}) => {
+  const fetchImpl = async (_url, init = {}) => {
     counter += 1;
     return {ok: true, status: 201, json: async () => ({
       token: 'ghs_' + counter,
@@ -115,17 +305,15 @@ test('renewal requires a distinct token per role, not just a second call', async
       repositories: [{full_name: repo}],
     })};
   };
-  // Drive the simulated clock forward between the two rounds, exactly as an hour
-  // elapsing would.
   const realNow = Date.now();
   const result = await checkRenewalWithClock({env, fetchImpl, now: realNow, advance: () => { mintClock = realNow + 1000; }});
   assert.equal(result.state, ACCEPTANCE_STATES.PASS);
-  assert.ok(result.roles.every(entry => entry.renewed), 'each role gets a distinct second token');
+  assert.ok(result.roles.every(entry => entry.renewed));
   assert.ok(result.roles.every(entry => entry.restartRecovered));
-  assert.equal(JSON.stringify(result).includes('ghs_'), false, 'no token is echoed');
+  assert.equal(JSON.stringify(result).includes('ghs_'), false);
 });
 
-test('expiry and denial are proven against a real token, and a 200 on a write is a failure', async () => {
+test('expiry and permission denial are proven against a real token response', async () => {
   const env = {WOLF_FACTORY_APP_ID: '1', WOLF_FACTORY_APP_PRIVATE_KEY: rsaPem, WOLF_CI_REPOSITORY: repo, WOLF_FACTORY_READER_INSTALLATION_ID: '2'};
   const fetchImpl = async (url, init = {}) => {
     if (url.includes('/access_tokens')) {
@@ -136,7 +324,6 @@ test('expiry and denial are proven against a real token, and a 200 on a write is
         repositories: [{full_name: repo}],
       })};
     }
-    // The read-only token is refused, which is the correct behaviour.
     return {ok: false, status: 403, json: async () => ({})};
   };
   const result = await checkExpiryAndDenial({env, fetchImpl});
@@ -146,182 +333,40 @@ test('expiry and denial are proven against a real token, and a 200 on a write is
   assert.equal(result.detail.expiredStateIsExpired, true);
 });
 
-test('a permission leak is a failure, not a pass: a 200 where a 403 is required', async () => {
+test('an over-privileged reader that can enumerate workflows fails the denial control', async () => {
   const env = {WOLF_FACTORY_APP_ID: '1', WOLF_FACTORY_APP_PRIVATE_KEY: rsaPem, WOLF_CI_REPOSITORY: repo, WOLF_FACTORY_READER_INSTALLATION_ID: '2'};
   const fetchImpl = async (url, init = {}) => {
     if (url.includes('/access_tokens')) {
-      return {ok: true, status: 201, json: async () => ({token: 'ghs_reader', expires_at: new Date(Date.now() + 3600_000).toISOString(), permissions: JSON.parse(init.body).permissions, repositories: [{full_name: repo}]})};
+      return {ok: true, status: 201, json: async () => ({
+        token: 'ghs_reader',
+        expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        permissions: JSON.parse(init.body).permissions,
+        repositories: [{full_name: repo}],
+      })};
     }
-    // An over-privileged reader that can list workflows is exactly what must fail.
     return {ok: true, status: 200, json: async () => ({workflows: []})};
   };
   const result = await checkExpiryAndDenial({env, fetchImpl});
   assert.equal(result.state, ACCEPTANCE_STATES.FAIL);
   assert.equal(result.detail.denialRefused, false);
+  assert.equal(result.detail.denialStatus, 200);
 });
 
-test('acceptance requires every check to pass; one blocked check blocks the whole run', () => {
-  const partial = summarise([{state: 'PASS'}, {state: 'PASS'}, {state: 'BLOCKED'}]);
-  assert.equal(partial.accepted, false);
-  assert.equal(partial.state, 'BLOCKED');
-
-  const failed = summarise([{state: 'PASS'}, {state: 'FAIL'}]);
-  assert.equal(failed.state, 'REPAIR_REQUIRED');
-
-  const all = summarise([{state: 'PASS'}, {state: 'PASS'}]);
-  assert.equal(all.accepted, true);
-  assert.equal(all.state, 'ACCEPTED');
-
-  assert.equal(summarise([]).accepted, false, 'an empty run is not acceptance');
+test('credential exposure audit detects credentials in the target step and token export', () => {
+  const unsafe = [
+    'jobs:', '  execute:', '    steps:',
+    '      - name: Authenticate', '        run: |',
+    '          cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"',
+    '      - name: Execute private commands', '        run: node scripts/private-ci-execute.mjs',
+    '        env:', '          WOLF_CI_APP_READER_TOKEN: ${{ secrets.READER_TOKEN }}',
+  ].join('\n');
+  assert.equal(auditCredentialExposure(unsafe).state, 'EXPOSURE_RISK');
+  assert.ok(auditCredentialExposure(unsafe).findings.some(finding => finding.vector === 'credential-to-job-environment'));
 });
 
-test('a wrong workflow name is resolved, not reported as unreadable', async () => {
-  const calls = [];
-  const fetchImpl = async (url, init = {}) => {
-    calls.push(url);
-    if (url.includes('/workflows?per_page=100')) {
-      return {ok: true, status: 200, json: async () => ({workflows: [
-        {id: 77, path: '.github/workflows/private-ci.yml', created_at: '2026-01-01T00:00:00Z'},
-      ]})};
-    }
-    if (url.includes('/workflows/private-ci.yml/')) return {ok: false, status: 404, json: async () => ({})};
-    if (url.includes('/contents/')) return contents(['sha']);
-    if (url.includes('/workflows/77/runs')) return {ok: true, status: 200, json: async () => ({total_count: 2})};
-    if (url.includes('/workflows/77/dispatches')) return {ok: true, status: 204, json: async () => ({})};
-    return {ok: false, status: 500, json: async () => ({})};
-  };
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'private-ci.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
-  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
-  assert.equal(result.workflowResolved, true);
-  assert.equal(result.workflow, '.github/workflows/private-ci.yml');
-  assert.ok(calls.some(url => url.includes('/workflows?per_page=100')), 'discovery was actually performed');
-});
-
-test('when no workflow is visible, the reason says so instead of blaming permissions', async () => {
-  const fetchImpl = async url => (url.includes('/workflows?per_page=100')
-    ? {ok: true, status: 200, json: async () => ({workflows: []})}
-    : {ok: false, status: 404, json: async () => ({})});
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'nope.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
-  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
-  // An empty list is caught by the dispatchability scan, so the reason names the
-  // real problem: nothing visible can be dispatched.
-  assert.ok(['NO_WORKFLOW_FOUND', 'NO_DISPATCHABLE_WORKFLOW'].includes(result.reason));
-  assert.equal(result.configuredWorkflow, 'nope.yml');
-});
-
-
-test('only declared workflow inputs are sent, and an undeclared one is never guessed at', async () => {
-  const bodies = [];
-  const fetchImpl = async (url, init = {}) => {
-    if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: 1})};
-    if (url.includes('/contents/')) return contents(['sha']);
-    if (url.includes('/dispatches')) {
-      bodies.push(JSON.parse(init.body));
-      return {ok: true, status: 204, json: async () => ({})};
-    }
-    return {ok: false, status: 404, json: async () => ({})};
-  };
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'schema.yml', sha: SHA, pr: '743', settleMs: 0, sleep: async () => {}, fetchImpl});
-  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
-  assert.deepEqual(Object.keys(bodies[0].inputs), ['sha'], 'pr and mode are not sent because they are not declared');
-  assert.deepEqual(result.deliveredInputs, ['sha']);
-  assert.deepEqual(result.declaredInputs, ['sha']);
-});
-
-test('a 422 on declared inputs is retried once with none, and the drop is reported', async () => {
-  const bodies = [];
-  const fetchImpl = async (url, init = {}) => {
-    if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: 1})};
-    if (url.includes('/contents/')) return contents(['sha']);
-    if (url.includes('/dispatches')) {
-      bodies.push(JSON.parse(init.body));
-      return bodies.length === 1
-        ? {ok: false, status: 422, json: async () => ({message: 'Unexpected inputs provided'})}
-        : {ok: true, status: 204, json: async () => ({})};
-    }
-    return {ok: false, status: 404, json: async () => ({})};
-  };
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'strict.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
-  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
-  assert.deepEqual(bodies[1].inputs, {}, 'the second attempt sends nothing rather than guessing again');
-  assert.deepEqual(result.deliveredInputs, [], 'dropping inputs is visible, not silent');
-});
-
-test('a dispatch failure carries the API message', async () => {
-  const fetchImpl = async (url) => {
-    if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: 1})};
-    if (url.endsWith('/workflows/w.yml')) return {ok: false, status: 404, json: async () => ({})};
-    if (url.includes('/workflows?per_page=100')) return {ok: true, status: 200, json: async () => ({workflows: [{id: 5, path: '.github/workflows/w.yml', created_at: '2026-01-01T00:00:00Z'}]})};
-    if (url.includes('/dispatches')) return {ok: false, status: 422, json: async () => ({message: 'Workflow does not have workflow_dispatch trigger'})};
-    return {ok: false, status: 422, json: async () => ({message: 'no trigger'})};
-  };
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'w.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
-  assert.equal(result.state, ACCEPTANCE_STATES.FAIL);
-  assert.match(result.apiMessage, /does not have workflow_dispatch/);
-});
-
-
-test('a workflow without a dispatch trigger is skipped, not chosen by age', async () => {
-  const fetchImpl = async url => {
-    if (url.includes('/workflows/skip.yml/')) return {ok: false, status: 404, json: async () => ({})};
-    if (url.includes('/workflows?per_page=100')) return {ok: true, status: 200, json: async () => ({workflows: [
-      {id: 1, path: '.github/workflows/test.yml', created_at: '2025-01-01T00:00:00Z'},
-      {id: 2, path: '.github/workflows/dispatchable.yml', created_at: '2026-01-01T00:00:00Z'},
-    ]})};
-    if (url.includes('/contents/.github/workflows/test.yml')) {
-      return {ok: true, status: 200, json: async () => ({encoding: 'base64', content: Buffer.from('name: t\non:\n  push:\n').toString('base64')})};
-    }
-    if (url.includes('/contents/')) return contents([]);
-    if (url.includes('/workflows/2/runs')) return {ok: true, status: 200, json: async () => ({total_count: 3})};
-    if (url.includes('/workflows/2/dispatches')) return {ok: true, status: 204, json: async () => ({})};
-    return {ok: false, status: 404, json: async () => ({})};
-  };
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'skip.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
-  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
-  assert.equal(result.workflow, '.github/workflows/dispatchable.yml', 'the dispatchable workflow wins over the older one');
-});
-
-test('when nothing can be dispatched, that is the stated reason', async () => {
-  const fetchImpl = async url => {
-    if (url.includes('/workflows/x.yml/')) return {ok: false, status: 404, json: async () => ({})};
-    if (url.includes('/workflows?per_page=100')) return {ok: true, status: 200, json: async () => ({workflows: [{id: 1, path: '.github/workflows/test.yml', created_at: '2025-01-01T00:00:00Z'}]})};
-    if (url.endsWith('/workflows/1')) return {ok: true, status: 200, json: async () => ({id: 1})};
-    return {ok: false, status: 404, json: async () => ({})};
-  };
-  const result = await checkDispatch({token: 't', repository: repo, workflow: 'x.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
-  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
-  assert.equal(result.reason, 'NO_DISPATCHABLE_WORKFLOW');
-  assert.equal(result.examined[0].path, '.github/workflows/test.yml');
-  assert.equal(result.examined[0].dispatchable, false);
-});
-
-test('the input parser does not treat the `inputs` mapping key as an input', async () => {
-  const {parseInputNames} = await import('../scripts/private-ci-app-acceptance.mjs');
-  const block = '    inputs:\n      sha:\n        required: false\n      pr:\n        required: false\n';
-  assert.deepEqual(parseInputNames(block), ['sha', 'pr']);
-  assert.deepEqual(parseInputNames('    description: no inputs here'), []);
-});
-
-test('contents are read with the reader credential, not the dispatcher', async () => {
-  const authSeen = [];
-  const fetchImpl = async (url, init = {}) => {
-    authSeen.push({url, auth: (init.headers ?? {}).authorization});
-    if (url.includes('/workflows/x.yml/')) return {ok: false, status: 404, json: async () => ({})};
-    if (url.includes('/workflows?per_page=100')) return {ok: true, status: 200, json: async () => ({workflows: [{id: 3, path: '.github/workflows/w.yml', created_at: '2026-01-01T00:00:00Z'}]})};
-    if (url.includes('/contents/')) return contents(['sha']);
-    if (url.includes('/workflows/3/runs')) return {ok: true, status: 200, json: async () => ({total_count: 0})};
-    if (url.includes('/workflows/3/dispatches')) return {ok: true, status: 204, json: async () => ({})};
-    return {ok: false, status: 404, json: async () => ({})};
-  };
-  const result = await checkDispatch({
-    token: 'Bearer-dispatcher', readToken: 'Bearer-reader',
-    repository: repo, workflow: 'x.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl,
-  });
-  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
-  // Every contents read used the reader; every dispatch used the dispatcher.
-  const contentCalls = authSeen.filter(entry => entry.url.includes('/contents/'));
-  assert.ok(contentCalls.length > 0);
-  assert.ok(contentCalls.every(entry => entry.auth.includes('Bearer-reader')), 'contents never use the dispatcher');
-  const dispatchCalls = authSeen.filter(entry => entry.url.includes('/dispatches'));
-  assert.ok(dispatchCalls.every(entry => entry.auth.includes('Bearer-dispatcher')));
+test('acceptance requires every check to pass; blocked and empty runs are never accepted', () => {
+  assert.equal(summarise([{state: 'PASS'}, {state: 'PASS'}, {state: 'BLOCKED'}]).state, 'BLOCKED');
+  assert.equal(summarise([{state: 'PASS'}, {state: 'FAIL'}]).state, 'REPAIR_REQUIRED');
+  assert.equal(summarise([{state: 'PASS'}, {state: 'PASS'}]).accepted, true);
+  assert.equal(summarise([]).accepted, false);
 });

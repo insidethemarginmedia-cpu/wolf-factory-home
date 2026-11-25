@@ -1,11 +1,12 @@
 // Command surface for GitHub App authentication in the bridge workflow.
 //
 //   inventory   presence of each secret, never its value
-//   mint        mint one role's installation token; writes it to GITHUB_ENV
+//   mint        mint one role's installation token; writes it to an exclusive file
 //   verify      re-mint and confirm renewal works from a cold start
 //
-// The token is written to a root-only file whose contents the workflow appends
-// to GITHUB_ENV, so it is never echoed to the log and never appears in argv.
+// The token is written only to a newly created owner-only file. A pre-existing
+// path or symlink is refused, so target code cannot redirect the credential into
+// an attacker-controlled inode. The value is never placed in argv.
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -115,13 +116,58 @@ export async function mintRoleToken({role, env = process.env, fetchImpl = global
   };
 }
 
-// Writes `NAME=value` to a mode-0600 file. The workflow reads it with `cat`
-// redirected into GITHUB_ENV; the value never reaches stdout.
-export function writeTokenFile(file, name, token) {
-  if (!file) throw Error('TOKEN_FILE_REQUIRED');
-  fs.mkdirSync(path.dirname(file), {recursive: true, mode: 0o700});
-  fs.writeFileSync(file, `${name}=${token}\n`, {mode: 0o600});
-  return file;
+// Writes `NAME=value` to a newly created mode-0600 file outside the checkout.
+// O_EXCL and O_NOFOLLOW prevent a target-controlled path from capturing the token.
+export function writeTokenFile(file, name, token, {workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()} = {}) {
+  if (typeof file !== 'string' || !file.trim()) throw Error('TOKEN_FILE_REQUIRED');
+  if (!/^[A-Z][A-Z0-9_]*$/.test(String(name ?? ''))) throw Error('TOKEN_FILE_VARIABLE_INVALID');
+  // The workflow sources this file in a trusted shell. Keep its grammar to a
+  // single shell-safe token atom; API text must never become shell syntax.
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{1,8192}$/.test(token)) throw Error('TOKEN_FILE_VALUE_INVALID');
+  if (!path.isAbsolute(file)) throw Error('TOKEN_FILE_PATH_ABSOLUTE_REQUIRED');
+  if (typeof workspace !== 'string' || !workspace.trim()) throw Error('TOKEN_FILE_WORKSPACE_REQUIRED');
+
+  const absolute = path.resolve(file);
+  const workspaceRoot = fs.realpathSync(workspace);
+  const relative = path.relative(workspaceRoot, absolute);
+  if (relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))) {
+    throw Error('TOKEN_FILE_MUST_BE_OUTSIDE_CHECKOUT');
+  }
+  const parent = path.dirname(absolute);
+  fs.mkdirSync(parent, {recursive: true, mode: 0o700});
+  const realParent = fs.realpathSync(parent);
+  if (realParent !== parent) throw Error('TOKEN_FILE_DIRECTORY_SYMLINK_DENIED');
+  const parentStat = fs.statSync(realParent);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  const stickyRootDirectory = parentStat.uid === 0 && (parentStat.mode & 0o1000) !== 0;
+  if ((uid !== null && parentStat.uid !== uid && !stickyRootDirectory)
+    || ((parentStat.mode & 0o022) !== 0 && !stickyRootDirectory)) {
+    throw Error('TOKEN_FILE_DIRECTORY_NOT_PRIVATE');
+  }
+
+  const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW ?? 0);
+  let descriptor;
+  try {
+    descriptor = fs.openSync(absolute, flags, 0o600);
+  } catch (error) {
+    if (error?.code === 'EEXIST' || error?.code === 'ELOOP') throw Error('TOKEN_FILE_PATH_ALREADY_EXISTS');
+    throw Error('TOKEN_FILE_CREATE_FAILED');
+  }
+  try {
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile() || (uid !== null && stat.uid !== uid) || (stat.mode & 0o077) !== 0) {
+      throw Error('TOKEN_FILE_NOT_PRIVATE');
+    }
+    fs.writeFileSync(descriptor, `${name}=${token}\n`, {encoding: 'utf8'});
+    fs.fsyncSync(descriptor);
+    return absolute;
+  } catch (error) {
+    try { fs.unlinkSync(absolute); } catch {}
+    if (error?.message === 'TOKEN_FILE_NOT_PRIVATE') throw error;
+    throw Error('TOKEN_FILE_WRITE_FAILED');
+  } finally {
+    fs.closeSync(descriptor);
+  }
 }
 
 export async function runAppAuthCli(argv, {env = process.env, fetchImpl = globalThis.fetch, now = Date.now(), stdout = text => process.stdout.write(text)} = {}) {
@@ -151,7 +197,9 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
       // Mask first, then persist. Order matters: nothing is written before the
       // runner is told to redact it.
       stdout(maskValue(result.token) + '\n');
-      const file = writeTokenFile(env.WOLF_CI_TOKEN_FILE, ROLE_ENV[result.role], result.token);
+      const file = writeTokenFile(env.WOLF_CI_TOKEN_FILE, ROLE_ENV[result.role], result.token, {
+        workspace: env.GITHUB_WORKSPACE ?? process.cwd(),
+      });
       stdout(JSON.stringify({...summary(result), tokenFile: file}) + '\n');
       return APP_AUTH_EXIT.OK;
     }

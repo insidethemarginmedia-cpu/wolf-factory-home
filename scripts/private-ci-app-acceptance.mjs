@@ -43,6 +43,8 @@ export function parseInputNames(block = '') {
 }
 
 export const ACCEPTANCE_STATES = Object.freeze({PASS: 'PASS', BLOCKED: 'BLOCKED', FAIL: 'FAIL', SKIPPED: 'SKIPPED'});
+export const DEFAULT_DISPATCH_SETTLE_MS = 15 * 60 * 1000;
+export const DEFAULT_DISPATCH_POLL_INTERVAL_MS = 5 * 1000;
 
 const jsonHeaders = token => ({
   authorization: 'Bearer ' + token,
@@ -231,9 +233,9 @@ export async function checkExactShaRead({token, repository, sha, fetchImpl = glo
 }
 
 /**
- * Check 4 — the publisher token can create a check run on that exact commit.
- * The check is created with a stable external_id so a re-run updates rather than
- * duplicates, which is the property the bridge relies on.
+ * Check 4 — the publisher token can create a completed check run on that exact
+ * commit. `external_id` is a correlation field, not an idempotency key; duplicate
+ * workflow deliveries are suppressed by mission admission before this check runs.
  */
 export async function checkPrivateCheckPublication({token, repository, sha, name = 'wolf-acceptance', fetchImpl = globalThis.fetch} = {}) {
   if (!token) return {check: 'private-check', state: ACCEPTANCE_STATES.BLOCKED, reason: 'PUBLISHER_TOKEN_ABSENT'};
@@ -257,193 +259,194 @@ export async function checkPrivateCheckPublication({token, repository, sha, name
       httpStatus: created.status,
     };
   }
+  const checkRunId = created.body?.id ?? null;
+  const headSha = created.body?.head_sha ?? null;
+  const completed = created.body?.status === 'completed' && created.body?.conclusion === 'success';
+  const state = checkRunId && headSha === sha && completed ? ACCEPTANCE_STATES.PASS : ACCEPTANCE_STATES.FAIL;
   return {
     check: 'private-check',
-    state: created.body?.id ? ACCEPTANCE_STATES.PASS : ACCEPTANCE_STATES.FAIL,
-    reason: created.body?.id ? null : 'CHECK_ID_MISSING',
-    checkRunId: created.body?.id ?? null,
-    headSha: created.body?.head_sha ?? null,
+    state,
+    reason: !checkRunId ? 'CHECK_ID_MISSING' : headSha !== sha ? 'CHECK_SHA_MISMATCH' : !completed ? 'CHECK_NOT_SUCCESSFULLY_COMPLETED' : null,
+    checkRunId,
+    headSha,
+    status: created.body?.status ?? null,
     conclusion: created.body?.conclusion ?? null,
-    publishedToExactSha: created.body?.head_sha === sha,
+    publishedToExactSha: headSha === sha,
     credentialsPrinted: false,
   };
 }
 
 /**
- * Check 5 — the dispatcher token can dispatch, and a second identical dispatch is
- * suppressed. Suppression is read from the run count, not assumed.
+ * Check 5 — the dispatcher can issue one workflow_dispatch and the resulting run
+ * completes successfully with a check bound to the exact target SHA. Duplicate
+ * deliveries are suppressed earlier by the durable mission-reservation ledger; this
+ * acceptance probe deliberately never sends a second dispatch.
  */
-export async function checkDispatch({token, readToken, repository, workflow, ref = 'main', sha, pr, settleMs = 6000, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), fetchImpl = globalThis.fetch} = {}) {
-  if (!token) return {check: 'dispatch', state: ACCEPTANCE_STATES.BLOCKED, reason: 'DISPATCHER_TOKEN_ABSENT'};
-  if (!workflow) return {check: 'dispatch', state: ACCEPTANCE_STATES.BLOCKED, reason: 'WORKFLOW_NOT_RESOLVED'};
+export async function checkDispatch({token, readToken, checkToken, repository, workflow, ref = 'main', sha, pr, settleMs = DEFAULT_DISPATCH_SETTLE_MS, pollIntervalMs = DEFAULT_DISPATCH_POLL_INTERVAL_MS, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), fetchImpl = globalThis.fetch} = {}) {
+  const blocked = (reason, extra = {}) => ({check: 'dispatch', state: ACCEPTANCE_STATES.BLOCKED, reason, credentialsPrinted: false, ...extra});
+  if (!token) return blocked('DISPATCHER_TOKEN_ABSENT');
+  if (!readToken) return blocked('READER_TOKEN_ABSENT');
+  if (!checkToken) return blocked('CHECK_READER_TOKEN_ABSENT');
+  if (!workflow) return blocked('WORKFLOW_NOT_CONFIGURED');
+  if (typeof sha !== 'string' || !/^[a-f0-9]{40}$/.test(sha)) return blocked('TARGET_SHA_REQUIRED');
 
-  // The workflow is named, not assumed to exist. If the configured name is wrong
-  // the run used to report RUNS_UNREADABLE, which reads like a permission problem
-  // and is not one. Resolve the target instead, and say which one was chosen.
-  let target = workflow;
-  let resolved = {workflow: target, discovered: false};
-  let base = `${API}/repos/${repository}/actions/workflows/${target}`;
-  let before = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
-
-  if (!before.ok && before.status === 404) {
-    const listed = await call(`${API}/repos/${repository}/actions/workflows?per_page=100`, token, {}, fetchImpl);
-    const candidates = Array.isArray(listed.body?.workflows)
-      ? listed.body.workflows
-        .filter(entry => typeof entry?.path === 'string' && entry.path.startsWith('.github/workflows/'))
-        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id)
-      : [];
-
-    // Age is not the criterion: a workflow is dispatchable only if it declares a
-    // workflow_dispatch trigger.
-    //
-    // The workflows API does not report triggers, so the declaration is read from
-    // the workflow file itself - the reader role has contents:read, which is
-    // exactly the authority needed. Only a boolean leaves this function: the file
-    // body is inspected and discarded, so no private source is retained or
-    // published.
-    let chosen = null;
-    let chosenSchema = null;
-    const examined = [];
-    for (const candidate of candidates) {
-      const file = await call(`${API}/repos/${repository}/contents/${candidate.path}?ref=${encodeURIComponent(ref)}`, readToken ?? token, {}, fetchImpl);
-      const text = file.ok && typeof file.body?.content === 'string'
-        ? Buffer.from(file.body.content, file.body.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8')
-        : null;
-      const declares = text === null ? false : /^\s{0,4}workflow_dispatch\s*:/m.test(text);
-      examined.push({path: candidate.path, dispatchable: declares, httpStatus: file.status ?? null, fileReadable: text !== null});
-      if (declares) {
-        chosen = candidate;
-        // Declared inputs are parsed from the same file, so the dispatch sends
-        // only what the workflow accepts.
-        const inputsBlock = text.match(/workflow_dispatch\s*:\s*\n([\s\S]*?)(?=\n\S|$)/);
-        chosenSchema = parseInputNames(inputsBlock ? inputsBlock[1] : '');
-        break;
-      }
-    }
-    if (!chosen) {
-      return {
-        check: 'dispatch',
-        state: ACCEPTANCE_STATES.BLOCKED,
-        reason: 'NO_DISPATCHABLE_WORKFLOW',
-        configuredWorkflow: workflow,
-        workflowsVisible: candidates.length,
-        examined,
-      };
-    }
-    if (chosen) {
-      target = chosen.id;
-      base = `${API}/repos/${repository}/actions/workflows/${target}`;
-      resolved = {workflow: chosen.path, workflowId: chosen.id, discovered: true, configured: workflow, examined, schema: chosenSchema};
-      before = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
-    } else {
-      return {
-        check: 'dispatch',
-        state: ACCEPTANCE_STATES.BLOCKED,
-        reason: 'NO_WORKFLOW_FOUND',
-        httpStatus: before.status,
-        configuredWorkflow: workflow,
-        workflowsVisible: Array.isArray(listed.body?.workflows) ? listed.body.workflows.length : 0,
-      };
-    }
-  }
-
-  if (!before.ok) {
-    return {
-      check: 'dispatch',
-      state: before.status === 403 || before.status === 404 ? ACCEPTANCE_STATES.BLOCKED : ACCEPTANCE_STATES.FAIL,
-      reason: 'RUNS_UNREADABLE',
-      httpStatus: before.status,
-      workflow: resolved.workflow,
-    };
-  }
-  const runsBefore = before.body?.total_count ?? null;
-
-  // Inputs must match what the workflow declares. Sending an undeclared input is a
-  // 422, and the error does not say which one is wrong - so the declaration is
-  // read first and only declared inputs are sent.
-  // Prefer the schema parsed during discovery; otherwise read the configured
-  // workflow's own declaration.
-  //
-  // The read uses the *reader* credential. The dispatcher holds actions:write and
-  // nothing else, by design, so asking it to read contents is a 403 - which the
-  // first version of this check did, and reported as a missing trigger. Widening
-  // the dispatcher would have "fixed" the wrong problem.
-  const reader = readToken ?? token;
-  let declared = null;
-  if (Array.isArray(resolved.schema)) {
-    declared = resolved.schema.map(name => ({name}));
-  } else {
-    const own = await call(`${API}/repos/${repository}/contents/.github/workflows/${workflow}?ref=${encodeURIComponent(ref)}`, reader, {}, fetchImpl);
-    if (own.ok && typeof own.body?.content === 'string') {
-      const text = Buffer.from(own.body.content, 'base64').toString('utf8');
-      const block = text.match(/workflow_dispatch\s*:\s*\n([\s\S]*?)(?=\n\S|$)/);
-      declared = parseInputNames(block ? block[1] : '').map(name => ({name}));
-    }
-  }
-  const wanted = {sha: sha ?? '', pr: pr ?? '', mode: 'acceptance'};
-  const inputs = {};
-  for (const [name, value] of Object.entries(wanted)) {
-    if (declared === null) continue; // no schema exposed: send nothing rather than guess
-    if (declared.some(input => input?.name === name)) inputs[name] = value;
-  }
-
-  const dispatch = async payloadInputs => {
-    const response = await fetchImpl(`${base}/dispatches`, {
-      method: 'POST',
-      headers: {...jsonHeaders(token), 'content-type': 'application/json'},
-      body: JSON.stringify({ref, inputs: payloadInputs}),
-      signal: AbortSignal.timeout(20000),
+  // Resolve only the explicitly configured workflow. A 404 is a configuration
+  // failure, never permission to choose the first dispatchable workflow in the repo.
+  const workflowUrl = `${API}/repos/${repository}/actions/workflows/${encodeURIComponent(workflow)}`;
+  const workflowResponse = await call(workflowUrl, token, {}, fetchImpl);
+  if (!workflowResponse.ok) {
+    return blocked(workflowResponse.status === 403 ? 'WORKFLOW_READ_PERMISSION_REQUIRED' : 'CONFIGURED_WORKFLOW_NOT_FOUND', {
+      httpStatus: workflowResponse.status,
+      configuredWorkflow: workflow,
     });
-    let message = null;
-    if (response.status !== 204) {
-      try {
-        const body = await response.json();
-        message = typeof body?.message === 'string' ? body.message.slice(0, 300) : null;
-      } catch {
-        message = null;
-      }
-    }
-    return {status: response.status, message};
-  };
-
-  let attempt = await dispatch(inputs);
-  // If declared inputs were rejected, retry once with none: a dispatch with no
-  // inputs is valid for every workflow and still proves actions:write.
-  let droppedInputs = false;
-  if (attempt.status === 422 && Object.keys(inputs).length) {
-    droppedInputs = true;
-    attempt = await dispatch({});
   }
-  const first = attempt.status;
+  const workflowId = Number(workflowResponse.body?.id);
+  const workflowPath = String(workflowResponse.body?.path ?? '');
+  if (!Number.isSafeInteger(workflowId) || workflowId <= 0 || !workflowPath.startsWith('.github/workflows/')) {
+    return {check: 'dispatch', state: ACCEPTANCE_STATES.FAIL, reason: 'CONFIGURED_WORKFLOW_IDENTITY_INVALID', configuredWorkflow: workflow};
+  }
+  if (workflow.includes('/') || workflow.endsWith('.yml') || workflow.endsWith('.yaml')) {
+    const configuredPath = workflow.startsWith('.github/workflows/') ? workflow : `.github/workflows/${workflow}`;
+    if (workflowPath !== configuredPath) return {check: 'dispatch', state: ACCEPTANCE_STATES.FAIL, reason: 'CONFIGURED_WORKFLOW_PATH_MISMATCH', configuredWorkflow: workflow, resolvedPath: workflowPath};
+  }
 
-  if (first !== 204) {
+  const contentUrl = `${API}/repos/${repository}/contents/${workflowPath}?ref=${encodeURIComponent(ref)}`;
+  const workflowFile = await call(contentUrl, readToken, {}, fetchImpl);
+  if (!workflowFile.ok || typeof workflowFile.body?.content !== 'string') {
+    return blocked('CONFIGURED_WORKFLOW_CONTENT_UNREADABLE', {httpStatus: workflowFile.status, workflow: workflowPath, workflowId});
+  }
+  const source = Buffer.from(workflowFile.body.content, workflowFile.body.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+  if (!/^\s{0,4}workflow_dispatch\s*:/m.test(source)) {
+    return blocked('CONFIGURED_WORKFLOW_NOT_DISPATCHABLE', {workflow: workflowPath, workflowId});
+  }
+  const dispatchBlock = source.match(/workflow_dispatch\s*:\s*\n([\s\S]*?)(?=\n\S|$)/);
+  const declared = parseInputNames(dispatchBlock?.[1] ?? '');
+  if (!declared.includes('sha')) return blocked('WORKFLOW_SHA_INPUT_NOT_DECLARED', {workflow: workflowPath, workflowId, declaredInputs: declared});
+  if (pr && !declared.includes('pr')) return blocked('WORKFLOW_PR_INPUT_NOT_DECLARED', {workflow: workflowPath, workflowId, declaredInputs: declared});
+
+  const runsUrl = `${API}/repos/${repository}/actions/workflows/${workflowId}/runs?per_page=100`;
+  const before = await call(runsUrl, token, {}, fetchImpl);
+  if (!before.ok || !Array.isArray(before.body?.workflow_runs)) {
+    return blocked('RUNS_UNREADABLE', {httpStatus: before.status, workflow: workflowPath, workflowId});
+  }
+  const runIdsBefore = new Set(before.body.workflow_runs.map(run => Number(run?.id)).filter(Number.isSafeInteger));
+  const startedAt = Date.now();
+  const wanted = {sha, ...(pr ? {pr: String(pr)} : {}), mode: 'acceptance'};
+  const inputs = Object.fromEntries(Object.entries(wanted).filter(([name]) => declared.includes(name)));
+  const dispatchResponse = await fetchImpl(`${API}/repos/${repository}/actions/workflows/${workflowId}/dispatches`, {
+    method: 'POST',
+    headers: {...jsonHeaders(token), 'content-type': 'application/json'},
+    body: JSON.stringify({ref, inputs}),
+    redirect: 'error',
+    signal: AbortSignal.timeout(20000),
+  });
+  if (dispatchResponse.status !== 204) {
+    let apiMessage = null;
+    try { const body = await dispatchResponse.json(); apiMessage = typeof body?.message === 'string' ? body.message.slice(0, 300) : null; } catch {}
     return {
       check: 'dispatch',
-      state: first === 403 || first === 404 ? ACCEPTANCE_STATES.BLOCKED : ACCEPTANCE_STATES.FAIL,
-      reason: first === 403 ? 'ACTIONS_WRITE_ABSENT' : 'DISPATCH_FAILED',
-      httpStatus: first,
-      apiMessage: attempt.message,
-      workflow: resolved.workflow,
-      deliveredInputs: droppedInputs ? [] : Object.keys(inputs),
-      declaredInputs: declared === null ? 'not-exposed' : declared.map(input => input?.name).filter(Boolean),
+      state: dispatchResponse.status === 403 || dispatchResponse.status === 404 ? ACCEPTANCE_STATES.BLOCKED : ACCEPTANCE_STATES.FAIL,
+      reason: dispatchResponse.status === 403 ? 'ACTIONS_WRITE_ABSENT' : 'DISPATCH_FAILED',
+      httpStatus: dispatchResponse.status,
+      apiMessage,
+      workflow: workflowPath,
+      workflowId,
+      deliveredInputs: Object.keys(inputs),
+      credentialsPrinted: false,
     };
   }
-  await sleep(settleMs);
-  const afterFirst = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
-  const runsAfterFirst = afterFirst.body?.total_count ?? null;
+
+  const maxPolls = Math.max(1, Math.ceil(Math.max(0, settleMs) / Math.max(1, pollIntervalMs)) + 1);
+  let correlatedRun = null;
+  let latestRuns = [];
+  for (let attempt = 0; attempt < maxPolls; attempt += 1) {
+    const after = await call(runsUrl, token, {}, fetchImpl);
+    if (!after.ok || !Array.isArray(after.body?.workflow_runs)) {
+      return blocked('DISPATCH_RUNS_UNREADABLE', {httpStatus: after.status, workflow: workflowPath, workflowId});
+    }
+    latestRuns = after.body.workflow_runs;
+    const candidates = latestRuns.filter(run => {
+      const id = Number(run?.id);
+      const created = Date.parse(run?.created_at ?? '');
+      return Number.isSafeInteger(id)
+        && !runIdsBefore.has(id)
+        && Number(run.workflow_id) === workflowId
+        && run.event === 'workflow_dispatch'
+        && run.head_branch === ref
+        && Number.isFinite(created)
+        && created >= startedAt - 60_000;
+    });
+    if (candidates.length > 1) return blocked('DISPATCH_RUN_CORRELATION_AMBIGUOUS', {workflow: workflowPath, workflowId, candidateRunIds: candidates.map(run => run.id)});
+    if (candidates.length === 1) {
+      correlatedRun = candidates[0];
+      const detail = await call(`${API}/repos/${repository}/actions/runs/${correlatedRun.id}`, token, {}, fetchImpl);
+      if (!detail.ok || !detail.body || Number(detail.body.id) !== Number(correlatedRun.id)) {
+        return blocked('DISPATCH_RUN_DETAIL_UNREADABLE', {httpStatus: detail.status, runId: correlatedRun.id, workflow: workflowPath});
+      }
+      correlatedRun = detail.body;
+      if (correlatedRun.inputs && correlatedRun.inputs.sha !== sha) {
+        return {check: 'dispatch', state: ACCEPTANCE_STATES.FAIL, reason: 'DISPATCHED_SHA_INPUT_MISMATCH', runId: correlatedRun.id, expectedSha: sha, workflow: workflowPath};
+      }
+      if (correlatedRun.status === 'completed') break;
+    }
+    if (attempt + 1 < maxPolls) await sleep(Math.min(pollIntervalMs, Math.max(0, settleMs)));
+  }
+  if (!correlatedRun) return blocked('DISPATCH_ACK_WITHOUT_CORRELATED_RUN', {httpStatus: 204, workflow: workflowPath, workflowId, runsBefore: before.body.workflow_runs.length, runsAfter: latestRuns.length});
+  if (correlatedRun.status !== 'completed') return blocked('DISPATCH_RUN_NOT_COMPLETED', {runId: correlatedRun.id, runStatus: correlatedRun.status ?? null, workflow: workflowPath});
+  if (correlatedRun.conclusion !== 'success') {
+    return {check: 'dispatch', state: ACCEPTANCE_STATES.FAIL, reason: 'DISPATCH_RUN_NOT_SUCCESSFUL', runId: correlatedRun.id, conclusion: correlatedRun.conclusion ?? null, workflow: workflowPath};
+  }
+  if (Number(correlatedRun.workflow_id) !== workflowId || correlatedRun.event !== 'workflow_dispatch' || correlatedRun.head_branch !== ref || !/^[a-f0-9]{40}$/i.test(String(correlatedRun.head_sha ?? ''))) {
+    return {check: 'dispatch', state: ACCEPTANCE_STATES.FAIL, reason: 'DISPATCH_RUN_IDENTITY_MISMATCH', runId: correlatedRun.id, workflow: workflowPath};
+  }
+
+  // The target-side receipt check is what binds this controller run to the
+  // requested private SHA. HTTP 204 and a successful unrelated run are not enough.
+  const checkName = `wolf-private-ci-${pr ?? 'head'}`;
+  const checkDeadline = startedAt + Math.max(0, Number(settleMs) || 0);
+  const remainingCheckMs = Math.max(0, checkDeadline - Date.now());
+  const checkPolls = Math.max(1, Math.ceil(remainingCheckMs / Math.max(1, pollIntervalMs)) + 1);
+  let correlatedCheck = null;
+  let latestCheckStatus = null;
+  for (let attempt = 0; attempt < checkPolls; attempt += 1) {
+    const checkRuns = await call(`${API}/repos/${repository}/commits/${sha}/check-runs?per_page=100`, checkToken, {}, fetchImpl);
+    if (!checkRuns.ok || !Array.isArray(checkRuns.body?.check_runs)) {
+      return blocked('TARGET_CHECK_RUNS_UNREADABLE', {httpStatus: checkRuns.status, runId: correlatedRun.id, targetSha: sha});
+    }
+    correlatedCheck = checkRuns.body.check_runs.find(check =>
+      String(check?.external_id ?? '') === String(correlatedRun.id)
+        && check?.head_sha === sha
+        && check?.name === checkName) ?? null;
+    latestCheckStatus = correlatedCheck?.status ?? null;
+    if (correlatedCheck?.status === 'completed') break;
+    if (attempt + 1 < checkPolls) await sleep(Math.min(pollIntervalMs, Math.max(0, checkDeadline - Date.now())));
+  }
+  if (!correlatedCheck || correlatedCheck.status !== 'completed') {
+    return blocked('TARGET_CHECK_RUN_NOT_CORRELATED', {runId: correlatedRun.id, targetSha: sha, checkName, checkStatus: latestCheckStatus});
+  }
+  if (correlatedCheck.conclusion !== 'success') {
+    return {check: 'dispatch', state: ACCEPTANCE_STATES.FAIL, reason: 'TARGET_CHECK_RUN_FAILED', runId: correlatedRun.id, checkRunId: correlatedCheck.id ?? null, conclusion: correlatedCheck.conclusion ?? null, targetSha: sha};
+  }
 
   return {
     check: 'dispatch',
     state: ACCEPTANCE_STATES.PASS,
     reason: null,
-    httpStatus: first,
-    workflow: resolved.workflow,
-    workflowResolved: resolved.discovered === true,
-    deliveredInputs: droppedInputs ? [] : Object.keys(inputs),
-    declaredInputs: declared === null ? 'not-exposed' : declared.map(input => input?.name).filter(Boolean),
-    runsBefore,
-    runsAfterFirst,
-    createdRun: runsBefore !== null && runsAfterFirst !== null ? runsAfterFirst > runsBefore : null,
+    httpStatus: 204,
+    workflow: workflowPath,
+    workflowId,
+    workflowResolved: true,
+    runId: correlatedRun.id,
+    runSha: correlatedRun.head_sha,
+    runConclusion: correlatedRun.conclusion,
+    targetSha: sha,
+    targetCheckRunId: correlatedCheck.id ?? null,
+    targetCheckExternalId: String(correlatedCheck.external_id),
+    deliveredInputs: Object.keys(inputs),
+    declaredInputs: declared,
+    runsBefore: before.body.workflow_runs.length,
+    runsAfter: latestRuns.length,
+    createdRun: true,
     credentialsPrinted: false,
   };
 }
@@ -567,45 +570,121 @@ const TOKEN_PATTERN = /ghs_[A-Za-z0-9_]{16,}|gh[pousr]_[A-Za-z0-9_]{16,}|-----BE
  */
 export function auditCredentialExposure(workflowText = '') {
   const text = String(workflowText);
+  const lines = text.split(/\r?\n/);
   const findings = [];
+  const secretReference = /\$\{\{\s*secrets\.[A-Z0-9_]+/i;
+  const tokenName = /(?:WOLF_CI_APP_(?:READER|PUBLISHER|DISPATCHER)_TOKEN|WOLF_FACTORY_(?:REPO|STATUS)_TOKEN|GITHUB_TOKEN|GH_TOKEN|WOLF_CI_TOKEN_FILE)/i;
+  const privateExecution = /private-ci-execute\.mjs|npm\s+(?:test|run\s+(?:test|build|lint))|scripts\/[^\s]+(?:test|verify|scan)/i;
+  const stepMarkers = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(\s*)-\s+(?:name|uses|run):/);
+    if (match) stepMarkers.push({index, indent: match[1].length});
+  }
+  const steps = stepMarkers.map((marker, stepIndex) => {
+    let end = lines.length;
+    for (const next of stepMarkers.slice(stepIndex + 1)) {
+      if (next.indent <= marker.indent) { end = next.index; break; }
+    }
+    return {start: marker.index, end, text: lines.slice(marker.index, end).join('\n')};
+  });
 
-  if (/pull_request_target/.test(text)) {
-    // Acceptable only if no secret is referenced; otherwise it is an escalation.
-    findings.push({vector: 'untrusted-workflow-trigger', detail: 'pull_request_target runs fork code with repository context'});
+  // Job- and workflow-level environments are inherited by every `run` step,
+  // even though they do not appear inside the step's YAML block. Model those
+  // scopes explicitly so a future job-wide secret cannot bypass the step audit.
+  const jobsAt = lines.findIndex(line => /^jobs:\s*$/.test(line));
+  const jobMarkers = jobsAt < 0 ? [] : lines.map((line, index) => ({line, index}))
+    .filter(({line, index}) => index > jobsAt && /^ {2}[A-Za-z0-9_-]+:\s*$/.test(line))
+    .map(({line, index}) => ({index, name: line.trim().slice(0, -1)}));
+  for (let jobIndex = 0; jobIndex < jobMarkers.length; jobIndex += 1) {
+    const marker = jobMarkers[jobIndex];
+    const end = jobMarkers[jobIndex + 1]?.index ?? lines.length;
+    const block = lines.slice(marker.index, end);
+    if (!privateExecution.test(block.join('\n'))) continue;
+    const envAt = block.findIndex(line => /^ {4}env:\s*$/.test(line));
+    if (envAt < 0) continue;
+    const envLines = [];
+    for (const line of block.slice(envAt + 1)) {
+      if (line.trim() && line.match(/^\s*/)[0].length <= 4) break;
+      envLines.push(line);
+    }
+    const inheritedCredentials = tokenName.test(envLines.join('\n')) || secretReference.test(envLines.join('\n'));
+    if (inheritedCredentials) {
+      findings.push({vector: 'target-process-job-environment', detail: 'a target-execution job has a job-wide credential environment at line ' + (marker.index + envAt + 1)});
+    }
+  }
+  const workflowEnvAt = lines.findIndex((line, index) => index < jobsAt && /^env:\s*$/.test(line));
+  if (workflowEnvAt >= 0 && privateExecution.test(text)) {
+    const envLines = [];
+    for (const line of lines.slice(workflowEnvAt + 1, jobsAt < 0 ? lines.length : jobsAt)) {
+      if (line.trim() && line.match(/^\s*/)[0].length === 0) break;
+      envLines.push(line);
+    }
+    if (tokenName.test(envLines.join('\n')) || secretReference.test(envLines.join('\n'))) {
+      findings.push({vector: 'target-process-workflow-environment', detail: 'a workflow-wide credential environment is inherited by target execution'});
+    }
   }
 
-  // A secret interpolated directly into a shell line is echoed by `set -x` and by
-  // any error message. Secrets belong in `env:` and are referenced as variables.
-  // Line-oriented on purpose: a nested regex over YAML runs is easy to get wrong,
-  // and a guard that misses its own fixture is worse than no guard.
-  const lines = text.split(/\r?\n/);
+  if (/pull_request_target/.test(text)) {
+    findings.push({vector: 'untrusted-workflow-trigger', detail: 'pull_request_target runs fork code with repository context'});
+  }
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (!/^\s*run:\s*[|>]?\s*$/.test(line) && !/^\s*-\s*run:\s*[|>]?\s*$/.test(line)) continue;
-    const runIndent = line.match(/^\s*/)[0].length;
-    // A run block ends at the first line that is indented no deeper.
-    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
-      const body = lines[cursor];
-      if (body.trim() && body.match(/^\s*/)[0].length <= runIndent) break;
-      if (/\$\{\{\s*secrets\.[A-Z_]+/.test(body)) {
-        findings.push({vector: 'secret-in-shell', detail: 'a secret is interpolated into a run block at line ' + (cursor + 1)});
+    const terminalDump = /^\s*(?:(?:-\s*)?run:\s*)?(?:echo|printf|env|printenv)\b/i.test(line)
+      && !/(?:>>?|\btee\s+-a)\s*["']?\$GITHUB_ENV\b/.test(line);
+    if (tokenName.test(line) && terminalDump && !/redact|mask/i.test(line)) {
+      findings.push({vector: 'token-unmasked', detail: 'a token-like environment variable is sent to shell output at line ' + (index + 1)});
+    }
+    if (/^\s*run:\s*[|>]?\s*$/.test(line) || /^\s*-\s*run:\s*[|>]?\s*$/.test(line)) {
+      const runIndent = line.match(/^\s*/)[0].length;
+      for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+        const body = lines[cursor];
+        if (body.trim() && body.match(/^\s*/)[0].length <= runIndent) break;
+        if (secretReference.test(body)) findings.push({vector: 'secret-in-shell', detail: 'a secret is interpolated into a run block at line ' + (cursor + 1)});
       }
+    }
+  }
+
+  const tokenExports = [];
+  for (const step of steps) {
+    const bodyLines = step.text.split('\n');
+    const exportsToken = bodyLines.some(line => /(?:>>|\btee\s+-a)\s*["']?\$GITHUB_ENV\b/.test(line))
+      && tokenName.test(step.text);
+    if (exportsToken) {
+      tokenExports.push(step.start);
+      findings.push({vector: 'credential-to-job-environment', detail: 'a credential-bearing value is written to GITHUB_ENV in step at line ' + (step.start + 1)});
+    }
+    const executesTarget = privateExecution.test(step.text);
+    const secretAssignments = [...step.text.matchAll(/^\s*([A-Z][A-Z0-9_]+):\s*\$\{\{\s*secrets\.[A-Z0-9_]+\s*\}\}/gm)].map(match => match[1]);
+    // The trusted executor needs the receipt-signing key to authenticate its
+    // output, but workflowChildEnvironment explicitly strips it from every target
+    // command. No other secret is permitted in that execution step.
+    const trustedSignerOnly = /private-ci-execute\.mjs/.test(step.text)
+      && secretAssignments.length === 1
+      && secretAssignments[0] === 'WOLF_CI_RECEIPT_SIGNING_KEY'
+      && /WOLF_CI_UNTRUSTED_USER:\s*wolfci-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}/.test(step.text)
+      && /WOLF_CI_UNTRUSTED_HOME:\s*\$\{\{\s*runner\.temp\s*\}\}/.test(step.text);
+    const otherSecretReference = secretReference.test(step.text) && !trustedSignerOnly;
+    const localCredential = tokenName.test(step.text) || otherSecretReference;
+    if (executesTarget && localCredential) {
+      findings.push({vector: 'target-process-environment', detail: 'a private-code execution step also receives or references credential material at line ' + (step.start + 1)});
+    }
+  }
+  for (const exportAt of tokenExports) {
+    const laterTarget = steps.find(step => step.start > exportAt && privateExecution.test(step.text));
+    if (laterTarget) {
+      findings.push({vector: 'credential-reaches-target-process', detail: 'a job-wide credential export precedes private-code execution at line ' + (laterTarget.start + 1)});
+      break;
     }
   }
 
   if (/upload-artifact/.test(text) && /wolf-ci|token|receipt|acceptance/i.test(text)) {
     findings.push({vector: 'artifact-upload-near-credentials', detail: 'an artefact upload exists; confirm no token path is included'});
   }
-
-  // Every minted token must be masked before it can be printed.
-  if (/WOLF_CI_APP_(READER|PUBLISHER|DISPATCHER)_TOKEN/.test(text) && !/:+:add-mask::/.test(text) && !/private-ci-app-auth-cli\.mjs/.test(text)) {
-    findings.push({vector: 'token-unmasked', detail: 'a token variable is used without a masking path'});
-  }
-
+  const unique = [...new Map(findings.map(finding => [`${finding.vector}:${finding.detail}`, finding])).values()];
   return {
-    state: findings.length ? 'EXPOSURE_RISK' : 'CLEAR',
-    findings,
-    vectorsChecked: ['untrusted-workflow-trigger', 'secret-in-shell', 'artifact-upload-near-credentials', 'token-unmasked'],
+    state: unique.length ? 'EXPOSURE_RISK' : 'CLEAR',
+    findings: unique,
+    vectorsChecked: ['untrusted-workflow-trigger', 'secret-in-shell', 'credential-to-job-environment', 'target-process-environment', 'artifact-upload-near-credentials'],
   };
 }
 
