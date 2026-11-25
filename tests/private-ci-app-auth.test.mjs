@@ -293,7 +293,10 @@ test('renewal is proven from a cold start, as a restarted runner sees it', async
   assert.ok(report.renewal.every(entry => entry.renews), 'each role renews to a distinct token');
   assert.ok(report.renewal.every(entry => entry.restartRecovered), 'a restarted runner gets a fresh token for every role');
   assert.ok(report.renewal.every(entry => entry.source === 'github-app'), 'verification only counts when the App issued the token');
-  assert.equal(minted, 6, 'three roles minted twice each');
+  // Twelve, not six: each role is minted twice, and each mint first resolves its
+  // installation with a probe mint. The probe exists so a mispointed installation
+  // ID self-repairs instead of failing the run.
+  assert.equal(minted, 12, 'three roles, two rounds, each preceded by a coverage probe');
 });
 
 test('mint leaves no token file when it falls back, so a caller cannot source a missing file', async () => {

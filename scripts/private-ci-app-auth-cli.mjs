@@ -18,6 +18,7 @@ import {
   mintInstallationToken,
   needsRenewal,
   normalizeRole,
+  resolveInstallationForRepository,
   selectCredential,
 } from './private-ci-app-auth.mjs';
 
@@ -43,14 +44,55 @@ export async function mintRoleToken({role, env = process.env, fetchImpl = global
   if (selection.source !== 'github-app') {
     return {state: selection.source === 'none' ? 'BLOCKED' : 'FALLBACK', role: normalizedRole, selection};
   }
-  const installationId = env[selection.installationIdSecret];
+  const repository = env.WOLF_CI_REPOSITORY;
+  const permissions = ROLE_PERMISSIONS[normalizedRole];
+  const appId = env[APP_SECRET_NAMES.appId];
+  const privateKey = env[APP_SECRET_NAMES.privateKey];
+
+  // Resolve the installation that actually covers the repository, then mint with
+  // this role's fixed permission set.
+  //
+  // The pointer may be corrected; the permission set never is. That distinction is
+  // what keeps this from becoming privilege escalation: an installation ID grants
+  // nothing on its own, whereas a widened permission would.
+  const resolution = await resolveInstallationForRepository({
+    role: normalizedRole,
+    installationIds: {
+      reader: env[APP_SECRET_NAMES.reader],
+      publisher: env[APP_SECRET_NAMES.publisher],
+      dispatcher: env[APP_SECRET_NAMES.dispatcher],
+    },
+    now,
+    probe: ({installationId, now: probeNow}) => mintInstallationToken({
+      role: normalizedRole, appId, privateKey, installationId, repository, permissions, fetchImpl, now: probeNow,
+    }),
+  });
+
+  if (!resolution.installationId) {
+    const last = resolution.result ?? {};
+    return {
+      state: last.state === 'BLOCKED' ? 'BLOCKED' : 'FAILED',
+      role: normalizedRole,
+      selection,
+      reason: last.reason ?? 'NO_INSTALLATION_COVERS_REPOSITORY',
+      // The most informative attempt wins: a 422 with a message explains far more
+      // than a bare null on the aggregate result.
+      httpStatus: last.httpStatus ?? resolution.attempted.find(entry => entry.httpStatus)?.httpStatus ?? null,
+      apiMessage: last.apiMessage ?? resolution.attempted.find(entry => entry.apiMessage)?.apiMessage ?? null,
+      attemptedInstallations: resolution.attempted,
+      // Says plainly which IDs were tried and which failed, without values.
+      installationResolution: 'UNRESOLVED',
+    };
+  }
+
+  const installationId = resolution.installationId;
   const result = await mintInstallationToken({
     role: normalizedRole,
-    appId: env[APP_SECRET_NAMES.appId],
-    privateKey: env[APP_SECRET_NAMES.privateKey],
+    appId,
+    privateKey,
     installationId,
-    repository: env.WOLF_CI_REPOSITORY,
-    permissions: ROLE_PERMISSIONS[normalizedRole],
+    repository,
+    permissions,
     fetchImpl,
     now,
   });
@@ -64,6 +106,10 @@ export async function mintRoleToken({role, env = process.env, fetchImpl = global
     expiresAt: result.expiresAt,
     permissions: result.permissions,
     repositoryScoped: result.repositoryScoped,
+    // Which role's installation pointer was used, and whether it was repaired.
+    installationSource: resolution.resolvedFrom,
+    installationRepaired: resolution.repaired,
+    installationResolution: resolution.repaired ? 'REPAIRED_BY_COVERAGE' : 'CONFIGURED',
     needsRenewal: needsRenewal(result.expiresAt, now),
     token: result.token,
   };

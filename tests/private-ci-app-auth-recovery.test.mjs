@@ -166,3 +166,80 @@ test('renewal is proven by token identity when the expiry is truncated to the se
   assert.ok(report.renewal.every(entry => entry.distinctExpiry === false), 'the fixture really did reuse the expiry');
   assert.equal(code, 0);
 });
+
+test('an installation that cannot see the repository is replaced by one that can', async () => {
+  const {runAppAuthCli} = await import('../scripts/private-ci-app-auth-cli.mjs');
+  const {generateKeyPairSync} = await import('node:crypto');
+  const {privateKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
+  const rsaPem = privateKey.export({type: 'pkcs1', format: 'pem'});
+  const repository = 'donraposo1-source/project-wolf';
+
+  // The exact failure seen live: the dispatcher's ID points at the other personal
+  // account's installation, which does not cover this repository.
+  const broken = '176144552';
+  const working = '176017917';
+  const requested = [];
+  let counter = 0;
+  const fetchImpl = async (url, init = {}) => {
+    const installation = url.match(/installations\/(\d+)\/access_tokens/)[1];
+    if (installation === broken) {
+      return {ok: false, status: 422, json: async () => ({message: 'There is at least one repository that does not exist or is not accessible to the parent installation.'})};
+    }
+    counter += 1;
+    const permissions = JSON.parse(init.body).permissions;
+    requested.push(permissions);
+    return {ok: true, status: 201, json: async () => ({
+      token: 'ghs_' + counter + '_' + 'q'.repeat(20),
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      permissions,
+      repositories: [{full_name: repository}],
+    })};
+  };
+
+  const lines = [];
+  await runAppAuthCli(['mint', 'dispatcher'], {
+    env: {
+      WOLF_FACTORY_APP_ID: '5913418', WOLF_FACTORY_APP_PRIVATE_KEY: rsaPem,
+      WOLF_FACTORY_READER_INSTALLATION_ID: working,
+      WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: working,
+      WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: broken,
+      WOLF_CI_REPOSITORY: repository,
+      WOLF_CI_TOKEN_FILE: '/tmp/wolf-repair-' + process.pid + '.env',
+    },
+    fetchImpl,
+    stdout: text => lines.push(text),
+  });
+
+  const report = JSON.parse(lines.join('').split('\n').find(line => line.startsWith('{')));
+  assert.equal(report.state, 'MINTED', 'the run self-repairs instead of failing');
+  assert.equal(report.installationRepaired, true);
+  assert.equal(report.installationResolution, 'REPAIRED_BY_COVERAGE');
+  assert.notEqual(report.installationSource, 'dispatcher');
+  // The pointer was corrected; the permission set was not. This is the property
+  // that keeps the repair from being an escalation.
+  assert.deepEqual(report.permissions, {actions: 'write', metadata: 'read'});
+  assert.equal(requested.some(entry => entry.contents === 'write'), false, 'no role ever asks for more than it needs');
+});
+
+test('when no installation covers the repository, the failure names every attempt', async () => {
+  const {runAppAuthCli} = await import('../scripts/private-ci-app-auth-cli.mjs');
+  const {generateKeyPairSync} = await import('node:crypto');
+  const {privateKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
+  const rsaPem = privateKey.export({type: 'pkcs1', format: 'pem'});
+  const fetchImpl = async () => ({ok: false, status: 422, json: async () => ({message: 'not accessible to the parent installation'})});
+  const lines = [];
+  await runAppAuthCli(['mint', 'dispatcher'], {
+    env: {
+      WOLF_FACTORY_APP_ID: '1', WOLF_FACTORY_APP_PRIVATE_KEY: rsaPem,
+      WOLF_FACTORY_READER_INSTALLATION_ID: '1', WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: '2',
+      WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: '3', WOLF_CI_REPOSITORY: 'donraposo1-source/project-wolf',
+    },
+    fetchImpl,
+    stdout: text => lines.push(text),
+  });
+  const report = JSON.parse(lines.join('').split('\n').find(line => line.startsWith('{')));
+  assert.notEqual(report.state, 'MINTED');
+  assert.equal(report.installationResolution, 'UNRESOLVED');
+  assert.equal(report.attemptedInstallations.length, 3, 'every candidate ID is reported');
+  assert.match(report.apiMessage, /not accessible to the parent installation/);
+});

@@ -366,3 +366,69 @@ export async function withAuthRecovery({ensure, call, maxRecoveries = 1} = {}) {
     token = renewed;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Installation resolution by repository coverage.
+//
+// An installation ID is a pointer, not a credential: it grants nothing by itself.
+// What bounds a token is the permission set requested at mint time, which is fixed
+// per role and checked before any request. That is why resolving the *pointer* by
+// coverage is safe, while resolving the *permission* would not be.
+//
+// This exists because a role's configured ID can name an installation that cannot
+// see the repository - for example the other personal account's installation when
+// both accounts are personal and each holds one repository. The mint fails with a
+// reachability error (422), not a permission error (403), and the distinction is
+// exactly what makes self-repair correct here.
+// ---------------------------------------------------------------------------
+
+const REACHABILITY_REASONS = new Set(['APP_TOKEN_REQUEST_FAILED']);
+
+const indicatesWrongInstallation = result =>
+  result?.state !== 'MINTED'
+  && (REACHABILITY_REASONS.has(result?.reason) || result?.httpStatus === 422);
+
+/**
+ * Resolves the installation that actually covers `repository`, preferring the
+ * role's own configured ID and falling back to another role's ID only when that
+ * ID provably covers the repository and the App is the same.
+ *
+ * Returns `{installationId, resolvedFrom, attempted}`. `resolvedFrom` is the role
+ * whose ID was used, so a repaired configuration is never invisible.
+ */
+export async function resolveInstallationForRepository({
+  role,
+  installationIds = {},
+  probe,
+  now = Date.now(),
+} = {}) {
+  const order = [role, ...Object.keys(installationIds).filter(key => key !== role)];
+  const attempted = [];
+  for (const candidateRole of order) {
+    const installationId = installationIds[candidateRole];
+    if (typeof installationId !== 'string' || !installationId.trim()) continue;
+    const result = await probe({installationId, now});
+    // The message and status are carried on every attempt: three failures with no
+    // cause is what made the live diagnosis expensive in the first place.
+    attempted.push({
+      source: candidateRole,
+      ok: result?.state === 'MINTED',
+      reason: result?.reason ?? null,
+      httpStatus: result?.httpStatus ?? null,
+      apiMessage: result?.apiMessage ?? null,
+    });
+    if (result?.state === 'MINTED') {
+      return {
+        installationId,
+        resolvedFrom: candidateRole,
+        // True when the role's own ID was unusable and another was chosen.
+        repaired: candidateRole !== role,
+        attempted,
+        result,
+      };
+    }
+  }
+  return {installationId: null, resolvedFrom: null, repaired: false, attempted, result: null};
+}
+
+export { indicatesWrongInstallation };
