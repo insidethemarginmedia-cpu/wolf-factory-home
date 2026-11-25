@@ -47,6 +47,19 @@ test('activation documentation is covered, because it claims test counts', () =>
   assert.match(pushBlock, /docs\/activation\/\*\*/, 'docs/activation must be able to trigger the bridge');
 });
 
+test('every checkpoint under docs/checkpoints can trigger the bridge', () => {
+  const pushBlock = text.slice(text.indexOf('  push:'), text.indexOf('\npermissions:'));
+  // Older checkpoints predate this filter and are historical records; they are not
+  // rewritten to satisfy a guard. The guard covers the P1.4x checkpoints that this
+  // pipeline produces and therefore could invalidate.
+  for (const name of fs.readdirSync('docs/checkpoints')) {
+    if (!name.endsWith('.json') || !/^WOLF-P1\d/.test(name)) continue;
+    const file = 'docs/checkpoints/' + name;
+    assert.match(pushBlock, new RegExp('docs/checkpoints/' + name.replace(/[.[\]{}()*+?^$|\\]/g, '\\$&')),
+      file + ' must be able to trigger the bridge, since it records verified results');
+  }
+});
+
 test('the durable retirement scripts specifically are covered', () => {
   for (const file of [
     'scripts/private-ci-retirement-ledger.mjs',
