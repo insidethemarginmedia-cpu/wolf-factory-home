@@ -741,6 +741,29 @@ jobs:
           # now refuse the PAT. Printing the verdict makes a silently-ignored flag
           # impossible to miss.
           node scripts/private-ci-app-auth-cli.mjs state reader || true
+      - name: Prove the ledger closes the fallback with no per-run flag
+        id: retirement_ledger_proof
+        if: always()
+        continue-on-error: true
+        shell: bash
+        # This step runs after the per-run enforcement step, but it deliberately
+        # ignores that flag: it re-reads the durable ledger and asks the real
+        # credential selector to choose with the flag *unset*.
+        #
+        # That is the difference the founder asked for. A per-run flag proves a
+        # decision was made during this run. This proves a later run - one that
+        # never saw the decision - is still denied the fallback.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WOLF_CI_RETIRE_PAT: ''
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/probes/durable-ledger-proof.mjs > /tmp/wolf-ci-ledger-proof.json && status=0 || status=$?
+          cat /tmp/wolf-ci-ledger-proof.json || true
+          echo RETIREMENT_ENFORCED_BY_LEDGER_ONLY=$(node -e 'try{const d=require("/tmp/wolf-ci-ledger-proof.json");process.stdout.write(String(d.enforcedByLedgerAlone))}catch{process.stdout.write("false")}')
+          exit 0
       - name: Persist the retirement decision so later runs inherit it
         id: retirement_persist
         if: always()
