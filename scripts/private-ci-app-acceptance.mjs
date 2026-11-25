@@ -277,7 +277,11 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
     for (const candidate of candidates) {
       const detail = await call(`${API}/repos/${repository}/actions/workflows/${candidate.id}`, token, {}, fetchImpl);
       const dispatchable = detail.ok && Array.isArray(detail.body?.workflow_dispatch_inputs);
-      examined.push({path: candidate.path, dispatchable});
+      // A workflow is dispatchable when GitHub exposes a dispatch-inputs array for
+      // it - which it does for a workflow_dispatch trigger, even with no inputs.
+      // The raw status is recorded so a permissions failure is not mistaken for a
+      // missing trigger.
+      examined.push({path: candidate.path, dispatchable, httpStatus: detail.status ?? null, exposesInputs: Array.isArray(detail.body?.workflow_dispatch_inputs)});
       if (dispatchable) {
         chosen = candidate;
         break;

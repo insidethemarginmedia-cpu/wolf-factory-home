@@ -278,5 +278,6 @@ test('when nothing can be dispatched, that is the stated reason', async () => {
   const result = await checkDispatch({token: 't', repository: repo, workflow: 'x.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
   assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
   assert.equal(result.reason, 'NO_DISPATCHABLE_WORKFLOW');
-  assert.deepEqual(result.examined, [{path: '.github/workflows/test.yml', dispatchable: false}]);
+  assert.equal(result.examined[0].path, '.github/workflows/test.yml');
+  assert.equal(result.examined[0].dispatchable, false);
 });

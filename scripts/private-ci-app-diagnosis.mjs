@@ -52,6 +52,7 @@ export function buildDiagnosisSummary({renewal = null, acceptance = null} = {}) 
       if (check.missing?.length) lines.push('    missing: ' + JSON.stringify(check.missing).slice(0, 400));
       if (check.overScoped?.length) lines.push('    overScoped: ' + JSON.stringify(check.overScoped).slice(0, 400));
       if (check.detail) lines.push('    detail: ' + JSON.stringify(check.detail).slice(0, 500));
+    if (check.examined) lines.push('    examined: ' + JSON.stringify(check.examined).slice(0, 1200));
     }
   }
   return redact(lines.join('\n')).slice(0, 60000);
