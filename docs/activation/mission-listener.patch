@@ -1,6 +1,6 @@
 diff --git a/.github/workflows/mission-listener.yml b/.github/workflows/mission-listener.yml
 new file mode 100644
-index 0000000..359d095
+index 0000000..3596164
 --- /dev/null
 +++ b/.github/workflows/mission-listener.yml
 @@ -0,0 +1,139 @@
@@ -44,8 +44,8 @@ index 0000000..359d095
 +  # The only commit this listener may start. Must be an approved, reviewed SHA and
 +  # must be listed in LISTENER_APPROVED_EXECUTOR_SHAS below. Full 40 hex only: a
 +  # branch would move, and "the SHA I meant" is not auditable.
-+  WOLF_LISTENER_EXECUTOR_SHA: 96cab355878d6ca37dcd6d40ab79b7ac595d1c22
-+  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: 96cab355878d6ca37dcd6d40ab79b7ac595d1c22
++  WOLF_LISTENER_EXECUTOR_SHA: 6c2848d1849d85e70ff3a9590a42b3df0465c487
++  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: 6c2848d1849d85e70ff3a9590a42b3df0465c487
 +  # Senders permitted to submit a mission. Empty means refuse everything.
 +  WOLF_LISTENER_AUTHORIZED_SENDERS: insidethemarginmedia-cpu,donraposo1-source
 +  WOLF_LISTENER_REPOSITORY_ALLOWLIST: donraposo1-source/project-wolf
@@ -135,7 +135,7 @@ index 0000000..359d095
 +    # Note there is no `runs-on` and no `steps` here by design: a job that calls a
 +    # reusable workflow cannot also run arbitrary shell, so the listener is
 +    # structurally incapable of doing privileged work itself.
-+    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-ci-bridge.yml@96cab355878d6ca37dcd6d40ab79b7ac595d1c22
++    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-ci-bridge.yml@6c2848d1849d85e70ff3a9590a42b3df0465c487
 +    with:
 +      # The mission's target SHA, taken from the admitted payload. The admission
 +      # job already validated it as a full 40-hex commit.
