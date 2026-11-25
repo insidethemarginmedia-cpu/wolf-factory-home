@@ -297,19 +297,60 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
   }
   const runsBefore = before.body?.total_count ?? null;
 
-  const dispatch = async () => {
+  // Inputs must match what the workflow declares. Sending an undeclared input is a
+  // 422, and the error does not say which one is wrong - so the declaration is
+  // read first and only declared inputs are sent.
+  const definition = await call(`${base}`, token, {}, fetchImpl);
+  const declared = Array.isArray(definition.body?.workflow_dispatch_inputs)
+    ? definition.body.workflow_dispatch_inputs
+    : null;
+  const wanted = {sha: sha ?? '', pr: pr ?? '', mode: 'acceptance'};
+  const inputs = {};
+  for (const [name, value] of Object.entries(wanted)) {
+    if (declared === null) continue; // no schema exposed: send nothing rather than guess
+    if (declared.some(input => input?.name === name)) inputs[name] = value;
+  }
+
+  const dispatch = async payloadInputs => {
     const response = await fetchImpl(`${base}/dispatches`, {
       method: 'POST',
       headers: {...jsonHeaders(token), 'content-type': 'application/json'},
-      body: JSON.stringify({ref, inputs: {sha: sha ?? '', pr: pr ?? '', mode: 'acceptance'}}),
+      body: JSON.stringify({ref, inputs: payloadInputs}),
       signal: AbortSignal.timeout(20000),
     });
-    return response.status;
+    let message = null;
+    if (response.status !== 204) {
+      try {
+        const body = await response.json();
+        message = typeof body?.message === 'string' ? body.message.slice(0, 300) : null;
+      } catch {
+        message = null;
+      }
+    }
+    return {status: response.status, message};
   };
 
-  const first = await dispatch();
+  let attempt = await dispatch(inputs);
+  // If declared inputs were rejected, retry once with none: a dispatch with no
+  // inputs is valid for every workflow and still proves actions:write.
+  let droppedInputs = false;
+  if (attempt.status === 422 && Object.keys(inputs).length) {
+    droppedInputs = true;
+    attempt = await dispatch({});
+  }
+  const first = attempt.status;
+
   if (first !== 204) {
-    return {check: 'dispatch', state: first === 403 || first === 404 ? ACCEPTANCE_STATES.BLOCKED : ACCEPTANCE_STATES.FAIL, reason: first === 403 ? 'ACTIONS_WRITE_ABSENT' : 'DISPATCH_FAILED', httpStatus: first};
+    return {
+      check: 'dispatch',
+      state: first === 403 || first === 404 ? ACCEPTANCE_STATES.BLOCKED : ACCEPTANCE_STATES.FAIL,
+      reason: first === 403 ? 'ACTIONS_WRITE_ABSENT' : 'DISPATCH_FAILED',
+      httpStatus: first,
+      apiMessage: attempt.message,
+      workflow: resolved.workflow,
+      deliveredInputs: droppedInputs ? [] : Object.keys(inputs),
+      declaredInputs: declared === null ? 'not-exposed' : declared.map(input => input?.name).filter(Boolean),
+    };
   }
   await sleep(settleMs);
   const afterFirst = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
@@ -322,6 +363,8 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
     httpStatus: first,
     workflow: resolved.workflow,
     workflowResolved: resolved.discovered === true,
+    deliveredInputs: droppedInputs ? [] : Object.keys(inputs),
+    declaredInputs: declared === null ? 'not-exposed' : declared.map(input => input?.name).filter(Boolean),
     runsBefore,
     runsAfterFirst,
     createdRun: runsBefore !== null && runsAfterFirst !== null ? runsAfterFirst > runsBefore : null,

@@ -65,6 +65,7 @@ test('a dispatch reports whether it actually created a run', async () => {
   let runs = 4;
   const fetchImpl = async (url, init = {}) => {
     if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: runs})};
+    if (url.endsWith('/workflows/private-ci.yml')) return {ok: true, status: 200, json: async () => ({workflow_dispatch_inputs: [{name: 'sha'}, {name: 'pr'}]})};
     if (url.includes('/dispatches')) {
       runs += 1;
       return {ok: true, status: 204, json: async () => ({})};
@@ -192,4 +193,55 @@ test('when no workflow is visible, the reason says so instead of blaming permiss
   assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
   assert.equal(result.reason, 'NO_WORKFLOW_FOUND');
   assert.equal(result.configuredWorkflow, 'nope.yml');
+});
+
+
+test('only declared workflow inputs are sent, and an undeclared one is never guessed at', async () => {
+  const bodies = [];
+  const fetchImpl = async (url, init = {}) => {
+    if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: 1})};
+    if (url.endsWith('/workflows/schema.yml')) return {ok: true, status: 200, json: async () => ({workflow_dispatch_inputs: [{name: 'sha'}]})};
+    if (url.includes('/dispatches')) {
+      bodies.push(JSON.parse(init.body));
+      return {ok: true, status: 204, json: async () => ({})};
+    }
+    return {ok: false, status: 404, json: async () => ({})};
+  };
+  const result = await checkDispatch({token: 't', repository: repo, workflow: 'schema.yml', sha: SHA, pr: '743', settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
+  assert.deepEqual(Object.keys(bodies[0].inputs), ['sha'], 'pr and mode are not sent because they are not declared');
+  assert.deepEqual(result.deliveredInputs, ['sha']);
+  assert.deepEqual(result.declaredInputs, ['sha']);
+});
+
+test('a 422 on declared inputs is retried once with none, and the drop is reported', async () => {
+  const bodies = [];
+  const fetchImpl = async (url, init = {}) => {
+    if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: 1})};
+    if (url.endsWith('/workflows/strict.yml')) return {ok: true, status: 200, json: async () => ({workflow_dispatch_inputs: [{name: 'sha'}]})};
+    if (url.includes('/dispatches')) {
+      bodies.push(JSON.parse(init.body));
+      return bodies.length === 1
+        ? {ok: false, status: 422, json: async () => ({message: 'Unexpected inputs provided'})}
+        : {ok: true, status: 204, json: async () => ({})};
+    }
+    return {ok: false, status: 404, json: async () => ({})};
+  };
+  const result = await checkDispatch({token: 't', repository: repo, workflow: 'strict.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
+  assert.deepEqual(bodies[1].inputs, {}, 'the second attempt sends nothing rather than guessing again');
+  assert.deepEqual(result.deliveredInputs, [], 'dropping inputs is visible, not silent');
+});
+
+test('a dispatch failure carries the API message', async () => {
+  const fetchImpl = async (url) => {
+    if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: 1})};
+    if (url.endsWith('/workflows/w.yml')) return {ok: false, status: 404, json: async () => ({})};
+    if (url.includes('/workflows?per_page=100')) return {ok: true, status: 200, json: async () => ({workflows: [{id: 5, path: '.github/workflows/w.yml', created_at: '2026-01-01T00:00:00Z'}]})};
+    if (url.includes('/dispatches')) return {ok: false, status: 422, json: async () => ({message: 'Workflow does not have workflow_dispatch trigger'})};
+    return {ok: false, status: 422, json: async () => ({message: 'no trigger'})};
+  };
+  const result = await checkDispatch({token: 't', repository: repo, workflow: 'w.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.FAIL);
+  assert.match(result.apiMessage, /does not have workflow_dispatch/);
 });
