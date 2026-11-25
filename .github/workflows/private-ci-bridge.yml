@@ -69,6 +69,23 @@ on:
       - 'tests/private-ci-app-retirement.test.mjs'
       - 'tests/private-ci-mission.test.mjs'
       - 'tests/private-ci-mission-cli.test.mjs'
+      # Durable retirement. Without these entries a change to the ledger or its
+      # tests would not trigger a run, so the suite that proves enforcement would
+      # silently stop running on exactly the commits that alter it.
+      - 'scripts/private-ci-retirement-ledger.mjs'
+      - 'scripts/probes/**'
+      - 'tests/private-ci-retirement-ledger.test.mjs'
+      - 'tests/private-ci-retirement-ordering.test.mjs'
+      - 'tests/private-ci-retirement-record-cli.test.mjs'
+      # Found by the trigger-coverage test, which flagged itself along with these:
+      # they could change without the pipeline ever running against them.
+      - 'tests/private-ci-trigger-coverage.test.mjs'
+      - 'scripts/private-controller-preflight.mjs'
+      - 'tests/private-controller-preflight.test.mjs'
+      - 'tests/private-ci-journal.test.mjs'
+      - 'docs/integration-contract.md'
+      - 'docs/activation-plan.md'
+      - 'docs/checkpoints/WOLF-P140-ZERO-TOUCH-MISSION-TRANSPORT.json'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
       - 'tests/private-controller-preflight-pin.test.mjs'
