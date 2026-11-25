@@ -67,14 +67,32 @@ export async function resolveTarget({
     return {...base, state: TARGET_STATES.BLOCKED, reason: 'REPOSITORY_INVALID'};
   }
 
-  const pull = await get(`/repos/${repository}/pulls/${pr}`, token, fetchImpl);
-  if (!pull.ok) {
-    return {...base, state: TARGET_STATES.BLOCKED, reason: 'PR_UNREADABLE', httpStatus: pull.httpStatus};
+  // Two ways to read a PR head, tried in order of privilege:
+  //
+  //   1. `refs/pull/{n}/head` - a git ref, which needs only `contents: read`.
+  //   2. the pulls API - richer, but needs `pull_requests: read`.
+  //
+  // The reader role holds contents:read and metadata:read by design. Widening it to
+  // pull_requests:read to satisfy a convenience would trade a real permission for a
+  // nicer response, so the git ref is tried first and the API is only a fallback for
+  // the merge/state fields. Least privilege is preserved, not assumed.
+  const ref = await get(`/repos/${repository}/git/ref/pull/${pr}/head`, token, fetchImpl);
+  const pull = ref.ok ? {ok: true, httpStatus: 200, body: null} : await get(`/repos/${repository}/pulls/${pr}`, token, fetchImpl);
+
+  let prHead = null;
+  if (ref.ok && typeof ref.body?.object?.sha === 'string') {
+    prHead = ref.body.object.sha;
+  } else if (pull.ok && typeof pull.body?.head?.sha === 'string') {
+    prHead = pull.body.head.sha;
   }
-  const prHead = typeof pull.body?.head?.sha === 'string' ? pull.body.head.sha : null;
+  if (!pull.ok && !ref.ok) {
+    return {...base, state: TARGET_STATES.BLOCKED, reason: 'PR_UNREADABLE', httpStatus: pull.httpStatus, refHttpStatus: ref.httpStatus};
+  }
   if (!/^[0-9a-f]{40}$/.test(String(prHead ?? ''))) {
     return {...base, state: TARGET_STATES.BLOCKED, reason: 'PR_HEAD_UNRESOLVED'};
   }
+  // State and merge flag come from the pulls API when it is readable; via the git
+  // ref they are simply unknown, which is reported rather than guessed.
   const prState = pull.body?.state ?? null;
   const prMerged = pull.body?.merged === true;
 
@@ -120,6 +138,8 @@ export async function resolveTarget({
     reason: null,
     prState,
     prMerged,
+    // Which route produced the head, so the receipt states how it was read.
+    headSource: ref.ok && prHead === ref.body?.object?.sha ? 'git-ref' : (pull.ok ? 'pulls-api' : 'unknown'),
     prHead,
     defaultBranch,
     defaultHead,

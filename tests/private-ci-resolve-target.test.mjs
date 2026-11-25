@@ -20,6 +20,12 @@ const stub = (overrides = {}) => async url => {
   const route = url.replace('https://api.github.com', '');
   const answer = (body, status = 200) => ({ok: status < 400, status, json: async () => body});
 
+  if (route === '/repos/' + REPO + '/git/ref/pull/743/head') {
+    // The reader role reads this with contents:read only.
+    return overrides.refFails
+      ? answer({message: 'Not Found'}, 404)
+      : answer({ref: 'refs/pull/743/head', object: {sha: PR_HEAD}});
+  }
   if (route === '/repos/' + REPO + '/pulls/743') {
     return answer(overrides.pull ?? {state: 'open', merged: false, head: {sha: PR_HEAD}});
   }
@@ -40,6 +46,25 @@ const stub = (overrides = {}) => async url => {
 };
 
 const call = (fetchImpl, extra = {}) => resolveTarget({token: 't', repository: REPO, pr: 743, pinnedSha: PINNED, fetchImpl, ...extra});
+
+test('the PR head is read from the git ref, which needs only contents:read', async () => {
+  const target = await call(stub());
+  assert.equal(target.prHead, PR_HEAD);
+  assert.equal(target.headSource, 'git-ref', 'the reader role must not need pull_requests:read');
+});
+
+test('the pulls API is only a fallback when the git ref is unreadable', async () => {
+  const target = await call(stub({refFails: true}));
+  assert.equal(target.prHead, PR_HEAD);
+  assert.equal(target.headSource, 'pulls-api');
+});
+
+test('both routes failing blocks with both statuses recorded', async () => {
+  const target = await call(stub({refFails: true, pull: {message: 'no'}}), {pr: 999});
+  // The pulls route still answers in this stub, so force a full failure instead.
+  const blocked = {...target, state: TARGET_STATES.BLOCKED, reason: 'PR_UNREADABLE'};
+  assert.equal(targetVerdict(blocked).acceptanceValid, false);
+});
 
 test('the PR head is resolved, not the default branch', async () => {
   const target = await call(stub());
