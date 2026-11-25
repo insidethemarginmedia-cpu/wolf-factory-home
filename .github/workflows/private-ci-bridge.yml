@@ -106,6 +106,7 @@ on:
       - 'scripts/private-ci-listener-cli.mjs'
       - 'tests/private-ci-listener.test.mjs'
       - 'tests/private-ci-listener-cli.test.mjs'
+      - 'tests/private-ci-listener-pin.test.mjs'
       - 'scripts/private-ci-retirement-integrity.mjs'
       - 'tests/private-ci-retirement-integrity.test.mjs'
       - 'scripts/private-ci-ledger-seal-cli.mjs'
