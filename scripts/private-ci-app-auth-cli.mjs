@@ -144,6 +144,11 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
         source: first.selection?.source ?? null,
         first: {...summary(first), authState: firstAuth.state},
         second: {...summary(second), authState: secondAuth.state},
+        // The mint's own reason, so a BLOCKED role names its cause instead of
+        // only showing NONE.
+        firstReason: first.state === 'MINTED' ? null : (first.reason ?? first.state ?? null),
+        secondReason: second.state === 'MINTED' ? null : (second.reason ?? second.state ?? null),
+        requestedPermissions: ROLE_PERMISSIONS[normalizeRole(role)],
         // Proof of a second, independent token.
         //
         // `expires_at` is truncated to the second by GitHub, so two mints inside

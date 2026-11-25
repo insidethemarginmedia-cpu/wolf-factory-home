@@ -597,11 +597,12 @@ jobs:
               lines.append('renewal state: ' + str(recovery.get('state')))
               lines.append('renewal reason: ' + str(recovery.get('reason')))
               for entry in recovery.get('renewal', []) or []:
-                  lines.append('  %s source=%s renews=%s restart=%s first=%s second=%s' % (
+                  lines.append('  %s source=%s renews=%s restart=%s first=%s second=%s reason=%s' % (
                       entry.get('role'), entry.get('source'), entry.get('renews'),
                       entry.get('restartRecovered'),
                       (entry.get('first') or {}).get('authState'),
-                      (entry.get('second') or {}).get('authState')))
+                      (entry.get('second') or {}).get('authState'),
+                      entry.get('firstReason') or ''))
           if acceptance is None:
               lines.append('acceptance: NO REPORT')
           else:
