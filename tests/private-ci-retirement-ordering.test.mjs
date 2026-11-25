@@ -114,3 +114,10 @@ test('the resolver publishes its verdict onto the receipt', () => {
   assert.match(bridge, /acceptanceTarget:/);
   assert.match(bridge, /acceptanceValid/);
 });
+
+test('the target output path is job-level, so the receipt builder can read it', () => {
+  // Declared only in the resolver step, the path was invisible to the step that
+  // builds the receipt: the resolution happened and published as NOT_REPORTED.
+  const envBlock = text.slice(text.indexOf('\n    env:\n'), text.indexOf('\n    steps:'));
+  assert.match(envBlock, /WOLF_CI_TARGET_OUTPUT:/, 'the path must be visible to every step in the job');
+});

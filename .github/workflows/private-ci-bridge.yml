@@ -336,6 +336,11 @@ jobs:
       WOLF_CI_PRIVATE_ROOT: /tmp/wolf-private
       WOLF_CI_LOG_DIR: /tmp/wolf-ci-logs
       WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
+      # Job-level so the step that writes the resolution and the step that builds
+      # the receipt agree on the path. Declared only in the resolver step, the
+      # receipt builder could not see it and published NOT_REPORTED - a resolution
+      # that happened and then vanished.
+      WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json
       DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
       WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
       WOLF_DBOS_FIXTURE_ROOT: /tmp/wolf-factory-dbos-e2e
