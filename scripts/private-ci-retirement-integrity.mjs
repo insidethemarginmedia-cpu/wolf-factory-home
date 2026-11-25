@@ -162,8 +162,12 @@ export function verifyLedger(text, {expectedHead = null, expectedSequence = null
  * is false whenever the ledger is UNREADABLE or SUSPECT_EMPTY, so lost storage
  * cannot silently re-enable the fallback.
  */
-export function hardenedRetirementVerdict(text, {expectedHead = null, expectedSequence = null} = {}) {
+export function hardenedRetirementVerdict(text, {expectedHead = null, expectedSequence = null, anchor = null} = {}) {
   const integrity = verifyLedger(text, {expectedHead, expectedSequence});
+  // The anchor is a second, independent completeness check. `expectedHead` above is
+  // a caller-supplied value; the anchor is a stored one, so a caller that forgets to
+  // pass an expectation still cannot be fooled by a truncated ledger.
+  const anchorCheck = compareToAnchor(integrity, anchor);
   const retireRecords = integrity.records.filter(record => record?.state === 'RETIRED');
   const retired = retireRecords.length > 0;
 
@@ -201,6 +205,12 @@ export function hardenedRetirementVerdict(text, {expectedHead = null, expectedSe
     // An empty ledger where records were expected is deletion.
     safeToFallBack = !evidenceWasExpected;
     reason = evidenceWasExpected ? 'RETIREMENT_EVIDENCE_UNVERIFIABLE' : null;
+  } else if (anchorCheck.consistent === false) {
+    // The ledger is intact internally but shorter than the anchor says it should be.
+    // A truncated ledger is internally consistent, so only the anchor can catch it -
+    // and the dropped records may include the RETIRE that is being looked for.
+    safeToFallBack = false;
+    reason = 'RETIREMENT_LEDGER_TRUNCATED';
   } else {
     // Intact and contains no RETIRE record: the fallback was never withdrawn.
     safeToFallBack = true;
@@ -217,6 +227,7 @@ export function hardenedRetirementVerdict(text, {expectedHead = null, expectedSe
     head: integrity.head ?? null,
     sequence: integrity.sequence ?? null,
     recordCount: integrity.records.length,
+    anchor: anchorCheck,
     credentialsPrinted: false,
   };
 }
@@ -268,5 +279,111 @@ export function mergeLedgers(localText, remoteText) {
     mergedCount: merged.length,
     // True when the merge had to choose, which is worth reporting.
     conflict: merged.length < local.records.length + remote.records.length,
+  };
+}
+
+/**
+ * Migrates a legacy ledger into the chain format, preserving every record.
+ *
+ * The ledger written before integrity existed has no `seq` and no `hash`, so
+ * `verifyLedger` legitimately skips those records - which means a legacy ledger is
+ * not tamper-evident at all. Migrating rather than rejecting keeps the evidence
+ * (a RETIRE record must never be discarded) while making it verifiable from that
+ * point forward.
+ *
+ * The migration is explicit about what it cannot do: it seals the records as they
+ * are *now*, so it attests to their content at migration time, not to their history.
+ * That limitation is recorded on each migrated record.
+ */
+export function migrateLegacyLedger(text) {
+  const {records, malformed} = parseLedgerRecords(text);
+  if (malformed > 0) {
+    return {migrated: false, reason: 'LEGACY_MALFORMED', text, count: 0};
+  }
+  const already = records.length > 0 && records.every(record => record.integrityVersion === LEDGER_INTEGRITY_VERSION);
+  if (already) return {migrated: false, reason: 'ALREADY_SEALED', text, count: records.length};
+
+  let next = '';
+  let count = 0;
+  for (const record of records) {
+    const {text: appended} = appendRecord(next, {
+      state: record.state ?? null,
+      retire: record.retire === true,
+      recordedAt: record.recordedAt ?? null,
+      commit: record.commit ?? null,
+      runId: record.runId ?? null,
+      source: record.source ?? null,
+      // States plainly that the seal attests to content at migration time.
+      migration: 'SEALED_FROM_LEGACY',
+      credentialsPrinted: false,
+    });
+    next = appended;
+    count += 1;
+  }
+  return {migrated: count > 0, reason: count > 0 ? null : 'NOTHING_TO_MIGRATE', text: next, count};
+}
+
+/**
+ * The trusted head anchor.
+ *
+ * `verifyLedger` can only detect a rollback if it is told what to expect. Reading
+ * that expectation from the ledger itself would be circular - a ledger cannot vouch
+ * for its own completeness. The anchor has to come from somewhere the ledger's
+ * owner does not control, so it is committed as a file on the branch that the
+ * *workflow* pins, and it is updated only by the run that produced the record.
+ *
+ * The anchor is deliberately tiny: head hash, sequence, the commit that wrote it.
+ * It says nothing about the content of the ledger, only how long it should be.
+ */
+export function buildHeadAnchor(verification, {commit = null, now = Date.now()} = {}) {
+  return {
+    schemaVersion: LEDGER_INTEGRITY_VERSION,
+    head: verification?.head ?? null,
+    sequence: verification?.sequence ?? null,
+    recordCount: Array.isArray(verification?.records) ? verification.records.length : null,
+    commit: typeof commit === 'string' && /^[0-9a-f]{40}$/.test(commit) ? commit : null,
+    recordedAt: new Date(now).toISOString(),
+    credentialsPrinted: false,
+  };
+}
+
+/**
+ * Compares a ledger against a stored anchor.
+ *
+ * Rollback and truncation are the same event seen from two directions, and both
+ * present as "the ledger is shorter than the anchor says". A *longer* ledger is not
+ * a rollback: another run appended between this run's read and its write.
+ */
+export function compareToAnchor(verification, anchor) {
+  if (!anchor || typeof anchor !== 'object') {
+    // No anchor: verification of completeness is impossible, and that is stated
+    // rather than treated as a pass.
+    return {checked: false, consistent: null, reason: 'NO_ANCHOR'};
+  }
+  const actualSequence = Number(verification?.sequence ?? 0);
+  const expectedSequence = Number(anchor.sequence ?? 0);
+  if (!Number.isFinite(actualSequence) || !Number.isFinite(expectedSequence)) {
+    return {checked: false, consistent: null, reason: 'ANCHOR_UNREADABLE'};
+  }
+  if (actualSequence < expectedSequence) {
+    return {
+      checked: true,
+      consistent: false,
+      reason: 'LEDGER_SHORTER_THAN_ANCHOR',
+      actualSequence,
+      expectedSequence,
+      // The distinction that matters for the verdict: a truncated ledger may have
+      // dropped the RETIRE record, so it cannot be trusted to say "not retired".
+      retirementMayHaveBeenDropped: true,
+    };
+  }
+  return {
+    checked: true,
+    consistent: true,
+    reason: actualSequence > expectedSequence ? 'LEDGER_AHEAD_OF_ANCHOR' : null,
+    actualSequence,
+    expectedSequence,
+    // A longer ledger means a concurrent append, which is benign.
+    retirementMayHaveBeenDropped: false,
   };
 }

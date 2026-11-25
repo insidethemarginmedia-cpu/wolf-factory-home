@@ -15,6 +15,9 @@ import {
   hardenedRetirementVerdict,
   emptyAttestation,
   mergeLedgers,
+  buildHeadAnchor,
+  compareToAnchor,
+  migrateLegacyLedger,
 } from '../scripts/private-ci-retirement-integrity.mjs';
 
 const retire = (at = '2026-11-25T00:00:00Z') => ({state: 'RETIRED', retire: true, recordedAt: at, commit: 'a'.repeat(40)});
@@ -206,4 +209,103 @@ test('the verdict never contains a credential', () => {
   const result = hardenedRetirementVerdict(build(retire()));
   assert.ok(!/gh[opsu]_/.test(JSON.stringify(result)));
   assert.equal(result.credentialsPrinted, false);
+});
+
+// --- independent trusted head --------------------------------------------
+
+test('a ledger truncated below the anchor is detected even though it verifies internally', () => {
+  // The case internal verification cannot catch: a truncated chain is consistent.
+  const full = build(retire('2026-11-25T00:00:00Z'), keep('2026-11-25T01:00:00Z'));
+  const anchor = buildHeadAnchor(verifyLedger(full));
+  const truncated = full.trim().split('\n')[0] + '\n';
+
+  const result = hardenedRetirementVerdict(truncated, {anchor});
+  assert.equal(result.anchor.consistent, false);
+  assert.equal(result.anchor.reason, 'LEDGER_SHORTER_THAN_ANCHOR');
+  assert.equal(result.anchor.retirementMayHaveBeenDropped, true);
+});
+
+test('a truncation that dropped the only RETIRE record cannot claim "not retired"', () => {
+  // The dangerous shape: the surviving record is a KEEP, so the ledger reads as
+  // "never retired". Only the anchor reveals that a record is missing.
+  const full = build(keep('2026-11-25T00:00:00Z'), retire('2026-11-25T01:00:00Z'));
+  const anchor = buildHeadAnchor(verifyLedger(full));
+  const truncated = full.trim().split('\n')[0] + '\n';
+
+  const result = hardenedRetirementVerdict(truncated, {anchor});
+  assert.equal(result.retired, false, 'the RETIRE record is genuinely absent from the text');
+  assert.equal(result.safeToFallBack, false, 'but the truncation proves it may have been dropped');
+  assert.equal(result.reason, 'RETIREMENT_LEDGER_TRUNCATED');
+});
+
+test('a ledger ahead of the anchor is a concurrent append, not a rollback', () => {
+  const short = build(retire('2026-11-25T00:00:00Z'));
+  const anchor = buildHeadAnchor(verifyLedger(short));
+  const longer = build(retire('2026-11-25T00:00:00Z'), retire('2026-11-25T02:00:00Z'));
+  const result = hardenedRetirementVerdict(longer, {anchor});
+  assert.equal(result.anchor.consistent, true);
+  assert.equal(result.anchor.reason, 'LEDGER_AHEAD_OF_ANCHOR');
+});
+
+test('an anchor matching the ledger is consistent', () => {
+  const text = build(retire());
+  const anchor = buildHeadAnchor(verifyLedger(text));
+  const result = hardenedRetirementVerdict(text, {anchor});
+  assert.equal(result.anchor.consistent, true);
+  assert.equal(result.anchor.checked, true);
+});
+
+test('no anchor is reported as unchecked rather than consistent', () => {
+  const result = hardenedRetirementVerdict(build(keep()));
+  assert.equal(result.anchor.checked, false);
+  assert.equal(result.anchor.reason, 'NO_ANCHOR');
+});
+
+// --- legacy migration ----------------------------------------------------
+
+test('a legacy record without integrity fields is detected as unsealed', () => {
+  const legacy = JSON.stringify({state: 'RETIRED', retire: true, recordedAt: '2026-11-25T00:00:00Z'}) + '\n';
+  // Legacy records are skipped by verification, so the ledger is not tamper-evident.
+  const verification = verifyLedger(legacy);
+  assert.equal(verification.intact, true, 'it verifies, because there is nothing to check');
+  assert.equal(verification.records[0].integrityVersion, undefined);
+});
+
+test('migrating a legacy ledger preserves every record and seals them', () => {
+  const legacy = [
+    JSON.stringify({state: 'RETIRED', retire: true, recordedAt: '2026-11-25T00:00:00Z', commit: 'a'.repeat(40)}),
+    JSON.stringify({state: 'ACTIVE', retire: false, recordedAt: '2026-11-25T01:00:00Z'}),
+  ].join('\n') + '\n';
+
+  const migrated = migrateLegacyLedger(legacy);
+  assert.equal(migrated.migrated, true);
+  assert.equal(migrated.count, 2);
+
+  const verification = verifyLedger(migrated.text);
+  assert.equal(verification.state, INTEGRITY_STATES.INTACT);
+  assert.equal(verification.sequence, 2);
+  // The retirement survived migration - that is the point of migrating rather than
+  // rejecting a legacy ledger.
+  assert.equal(hardenedRetirementVerdict(migrated.text).retired, true);
+});
+
+test('a migrated record states that the seal post-dates its content', () => {
+  const legacy = JSON.stringify({state: 'RETIRED', retire: true}) + '\n';
+  const migrated = migrateLegacyLedger(legacy);
+  const record = JSON.parse(migrated.text.trim());
+  assert.equal(record.migration, 'SEALED_FROM_LEGACY');
+});
+
+test('migration is idempotent on an already-sealed ledger', () => {
+  const sealed = build(retire());
+  const again = migrateLegacyLedger(sealed);
+  assert.equal(again.migrated, false);
+  assert.equal(again.reason, 'ALREADY_SEALED');
+  assert.equal(again.text, sealed);
+});
+
+test('a malformed legacy ledger is not silently migrated', () => {
+  const result = migrateLegacyLedger('garbage\n{"state":"RETIRED"}\n');
+  assert.equal(result.migrated, false);
+  assert.equal(result.reason, 'LEGACY_MALFORMED');
 });
