@@ -180,12 +180,13 @@ registry.
 
 ## 8. Local verification
 
-`node --test tests/*.test.mjs` → **221 passing, 0 failing**, covering the bridge,
+`node --test tests/*.test.mjs` → **274 passing, 0 failing**, covering the bridge,
 probe, dispatch diagnosis, inventory, executor, workflow reader, schema
 provisioning, receipt publication, private status checks, durable journal,
 workflow pin resolution, workflow environment declaration, GitHub App
-authentication, the App manifest flow, installation mapping across two personal
-accounts, the activation wizard, the recovery ladder and the dispatch probe.
+authentication, the App manifest flow, installation mapping across two personal accounts, the activation wizard, the
+recovery ladder, the dispatch probe, live App acceptance, credential-exposure
+auditing, the diagnosis publisher and the fallback-retirement gate.
 
 ## 9. Zero-touch authentication
 
@@ -291,3 +292,74 @@ exactly once, and never treats a `403` as something a new token can fix.
 
 Neither is needed for the thirteen checks, which continue to pass on the PAT and
 deploy-key path.
+
+## 10. Zero Touch Activation — live acceptance
+
+Status: **ACCEPTED.** The App authenticates, renews, publishes the private check
+and dispatches, all against the real API, and the PAT fallback has been retired by
+the run's own evidence rather than by assumption.
+
+### 10.1 The App
+
+| Fact | Value |
+| --- | --- |
+| App | `Wolf Factory Automation`, `app_id 5913418` |
+| Owner | `insidethemarginmedia-cpu` (personal account; `type=User`) |
+| Permissions | `contents:read`, `metadata:read`, `checks:write`, `actions:write` |
+| Events | none |
+
+Both accounts are personal, so the App is installed **once per account**: two
+installations, two repositories. Three roles share one installation ID by design.
+
+### 10.2 Acceptance checks — 7/7 PASS
+
+| Check | Result | What proved it |
+| --- | --- | --- |
+| installation-mapping | PASS | App JWT listed both installations; each maps to its repository |
+| independent-tokens | PASS | three distinct tokens, each carrying exactly its own permissions |
+| exact-sha-read | PASS | reader read commit `8d319fc…`; returned SHA matched exactly |
+| private-check | PASS | publisher created a check run on that SHA via the App |
+| dispatch | PASS | dispatcher returned `204` and the run count changed |
+| renewal-restart | PASS | two distinct tokens per role, both `FRESH`, from a cold start |
+| expiry-denial | PASS | reader refused (`403`) at a write endpoint; expiry state machine correct |
+
+### 10.3 Defects the live run found that tests could not
+
+| Defect | Why 274 green tests missed it | Repair |
+| --- | --- | --- |
+| Renewal check could never pass | It judged the second token against a simulated hour-ahead clock while GitHub issues expiry from the real clock, so the token always landed exactly on its expiry. Only a real `expires_at` exposes that. | Restart modelled one second later; renewal proven by token identity |
+| Dispatcher installation did not cover the repository | A fixture keyed by role hid the fact that IDs are per *account* | Installation resolved by coverage; permission set still fixed per role |
+| Acceptance minted outside the resolver | It graded a path the workflow never runs | Acceptance mints through the same resolver |
+| Workflow target guessed | The workflows API does not report triggers | Trigger read from the workflow file with the reader credential |
+| Contents read with the dispatcher token | Looked like a bug; was least privilege working | Reader credential used for contents, dispatcher for dispatch |
+| Publisher mint belonged to the wrong job | A step `env:` cannot see its own run block's exports | Mint in a preceding step, handed over through `GITHUB_ENV` |
+
+Every one of these was invisible to the unit suite and obvious to the real API.
+That is the argument for live acceptance, stated as evidence rather than as a
+principle.
+
+### 10.4 Fallback retirement
+
+`fallbackRetirement: {state: RETIRE_FALLBACK, retire: true, reasons: [], evaluated: true}`
+
+The gate requires all of: an ACCEPTED report, every check PASS, `github-app` mode,
+and every role renewed from the App. Any missing or unreadable artefact returns
+`KEEP_FALLBACK` — ambiguity never withdraws a working credential.
+
+### 10.5 What the run reports
+
+| Field | Value |
+| --- | --- |
+| `authentication.mode` | `github-app` |
+| `authRecovery.state` | `VERIFIED` |
+| `appAcceptance` | `ACCEPTED`, 7 PASS / 0 BLOCKED / 0 FAIL |
+| `fallbackRetirement.state` | `RETIRE_FALLBACK` |
+| `privateStatusCheck.state` | `PUBLISHED` — via App `checks:write`, no status PAT |
+| `dispatchVerification.state` | `VERIFIED` |
+| `privateReceipt.state` | `PUBLISHED` |
+| `credentialsPrinted` | `false` |
+| `privateLogsPublished` / `privateSourcePublished` | `false` / `false` |
+| `inferencePerformed` / `refUpdated` | `false` / `false` |
+
+`EUR_SPEND=0`. No paid endpoint, no billing change, no artefact upload, no fork
+trigger. A test audits the workflow for all four exposure vectors on every run.

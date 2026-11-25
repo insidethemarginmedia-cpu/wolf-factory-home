@@ -100,6 +100,31 @@ export function readAcceptance(file) {
   };
 }
 
+/**
+ * Reconciles the two dispatch signals.
+ *
+ * There are two paths that exercise dispatch: the narrow probe, which only reads
+ * and must run early, and the full acceptance check, which actually dispatches.
+ * Reporting the probe's BLOCKED next to an acceptance PASS made the receipt
+ * contradict itself, so the stronger, later evidence wins - and the weaker one is
+ * still shown, never discarded.
+ */
+export function reconcileDispatch({probe, acceptance}) {
+  const acceptanceDispatch = (acceptance?.checks ?? []).find(entry => entry?.check === 'dispatch') ?? null;
+  if (acceptanceDispatch && acceptanceDispatch.state === 'PASS') {
+    return {
+      state: 'VERIFIED',
+      source: 'acceptance',
+      httpStatus: null,
+      reason: null,
+      // Kept for transparency: the early read-only probe could not list workflows.
+      earlierProbe: probe ? {state: probe.state, reason: probe.reason ?? null} : null,
+      duplicateSuppressed: probe?.duplicateSuppressed === true,
+    };
+  }
+  return probe ?? {state: 'NOT_REPORTED'};
+}
+
 export function readDispatchVerification(file) {
   const parsed = readJsonArtefact(file);
   if (parsed === null) return {state: 'NOT_REPORTED'};
@@ -764,7 +789,10 @@ async function main(argv) {
         })),
       })),
       authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
-      dispatchVerification: readDispatchVerification(process.env.WOLF_CI_DISPATCH_FILE),
+      dispatchVerification: reconcileDispatch({
+        probe: readDispatchVerification(process.env.WOLF_CI_DISPATCH_FILE),
+        acceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
+      }),
       authRecovery: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
       appAcceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
       fallbackRetirement: readRetirementDecision({

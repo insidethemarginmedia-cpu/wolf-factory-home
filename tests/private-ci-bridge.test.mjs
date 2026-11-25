@@ -458,3 +458,16 @@ test('a blocked acceptance is reported as blocked, never as accepted', async () 
   assert.equal(result.accepted, false);
   assert.equal(result.checks[0].reason, 'ACTIONS_WRITE_ABSENT');
 });
+
+test('a verified acceptance dispatch supersedes a blocked early probe, without discarding it', async () => {
+  const {reconcileDispatch} = await import('../scripts/private-ci-bridge.mjs');
+  const probe = {state: 'BLOCKED', reason: 'WORKFLOW_LIST_UNAVAILABLE', duplicateSuppressed: false};
+  const acceptance = {checks: [{check: 'dispatch', state: 'PASS'}]};
+  const result = reconcileDispatch({probe, acceptance});
+  assert.equal(result.state, 'VERIFIED');
+  assert.equal(result.source, 'acceptance');
+  assert.equal(result.earlierProbe.state, 'BLOCKED', 'the weaker evidence is still shown');
+
+  // Without an acceptance pass, the probe stands as-is.
+  assert.equal(reconcileDispatch({probe, acceptance: {checks: [{check: 'dispatch', state: 'BLOCKED'}]}}).state, 'BLOCKED');
+});
