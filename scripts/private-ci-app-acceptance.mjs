@@ -268,11 +268,35 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
         .filter(entry => typeof entry?.path === 'string' && entry.path.startsWith('.github/workflows/'))
         .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id)
       : [];
-    const chosen = candidates[0];
+
+    // Age is not the criterion: a workflow is dispatchable only if it declares a
+    // workflow_dispatch trigger. Picking the oldest took test.yml, which has none,
+    // and produced 'Workflow does not have workflow_dispatch trigger'.
+    let chosen = null;
+    const examined = [];
+    for (const candidate of candidates) {
+      const detail = await call(`${API}/repos/${repository}/actions/workflows/${candidate.id}`, token, {}, fetchImpl);
+      const dispatchable = detail.ok && Array.isArray(detail.body?.workflow_dispatch_inputs);
+      examined.push({path: candidate.path, dispatchable});
+      if (dispatchable) {
+        chosen = candidate;
+        break;
+      }
+    }
+    if (!chosen) {
+      return {
+        check: 'dispatch',
+        state: ACCEPTANCE_STATES.BLOCKED,
+        reason: 'NO_DISPATCHABLE_WORKFLOW',
+        configuredWorkflow: workflow,
+        workflowsVisible: candidates.length,
+        examined,
+      };
+    }
     if (chosen) {
       target = chosen.id;
       base = `${API}/repos/${repository}/actions/workflows/${target}`;
-      resolved = {workflow: chosen.path, workflowId: chosen.id, discovered: true, configured: workflow};
+      resolved = {workflow: chosen.path, workflowId: chosen.id, discovered: true, configured: workflow, examined};
       before = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
     } else {
       return {

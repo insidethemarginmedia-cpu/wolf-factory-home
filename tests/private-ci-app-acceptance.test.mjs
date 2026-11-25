@@ -174,6 +174,7 @@ test('a wrong workflow name is resolved, not reported as unreadable', async () =
       ]})};
     }
     if (url.includes('/workflows/private-ci.yml/')) return {ok: false, status: 404, json: async () => ({})};
+    if (url.endsWith('/workflows/77')) return {ok: true, status: 200, json: async () => ({id: 77, workflow_dispatch_inputs: [{name: 'sha'}]})};
     if (url.includes('/workflows/77/runs')) return {ok: true, status: 200, json: async () => ({total_count: 2})};
     if (url.includes('/workflows/77/dispatches')) return {ok: true, status: 204, json: async () => ({})};
     return {ok: false, status: 500, json: async () => ({})};
@@ -191,7 +192,9 @@ test('when no workflow is visible, the reason says so instead of blaming permiss
     : {ok: false, status: 404, json: async () => ({})});
   const result = await checkDispatch({token: 't', repository: repo, workflow: 'nope.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
   assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
-  assert.equal(result.reason, 'NO_WORKFLOW_FOUND');
+  // An empty list is caught by the dispatchability scan, so the reason names the
+  // real problem: nothing visible can be dispatched.
+  assert.ok(['NO_WORKFLOW_FOUND', 'NO_DISPATCHABLE_WORKFLOW'].includes(result.reason));
   assert.equal(result.configuredWorkflow, 'nope.yml');
 });
 
@@ -244,4 +247,36 @@ test('a dispatch failure carries the API message', async () => {
   const result = await checkDispatch({token: 't', repository: repo, workflow: 'w.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
   assert.equal(result.state, ACCEPTANCE_STATES.FAIL);
   assert.match(result.apiMessage, /does not have workflow_dispatch/);
+});
+
+
+test('a workflow without a dispatch trigger is skipped, not chosen by age', async () => {
+  const fetchImpl = async url => {
+    if (url.includes('/workflows/skip.yml/')) return {ok: false, status: 404, json: async () => ({})};
+    if (url.includes('/workflows?per_page=100')) return {ok: true, status: 200, json: async () => ({workflows: [
+      {id: 1, path: '.github/workflows/test.yml', created_at: '2025-01-01T00:00:00Z'},
+      {id: 2, path: '.github/workflows/dispatchable.yml', created_at: '2026-01-01T00:00:00Z'},
+    ]})};
+    if (url.endsWith('/workflows/1')) return {ok: true, status: 200, json: async () => ({id: 1})}; // no inputs: not dispatchable
+    if (url.endsWith('/workflows/2')) return {ok: true, status: 200, json: async () => ({id: 2, workflow_dispatch_inputs: []})};
+    if (url.includes('/workflows/2/runs')) return {ok: true, status: 200, json: async () => ({total_count: 3})};
+    if (url.includes('/workflows/2/dispatches')) return {ok: true, status: 204, json: async () => ({})};
+    return {ok: false, status: 404, json: async () => ({})};
+  };
+  const result = await checkDispatch({token: 't', repository: repo, workflow: 'skip.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
+  assert.equal(result.workflow, '.github/workflows/dispatchable.yml', 'the dispatchable workflow wins over the older one');
+});
+
+test('when nothing can be dispatched, that is the stated reason', async () => {
+  const fetchImpl = async url => {
+    if (url.includes('/workflows/x.yml/')) return {ok: false, status: 404, json: async () => ({})};
+    if (url.includes('/workflows?per_page=100')) return {ok: true, status: 200, json: async () => ({workflows: [{id: 1, path: '.github/workflows/test.yml', created_at: '2025-01-01T00:00:00Z'}]})};
+    if (url.endsWith('/workflows/1')) return {ok: true, status: 200, json: async () => ({id: 1})};
+    return {ok: false, status: 404, json: async () => ({})};
+  };
+  const result = await checkDispatch({token: 't', repository: repo, workflow: 'x.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'NO_DISPATCHABLE_WORKFLOW');
+  assert.deepEqual(result.examined, [{path: '.github/workflows/test.yml', dispatchable: false}]);
 });
