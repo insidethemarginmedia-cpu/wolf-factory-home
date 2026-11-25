@@ -118,6 +118,16 @@ test('the resolver publishes its verdict onto the receipt', () => {
 test('the target output path is job-level, so the receipt builder can read it', () => {
   // Declared only in the resolver step, the path was invisible to the step that
   // builds the receipt: the resolution happened and published as NOT_REPORTED.
-  const envBlock = text.slice(text.indexOf('\n    env:\n'), text.indexOf('\n    steps:'));
-  assert.match(envBlock, /WOLF_CI_TARGET_OUTPUT:/, 'the path must be visible to every step in the job');
+  // Sized from the execute job's own env block, located by its distinctive first
+  // entry rather than by the first `env:` in the file, which belongs to another job.
+  const jobStart = text.indexOf('\n  execute:');
+  assert.ok(jobStart > 0, 'the execute job must exist');
+  // Anchored on the execute job, because the probe job opens with the same first
+  // variable and would match a naive search for the first `env:` block.
+  const envStart = text.indexOf('    env:\n', jobStart);
+  assert.ok(envStart > 0, 'the execute job must have a job-level env block');
+  const envEnd = text.indexOf('    steps:', envStart);
+  const envBlock = text.slice(envStart, envEnd);
+  // Six-space indent is job level; ten-space is a step. The distinction is the bug.
+  assert.match(envBlock, /^      WOLF_CI_TARGET_OUTPUT:/m, 'the path must be job-level, not step-level');
 });
