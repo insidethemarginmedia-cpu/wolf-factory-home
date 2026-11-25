@@ -431,33 +431,6 @@ jobs:
           set -euo pipefail
           node --test tests/private-ci-bridge.test.mjs tests/private-ci-inventory.test.mjs tests/private-ci-execute.test.mjs tests/private-ci-publish-receipt.test.mjs tests/private-ci-diagnose.test.mjs tests/workflow-pins-resolve.test.mjs tests/private-controller-preflight-pin.test.mjs tests/workflow-env-declared.test.mjs tests/private-ci-journal.test.mjs
           echo PRIVATE_CI_EXECUTOR_CONTRACT=PASS
-      - name: Resolve the authoritative PR head and compare it to the pin
-        id: private_head
-        if: always()
-        continue-on-error: true
-        shell: bash
-        # The workflow executes one immutable SHA, which is correct. The failure mode
-        # is the inverse: the pin stays behind while the PR moves, runs stay green,
-        # and stale acceptance passes as current.
-        #
-        # An earlier version compared the pin to the *default branch*, which a PR
-        # head never equals - so it would have reported STALE on a perfectly current
-        # pin, forever. A check that always fires is a check nobody reads. This
-        # resolves the actual PR head and reports the relation to it, plus tree
-        # identity so "same content" and "same commit" stay distinct.
-        #
-        # It never changes the pin and never executes the PR head.
-        env:
-          WOLF_CI_APP_READER_TOKEN: ${{ env.WOLF_CI_APP_READER_TOKEN }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
-          WOLF_CI_PR: '743'
-          WOLF_CI_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
-          WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json
-        run: |
-          set -euo pipefail
-          node scripts/private-ci-resolve-target-cli.mjs resolve --out "$WOLF_CI_TARGET_OUTPUT"
-          test -s "$WOLF_CI_TARGET_OUTPUT" || echo '{"target":{"state":"BLOCKED"},"verdict":{"acceptanceValid":false}}' > "$WOLF_CI_TARGET_OUTPUT"
       - name: Mint the reader installation token with the official action
         id: app_reader
         # Declarative alternative to the CLI path below. It is skipped unless the
@@ -510,6 +483,33 @@ jobs:
           else
             echo PRIVATE_CI_READER_TOKEN_EXPORTED=NO
           fi
+      - name: Resolve the authoritative PR head and compare it to the pin
+        id: private_head
+        if: always()
+        continue-on-error: true
+        shell: bash
+        # The workflow executes one immutable SHA, which is correct. The failure mode
+        # is the inverse: the pin stays behind while the PR moves, runs stay green,
+        # and stale acceptance passes as current.
+        #
+        # An earlier version compared the pin to the *default branch*, which a PR
+        # head never equals - so it would have reported STALE on a perfectly current
+        # pin, forever. A check that always fires is a check nobody reads. This
+        # resolves the actual PR head and reports the relation to it, plus tree
+        # identity so "same content" and "same commit" stay distinct.
+        #
+        # It never changes the pin and never executes the PR head.
+        env:
+          WOLF_CI_APP_READER_TOKEN: ${{ env.WOLF_CI_APP_READER_TOKEN }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
+          WOLF_CI_PR: '743'
+          WOLF_CI_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
+          WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-resolve-target-cli.mjs resolve --out "$WOLF_CI_TARGET_OUTPUT"
+          test -s "$WOLF_CI_TARGET_OUTPUT" || echo '{"target":{"state":"BLOCKED"},"verdict":{"acceptanceValid":false}}' > "$WOLF_CI_TARGET_OUTPUT"
       - name: Clone the private commit at its immutable SHA over the authorized deploy key
         shell: bash
         env:

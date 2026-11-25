@@ -96,3 +96,21 @@ test('the hydration step does not fail the run when no ledger exists', () => {
   assert.match(head, /continue-on-error:\s*true/, 'a missing ledger must not fail the run');
   assert.match(String(hydrate.run), /RETIREMENT_LEDGER=ABSENT/);
 });
+
+test('the target resolver runs after the reader credential is established', () => {
+  // The resolver needs a reader token. Declared before the authentication step it
+  // can only ever report NO_READER_CREDENTIAL, and the receipt then publishes
+  // NOT_REPORTED - a resolution step that resolves nothing, on a green run.
+  const auth = execute.steps.findIndex(step => /Authenticate to the private Factory/.test(step.name ?? ''));
+  const resolve = execute.steps.findIndex(step => /Resolve the authoritative PR head/.test(step.name ?? ''));
+  assert.ok(auth >= 0, 'the authentication step must exist');
+  assert.ok(resolve >= 0, 'the resolver step must exist');
+  assert.ok(resolve > auth, `resolver is step ${resolve + 1} but authentication is step ${auth + 1}`);
+});
+
+test('the resolver publishes its verdict onto the receipt', () => {
+  // A resolved target that never reaches the receipt is a check nobody can read.
+  const bridge = fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8');
+  assert.match(bridge, /acceptanceTarget:/);
+  assert.match(bridge, /acceptanceValid/);
+});
