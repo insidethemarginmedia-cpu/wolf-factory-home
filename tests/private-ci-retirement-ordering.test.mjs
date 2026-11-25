@@ -131,3 +131,27 @@ test('the target output path is job-level, so the receipt builder can read it', 
   // Six-space indent is job level; ten-space is a step. The distinction is the bug.
   assert.match(envBlock, /^      WOLF_CI_TARGET_OUTPUT:/m, 'the path must be job-level, not step-level');
 });
+
+test('the ledger is sealed and anchored in the same step that publishes it', () => {
+  // A published ledger without its anchor has no completeness evidence - a later run
+  // could truncate it and the truncation would be invisible.
+  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision so later runs inherit it');
+  const body = String(persist.run);
+  const seal = body.indexOf('private-ci-ledger-seal-cli.mjs');
+  const writeLedger = body.indexOf('contents/.wolf-ci/retirement-ledger.jsonl');
+  const writeAnchor = body.indexOf('contents/.wolf-ci/retirement-head.json');
+  assert.ok(seal >= 0, 'the ledger must be sealed before publication');
+  assert.ok(writeLedger >= 0 && writeAnchor >= 0, 'both the ledger and its anchor must be published');
+  assert.ok(seal < writeLedger, 'sealing must happen before the ledger is written to the branch');
+});
+
+test('the previous anchor is fetched before being overwritten', () => {
+  // Overwriting the anchor without reading it discards the only evidence a truncation
+  // could be compared against.
+  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision so later runs inherit it');
+  const body = String(persist.run);
+  const fetchPrev = body.indexOf('retirement-head.json?ref=wolf-ci-retirement');
+  const writeAnchor = body.indexOf('-X PUT');
+  assert.ok(fetchPrev >= 0, 'the previous anchor must be fetched');
+  assert.ok(fetchPrev < writeAnchor, 'it must be fetched before the first write');
+});

@@ -867,10 +867,46 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           WOLF_CI_RETIREMENT_FILE: /tmp/wolf-ci-retirement.json
           WOLF_CI_RETIREMENT_LEDGER_FILE: .wolf-ci/retirement-ledger.jsonl
+          WOLF_CI_RETIREMENT_ANCHOR_FILE: .wolf-ci/retirement-head.json
+          WOLF_CI_RETIREMENT_ANCHOR_IN: /tmp/wolf-ci-retirement-head-prev.json
         run: |
           set -euo pipefail
           node scripts/private-ci-app-auth-cli.mjs retirement-record
+
+          # Fetch the previously published anchor first, so the seal can compare the
+          # ledger to it and report a truncation rather than overwriting the evidence
+          # of one.
+          if gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json?ref=wolf-ci-retirement" --jq .content 2>/dev/null | base64 -d > "$WOLF_CI_RETIREMENT_ANCHOR_IN" 2>/dev/null; then
+            echo RETIREMENT_ANCHOR_PREVIOUS=FETCHED
+          else
+            rm -f "$WOLF_CI_RETIREMENT_ANCHOR_IN"
+            echo RETIREMENT_ANCHOR_PREVIOUS=ABSENT
+          fi
+
+          # Seal before publishing: a legacy record is not tamper-evident, and the
+          # anchor is what makes truncation detectable by a later run.
+          node scripts/private-ci-ledger-seal-cli.mjs seal \
+            --in "$WOLF_CI_RETIREMENT_LEDGER_FILE" \
+            --anchor-out "$WOLF_CI_RETIREMENT_ANCHOR_FILE"
           test -s "$WOLF_CI_RETIREMENT_LEDGER_FILE" || { echo RETIREMENT_LEDGER_WRITE=NONE; exit 0; }
+
+          # Publish the anchor alongside the ledger. A ledger without its anchor has
+          # no completeness evidence, so the two are written in the same step.
+          if test -s "$WOLF_CI_RETIREMENT_ANCHOR_FILE"; then
+            anchor_encoded=$(base64 -w0 "$WOLF_CI_RETIREMENT_ANCHOR_FILE")
+            anchor_existing=$(gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json?ref=wolf-ci-retirement" --jq .sha 2>/dev/null || true)
+            if test -n "$anchor_existing"; then
+              gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json" \
+                -f message="chore(ci): advance the retirement head anchor" \
+                -f content="$anchor_encoded" -f sha="$anchor_existing" -f branch=wolf-ci-retirement >/dev/null \
+                && echo RETIREMENT_ANCHOR_WRITE=UPDATED || echo RETIREMENT_ANCHOR_WRITE=FAILED
+            else
+              gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json" \
+                -f message="chore(ci): publish the retirement head anchor" \
+                -f content="$anchor_encoded" -f branch=wolf-ci-retirement >/dev/null \
+                && echo RETIREMENT_ANCHOR_WRITE=CREATED || echo RETIREMENT_ANCHOR_WRITE=FAILED
+            fi
+          fi
 
           # The contents API writes files into an existing branch; it cannot create
           # one. An earlier revision assumed otherwise and failed with a 404 that
