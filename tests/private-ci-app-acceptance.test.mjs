@@ -8,6 +8,17 @@ import {
 } from '../scripts/private-ci-app-acceptance.mjs';
 
 const SHA = 'a'.repeat(40);
+
+// Builds a contents-API response for a workflow file declaring workflow_dispatch.
+const contents = (names = ['sha', 'pr']) => ({
+  ok: true,
+  status: 200,
+  json: async () => ({
+    encoding: 'base64',
+    content: Buffer.from(['name: w', 'on:', '  workflow_dispatch:', ...(names.length ? ['    inputs:', ...names.map(n => '      ' + n + ': {required: false}')] : [])].join('\n')).toString('base64'),
+  }),
+});
+
 const repo = 'donraposo1-source/project-wolf';
 // A throwaway RSA key: the loader rejects anything that is not a real RSA PEM,
 // which is why a placeholder string cannot stand in here.
@@ -65,7 +76,7 @@ test('a dispatch reports whether it actually created a run', async () => {
   let runs = 4;
   const fetchImpl = async (url, init = {}) => {
     if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: runs})};
-    if (url.endsWith('/workflows/private-ci.yml')) return {ok: true, status: 200, json: async () => ({workflow_dispatch_inputs: [{name: 'sha'}, {name: 'pr'}]})};
+    if (url.includes('/contents/')) return contents(['sha', 'pr']);
     if (url.includes('/dispatches')) {
       runs += 1;
       return {ok: true, status: 204, json: async () => ({})};
@@ -174,7 +185,7 @@ test('a wrong workflow name is resolved, not reported as unreadable', async () =
       ]})};
     }
     if (url.includes('/workflows/private-ci.yml/')) return {ok: false, status: 404, json: async () => ({})};
-    if (url.endsWith('/workflows/77')) return {ok: true, status: 200, json: async () => ({id: 77, workflow_dispatch_inputs: [{name: 'sha'}]})};
+    if (url.includes('/contents/')) return contents(['sha']);
     if (url.includes('/workflows/77/runs')) return {ok: true, status: 200, json: async () => ({total_count: 2})};
     if (url.includes('/workflows/77/dispatches')) return {ok: true, status: 204, json: async () => ({})};
     return {ok: false, status: 500, json: async () => ({})};
@@ -203,7 +214,7 @@ test('only declared workflow inputs are sent, and an undeclared one is never gue
   const bodies = [];
   const fetchImpl = async (url, init = {}) => {
     if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: 1})};
-    if (url.endsWith('/workflows/schema.yml')) return {ok: true, status: 200, json: async () => ({workflow_dispatch_inputs: [{name: 'sha'}]})};
+    if (url.includes('/contents/')) return contents(['sha']);
     if (url.includes('/dispatches')) {
       bodies.push(JSON.parse(init.body));
       return {ok: true, status: 204, json: async () => ({})};
@@ -221,7 +232,7 @@ test('a 422 on declared inputs is retried once with none, and the drop is report
   const bodies = [];
   const fetchImpl = async (url, init = {}) => {
     if (url.includes('/runs?per_page=1')) return {ok: true, status: 200, json: async () => ({total_count: 1})};
-    if (url.endsWith('/workflows/strict.yml')) return {ok: true, status: 200, json: async () => ({workflow_dispatch_inputs: [{name: 'sha'}]})};
+    if (url.includes('/contents/')) return contents(['sha']);
     if (url.includes('/dispatches')) {
       bodies.push(JSON.parse(init.body));
       return bodies.length === 1
@@ -257,8 +268,10 @@ test('a workflow without a dispatch trigger is skipped, not chosen by age', asyn
       {id: 1, path: '.github/workflows/test.yml', created_at: '2025-01-01T00:00:00Z'},
       {id: 2, path: '.github/workflows/dispatchable.yml', created_at: '2026-01-01T00:00:00Z'},
     ]})};
-    if (url.endsWith('/workflows/1')) return {ok: true, status: 200, json: async () => ({id: 1})}; // no inputs: not dispatchable
-    if (url.endsWith('/workflows/2')) return {ok: true, status: 200, json: async () => ({id: 2, workflow_dispatch_inputs: []})};
+    if (url.includes('/contents/.github/workflows/test.yml')) {
+      return {ok: true, status: 200, json: async () => ({encoding: 'base64', content: Buffer.from('name: t\non:\n  push:\n').toString('base64')})};
+    }
+    if (url.includes('/contents/')) return contents([]);
     if (url.includes('/workflows/2/runs')) return {ok: true, status: 200, json: async () => ({total_count: 3})};
     if (url.includes('/workflows/2/dispatches')) return {ok: true, status: 204, json: async () => ({})};
     return {ok: false, status: 404, json: async () => ({})};
@@ -280,4 +293,11 @@ test('when nothing can be dispatched, that is the stated reason', async () => {
   assert.equal(result.reason, 'NO_DISPATCHABLE_WORKFLOW');
   assert.equal(result.examined[0].path, '.github/workflows/test.yml');
   assert.equal(result.examined[0].dispatchable, false);
+});
+
+test('the input parser does not treat the `inputs` mapping key as an input', async () => {
+  const {parseInputNames} = await import('../scripts/private-ci-app-acceptance.mjs');
+  const block = '    inputs:\n      sha:\n        required: false\n      pr:\n        required: false\n';
+  assert.deepEqual(parseInputNames(block), ['sha', 'pr']);
+  assert.deepEqual(parseInputNames('    description: no inputs here'), []);
 });

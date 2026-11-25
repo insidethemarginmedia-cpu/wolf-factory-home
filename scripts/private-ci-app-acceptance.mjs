@@ -18,6 +18,18 @@ import {mintRoleToken} from './private-ci-app-auth-cli.mjs';
 
 const API = 'https://api.github.com';
 
+/**
+ * Extracts declared input names from a `workflow_dispatch` block.
+ * `inputs` is the mapping key, not an input, so it is excluded - a distinction
+ * that produced a spurious 'inputs' entry the first time.
+ */
+export function parseInputNames(block = '') {
+  if (!/inputs\s*:/.test(block)) return [];
+  return [...String(block).matchAll(/^\s{4,10}([a-z_][a-z0-9_]*)\s*:/gim)]
+    .map(match => match[1])
+    .filter(name => name !== 'inputs');
+}
+
 export const ACCEPTANCE_STATES = Object.freeze({PASS: 'PASS', BLOCKED: 'BLOCKED', FAIL: 'FAIL', SKIPPED: 'SKIPPED'});
 
 const jsonHeaders = token => ({
@@ -270,20 +282,29 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
       : [];
 
     // Age is not the criterion: a workflow is dispatchable only if it declares a
-    // workflow_dispatch trigger. Picking the oldest took test.yml, which has none,
-    // and produced 'Workflow does not have workflow_dispatch trigger'.
+    // workflow_dispatch trigger.
+    //
+    // The workflows API does not report triggers, so the declaration is read from
+    // the workflow file itself - the reader role has contents:read, which is
+    // exactly the authority needed. Only a boolean leaves this function: the file
+    // body is inspected and discarded, so no private source is retained or
+    // published.
     let chosen = null;
+    let chosenSchema = null;
     const examined = [];
     for (const candidate of candidates) {
-      const detail = await call(`${API}/repos/${repository}/actions/workflows/${candidate.id}`, token, {}, fetchImpl);
-      const dispatchable = detail.ok && Array.isArray(detail.body?.workflow_dispatch_inputs);
-      // A workflow is dispatchable when GitHub exposes a dispatch-inputs array for
-      // it - which it does for a workflow_dispatch trigger, even with no inputs.
-      // The raw status is recorded so a permissions failure is not mistaken for a
-      // missing trigger.
-      examined.push({path: candidate.path, dispatchable, httpStatus: detail.status ?? null, exposesInputs: Array.isArray(detail.body?.workflow_dispatch_inputs)});
-      if (dispatchable) {
+      const file = await call(`${API}/repos/${repository}/contents/${candidate.path}?ref=${encodeURIComponent(ref)}`, token, {}, fetchImpl);
+      const text = file.ok && typeof file.body?.content === 'string'
+        ? Buffer.from(file.body.content, file.body.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8')
+        : null;
+      const declares = text === null ? false : /^\s{0,4}workflow_dispatch\s*:/m.test(text);
+      examined.push({path: candidate.path, dispatchable: declares, httpStatus: file.status ?? null, fileReadable: text !== null});
+      if (declares) {
         chosen = candidate;
+        // Declared inputs are parsed from the same file, so the dispatch sends
+        // only what the workflow accepts.
+        const inputsBlock = text.match(/workflow_dispatch\s*:\s*\n([\s\S]*?)(?=\n\S|$)/);
+        chosenSchema = parseInputNames(inputsBlock ? inputsBlock[1] : '');
         break;
       }
     }
@@ -300,7 +321,7 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
     if (chosen) {
       target = chosen.id;
       base = `${API}/repos/${repository}/actions/workflows/${target}`;
-      resolved = {workflow: chosen.path, workflowId: chosen.id, discovered: true, configured: workflow, examined};
+      resolved = {workflow: chosen.path, workflowId: chosen.id, discovered: true, configured: workflow, examined, schema: chosenSchema};
       before = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
     } else {
       return {
@@ -328,10 +349,19 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
   // Inputs must match what the workflow declares. Sending an undeclared input is a
   // 422, and the error does not say which one is wrong - so the declaration is
   // read first and only declared inputs are sent.
-  const definition = await call(`${base}`, token, {}, fetchImpl);
-  const declared = Array.isArray(definition.body?.workflow_dispatch_inputs)
-    ? definition.body.workflow_dispatch_inputs
-    : null;
+  // Prefer the schema parsed from the workflow file during discovery; otherwise
+  // read the pinned workflow's own declaration, which needs no extra permission.
+  let declared = null;
+  if (Array.isArray(resolved.schema)) {
+    declared = resolved.schema.map(name => ({name}));
+  } else {
+    const own = await call(`${API}/repos/${repository}/contents/.github/workflows/${workflow}?ref=${encodeURIComponent(ref)}`, token, {}, fetchImpl);
+    if (own.ok && typeof own.body?.content === 'string') {
+      const text = Buffer.from(own.body.content, 'base64').toString('utf8');
+      const block = text.match(/workflow_dispatch\s*:\s*\n([\s\S]*?)(?=\n\S|$)/);
+      declared = parseInputNames(block ? block[1] : '').map(name => ({name}));
+    }
+  }
   const wanted = {sha: sha ?? '', pr: pr ?? '', mode: 'acceptance'};
   const inputs = {};
   for (const [name, value] of Object.entries(wanted)) {
