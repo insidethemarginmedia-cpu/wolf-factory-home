@@ -162,3 +162,34 @@ test('acceptance requires every check to pass; one blocked check blocks the whol
 
   assert.equal(summarise([]).accepted, false, 'an empty run is not acceptance');
 });
+
+test('a wrong workflow name is resolved, not reported as unreadable', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push(url);
+    if (url.includes('/workflows?per_page=100')) {
+      return {ok: true, status: 200, json: async () => ({workflows: [
+        {id: 77, path: '.github/workflows/private-ci.yml', created_at: '2026-01-01T00:00:00Z'},
+      ]})};
+    }
+    if (url.includes('/workflows/private-ci.yml/')) return {ok: false, status: 404, json: async () => ({})};
+    if (url.includes('/workflows/77/runs')) return {ok: true, status: 200, json: async () => ({total_count: 2})};
+    if (url.includes('/workflows/77/dispatches')) return {ok: true, status: 204, json: async () => ({})};
+    return {ok: false, status: 500, json: async () => ({})};
+  };
+  const result = await checkDispatch({token: 't', repository: repo, workflow: 'private-ci.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
+  assert.equal(result.workflowResolved, true);
+  assert.equal(result.workflow, '.github/workflows/private-ci.yml');
+  assert.ok(calls.some(url => url.includes('/workflows?per_page=100')), 'discovery was actually performed');
+});
+
+test('when no workflow is visible, the reason says so instead of blaming permissions', async () => {
+  const fetchImpl = async url => (url.includes('/workflows?per_page=100')
+    ? {ok: true, status: 200, json: async () => ({workflows: []})}
+    : {ok: false, status: 404, json: async () => ({})});
+  const result = await checkDispatch({token: 't', repository: repo, workflow: 'nope.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl});
+  assert.equal(result.state, ACCEPTANCE_STATES.BLOCKED);
+  assert.equal(result.reason, 'NO_WORKFLOW_FOUND');
+  assert.equal(result.configuredWorkflow, 'nope.yml');
+});

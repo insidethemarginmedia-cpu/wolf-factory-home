@@ -44,7 +44,10 @@ export function buildDiagnosisSummary({renewal = null, acceptance = null} = {}) 
   } else {
     lines.push('acceptance state: ' + String(acceptance.state) + ' accepted=' + acceptance.accepted);
     for (const check of acceptance.checks ?? []) {
-      lines.push('  ' + check.check + ' = ' + check.state + (check.reason ? ' (' + check.reason + ')' : ''));
+      lines.push('  ' + check.check + ' = ' + check.state + (check.reason ? ' (' + check.reason + ')' : '')
+        + (check.httpStatus ? ' http=' + check.httpStatus : '')
+        + (check.workflow ? ' workflow=' + check.workflow : '')
+        + (check.apiMessage ? ' api=' + check.apiMessage : ''));
       if (check.problems?.length) lines.push('    problems: ' + JSON.stringify(check.problems).slice(0, 900));
       if (check.missing?.length) lines.push('    missing: ' + JSON.stringify(check.missing).slice(0, 400));
       if (check.overScoped?.length) lines.push('    overScoped: ' + JSON.stringify(check.overScoped).slice(0, 400));

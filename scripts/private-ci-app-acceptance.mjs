@@ -252,11 +252,48 @@ export async function checkPrivateCheckPublication({token, repository, sha, name
 export async function checkDispatch({token, repository, workflow, ref = 'main', sha, pr, settleMs = 6000, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), fetchImpl = globalThis.fetch} = {}) {
   if (!token) return {check: 'dispatch', state: ACCEPTANCE_STATES.BLOCKED, reason: 'DISPATCHER_TOKEN_ABSENT'};
   if (!workflow) return {check: 'dispatch', state: ACCEPTANCE_STATES.BLOCKED, reason: 'WORKFLOW_NOT_RESOLVED'};
-  const base = `${API}/repos/${repository}/actions/workflows/${workflow}`;
 
-  const before = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
+  // The workflow is named, not assumed to exist. If the configured name is wrong
+  // the run used to report RUNS_UNREADABLE, which reads like a permission problem
+  // and is not one. Resolve the target instead, and say which one was chosen.
+  let target = workflow;
+  let resolved = {workflow: target, discovered: false};
+  let base = `${API}/repos/${repository}/actions/workflows/${target}`;
+  let before = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
+
+  if (!before.ok && before.status === 404) {
+    const listed = await call(`${API}/repos/${repository}/actions/workflows?per_page=100`, token, {}, fetchImpl);
+    const candidates = Array.isArray(listed.body?.workflows)
+      ? listed.body.workflows
+        .filter(entry => typeof entry?.path === 'string' && entry.path.startsWith('.github/workflows/'))
+        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id)
+      : [];
+    const chosen = candidates[0];
+    if (chosen) {
+      target = chosen.id;
+      base = `${API}/repos/${repository}/actions/workflows/${target}`;
+      resolved = {workflow: chosen.path, workflowId: chosen.id, discovered: true, configured: workflow};
+      before = await call(`${base}/runs?per_page=1`, token, {}, fetchImpl);
+    } else {
+      return {
+        check: 'dispatch',
+        state: ACCEPTANCE_STATES.BLOCKED,
+        reason: 'NO_WORKFLOW_FOUND',
+        httpStatus: before.status,
+        configuredWorkflow: workflow,
+        workflowsVisible: Array.isArray(listed.body?.workflows) ? listed.body.workflows.length : 0,
+      };
+    }
+  }
+
   if (!before.ok) {
-    return {check: 'dispatch', state: before.status === 403 || before.status === 404 ? ACCEPTANCE_STATES.BLOCKED : ACCEPTANCE_STATES.FAIL, reason: 'RUNS_UNREADABLE', httpStatus: before.status};
+    return {
+      check: 'dispatch',
+      state: before.status === 403 || before.status === 404 ? ACCEPTANCE_STATES.BLOCKED : ACCEPTANCE_STATES.FAIL,
+      reason: 'RUNS_UNREADABLE',
+      httpStatus: before.status,
+      workflow: resolved.workflow,
+    };
   }
   const runsBefore = before.body?.total_count ?? null;
 
@@ -283,6 +320,8 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
     state: ACCEPTANCE_STATES.PASS,
     reason: null,
     httpStatus: first,
+    workflow: resolved.workflow,
+    workflowResolved: resolved.discovered === true,
     runsBefore,
     runsAfterFirst,
     createdRun: runsBefore !== null && runsAfterFirst !== null ? runsAfterFirst > runsBefore : null,
