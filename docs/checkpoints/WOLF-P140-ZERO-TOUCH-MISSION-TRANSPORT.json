@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "checkpoint": "WOLF-P140-ZERO-TOUCH-MISSION-TRANSPORT",
+  "recordedAt": "2026-11-25T12:10:00.000Z",
+  "branch": "arena/38f3a7f7-wolf-factory-home",
+  "head": "12e444a",
+  "tests": {"pass": 323, "fail": 0, "files": 33},
+  "economics": {
+    "EUR_SPEND": 0,
+    "COST_UNKNOWN": "DENY",
+    "PAID_FALLBACK": "DENY",
+    "TRIAL_CREDIT": "DENY",
+    "UNVERIFIED_BILLING": "DENY",
+    "UNVERIFIED_PROVIDER": "DENY",
+    "JULES": "PROHIBITED",
+    "paidEndpointsUsed": 0,
+    "billingChanges": 0
+  },
+  "reconciliation": {
+    "priorConclusion": "main is an orphan root; no merge possible",
+    "correction": "FALSE. The sandbox clone was shallow (is-shallow-repository=true, .git/shallow cut at 20f1872 and 3742bcc), so merge-base could not see the common ancestor.",
+    "method": "git fetch --unshallow",
+    "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+    "ahead": 251,
+    "behind": 2,
+    "matchesKaiReport": true,
+    "actionTaken": "Retracted in both docs/ integration and evidence files."
+  },
+  "durableRetirement": {
+    "problem": "WOLF_CI_RETIRE_PAT is scoped to one run; a fresh run silently regained the PAT fallback. selectCredential was also not the only PAT path: private-ci-bridge.mjs reads the PAT directly at 5 sites, and the probe step ran before the retirement step.",
+    "solution": [
+      "Durable ledger on branch wolf-ci-retirement (append-only, never the default branch)",
+      "Hydration as the first step after checkout in the execute job, before any PAT-consuming step",
+      "selectCredential consults per-run flag OR ledger; either closes the fallback"
+    ],
+    "ledgerRecord": {
+      "state": "RETIRED",
+      "recordedAt": "2026-11-25T11:40:44.154Z",
+      "commit": "a34df428cc22130131e027e205147142d83042ca",
+      "runId": "45605370670",
+      "credentialsPrinted": false
+    },
+    "liveProof": {
+      "method": "run with WOLF_CI_RETIRE_PAT forced empty, reading the real ledger branch",
+      "result": {"retired": true, "source": "ledger", "selector": {"source": "none", "reason": "PAT_FALLBACK_RETIRED", "retirementSource": "ledger"}},
+      "enforcedByLedgerAlone": true
+    },
+    "killTest": "Without a ledger, a fresh run retains the fallback (documented as a test). With the ledger, it is denied. The difference is the evidence that the flag alone could not provide."
+  },
+  "defectsFoundAndRepaired": [
+    {"defect": "retirement-record referenced an undefined `flag` helper", "symptom": "green run, no ledger written", "repaired": "c7d241f", "test": "tests/private-ci-retirement-record-cli.test.mjs executes the real CLI"},
+    {"defect": "contents API cannot create a branch", "symptom": "404 branch not found, hidden by continue-on-error", "repaired": "a34df42", "test": "ordering test requires git/refs creation before first write"},
+    {"defect": "WOLF_CI_APP_READER_TOKEN read but not declared in step env", "symptom": "would always resolve empty", "repaired": "1a1d1df", "caught_by": "existing workflow-env guard"}
+  ],
+  "liveRuns": [
+    {"id": "45602368409", "sha": "076f041", "state": "VERIFIED", "checks": "13/13"},
+    {"id": "45603855810", "sha": "c7d241f", "state": "VERIFIED", "checks": "13/13"},
+    {"id": "45605370670", "sha": "a34df42", "state": "VERIFIED", "checks": "13/13", "note": "first run to write the durable ledger"},
+    {"id": "45606824142", "sha": "6dc99fc", "state": "VERIFIED", "checks": "13/13", "note": "ledger-only enforcement proven in-run"},
+    {"id": "45608217537", "sha": "1a1d1df", "state": "VERIFIED", "checks": "13/13", "note": "HEAD drift reporting added"}
+  ],
+  "receiptPosture": {
+    "authentication": "github-app",
+    "appAcceptance": "ACCEPTED",
+    "fallbackRetirement": {"state": "RETIRE_FALLBACK", "enforced": true},
+    "privateStatusCheck": "PUBLISHED",
+    "privateReceipt": "PUBLISHED",
+    "privateSourcePublished": false,
+    "privateLogsPublished": false,
+    "credentialsPrinted": false
+  },
+  "blockers": [
+    {
+      "id": "DISPATCH_TRIGGER_NOT_ON_DEFAULT_BRANCH",
+      "status": "OPEN",
+      "proven": true,
+      "evidence": "POST /dispatches returns 2xx with zero runs; bridge absent from main (404); no repository_dispatch listener on main; workflow_dispatch 403 for automation",
+      "requiredAction": "Founder lands the bridge on main. Recommended: minimal credential-free listener pinned to a SHA (see docs/activation-plan.md Option B).",
+      "simulationUsed": false
+    },
+    {
+      "id": "INDEPENDENT_VERIFICATION_ABSENT",
+      "status": "OPEN",
+      "proven": true,
+      "evidence": "No branch, PR, report or checkpoint from Wolf Independent Verification exists in this repository. Open PRs: #1, #2 only. No independent-verification ref among all remote heads.",
+      "requiredAction": "Independent Verification publishes its report; its 11 findings reviewed before activation.",
+      "claimedClosed": false
+    }
+  ],
+  "notDone": [
+    "No default-branch change",
+    "No merge to main",
+    "No force push or history rewrite",
+    "No simulated mission presented as real",
+    "No claim that the 11 findings are closed",
+    "No autonomous 15/60/480-minute shift started or certified"
+  ]
+}
