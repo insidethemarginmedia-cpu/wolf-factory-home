@@ -125,19 +125,35 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
     // as success and reported VERIFIED while the PAT was doing the work, which
     // is exactly the false green this command exists to prevent.
     const results = [];
+    // The restart is modelled as a mint one second later, not an hour later.
+    //
+    // Simulating an hour was a real defect: GitHub issues `expires_at` from the
+    // *real* clock (now + 1h), while the check evaluated the second token against
+    // the simulated clock (now + 1h). The two landed exactly on the expiry, so a
+    // live run reported the token EXPIRED and the check could never pass outside a
+    // fixture. Advancing one second keeps the simulation honest: the token is
+    // re-issued, and it is judged against the clock it was actually issued on.
+    const restartAt = now + 1000;
     for (const role of ['reader', 'publisher', 'dispatcher']) {
       const first = await mintRoleToken({role, env, fetchImpl, now});
-      const second = await mintRoleToken({role, env, fetchImpl, now: now + 60 * 60 * 1000});
+      const second = await mintRoleToken({role, env, fetchImpl, now: restartAt});
       const firstAuth = first.state === 'MINTED' ? describeAuthState({state: 'MINTED', expiresAt: first.expiresAt, now}) : describeAuthState({state: first.state});
-      const secondAuth = second.state === 'MINTED' ? describeAuthState({state: 'MINTED', expiresAt: second.expiresAt, now: now + 60 * 60 * 1000}) : describeAuthState({state: second.state});
+      const secondAuth = second.state === 'MINTED' ? describeAuthState({state: 'MINTED', expiresAt: second.expiresAt, now: restartAt}) : describeAuthState({state: second.state});
       results.push({
         role,
         source: first.selection?.source ?? null,
         first: {...summary(first), authState: firstAuth.state},
         second: {...summary(second), authState: secondAuth.state},
-        // A distinct expiry is the observable proof that a second, independent
-        // token was issued rather than the first one being reused.
-        renews: first.state === 'MINTED' && second.state === 'MINTED' && first.expiresAt !== second.expiresAt,
+        // Proof of a second, independent token.
+        //
+        // `expires_at` is truncated to the second by GitHub, so two mints inside
+        // one second legitimately produce the same expiry even though the tokens
+        // differ. Comparing expiries therefore failed on a fast runner while
+        // succeeding in unit tests that used distinct clocks - a check that could
+        // only ever pass by accident. Compare the tokens structurally instead.
+        renews: first.state === 'MINTED' && second.state === 'MINTED'
+          && (first.expiresAt !== second.expiresAt || first.token !== second.token),
+        distinctExpiry: first.state === 'MINTED' && second.state === 'MINTED' && first.expiresAt !== second.expiresAt,
         restartRecovered: secondAuth.state === 'FRESH',
       });
     }

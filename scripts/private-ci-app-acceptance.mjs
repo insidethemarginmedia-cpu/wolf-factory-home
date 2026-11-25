@@ -302,10 +302,12 @@ export async function checkRenewalWithClock({env = process.env, fetchImpl = glob
       role, appId: env[APP_SECRET_NAMES.appId], privateKey: env[APP_SECRET_NAMES.privateKey],
       installationId: env[APP_SECRET_NAMES[role]], repository, permissions: ROLE_PERMISSIONS[role], fetchImpl, now,
     });
-    // The clock moves between rounds: this is what makes the second mint a
-    // restart rather than a duplicate of the first.
+    // A restart is a re-mint moments later, not an hour later: GitHub issues
+    // `expires_at` from the real clock, so judging the second token against a
+    // simulated hour-ahead clock put it exactly on its expiry. One second is the
+    // smallest honest step, and it is enough to require an independent token.
     advance();
-    const restartAt = now + 60 * 60 * 1000;
+    const restartAt = now + 1000;
     const second = await mintInstallationToken({
       role, appId: env[APP_SECRET_NAMES.appId], privateKey: env[APP_SECRET_NAMES.privateKey],
       installationId: env[APP_SECRET_NAMES[role]], repository, permissions: ROLE_PERMISSIONS[role], fetchImpl, now: restartAt,
@@ -316,7 +318,10 @@ export async function checkRenewalWithClock({env = process.env, fetchImpl = glob
       role,
       firstState,
       secondState,
+      // GitHub truncates expires_at to the second, so identity of the token - not
+      // of its expiry - is what proves an independent second mint.
       renewed: first.state === 'MINTED' && second.state === 'MINTED' && first.token !== second.token,
+      distinctExpiry: first.state === 'MINTED' && second.state === 'MINTED' && first.expiresAt !== second.expiresAt,
       restartRecovered: secondState === 'FRESH',
     });
   }

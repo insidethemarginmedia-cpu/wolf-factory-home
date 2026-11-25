@@ -106,7 +106,7 @@ test('renewal requires a distinct token per role, not just a second call', async
   // Drive the simulated clock forward between the two rounds, exactly as an hour
   // elapsing would.
   const realNow = Date.now();
-  const result = await checkRenewalWithClock({env, fetchImpl, now: realNow, advance: () => { mintClock = realNow + 3600_000; }});
+  const result = await checkRenewalWithClock({env, fetchImpl, now: realNow, advance: () => { mintClock = realNow + 1000; }});
   assert.equal(result.state, ACCEPTANCE_STATES.PASS);
   assert.ok(result.roles.every(entry => entry.renewed), 'each role gets a distinct second token');
   assert.ok(result.roles.every(entry => entry.restartRecovered));

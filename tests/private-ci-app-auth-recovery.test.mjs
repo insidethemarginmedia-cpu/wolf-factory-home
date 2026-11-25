@@ -130,3 +130,39 @@ test('verify refuses to report VERIFIED while falling back to the PAT', async ()
   assert.deepEqual(sources, {reader: 'pat-fallback', publisher: 'none', dispatcher: 'pat-fallback'});
   assert.ok(report.renewal.every(entry => entry.renews === false && entry.restartRecovered === false));
 });
+
+test('renewal is proven by token identity when the expiry is truncated to the second', async () => {
+  const {runAppAuthCli} = await import('../scripts/private-ci-app-auth-cli.mjs');
+  const {generateKeyPairSync} = await import('node:crypto');
+  const {privateKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
+  const rsaPem = privateKey.export({type: 'pkcs1', format: 'pem'});
+  const repository = 'donraposo1-source/project-wolf';
+  // GitHub returns the same second-granularity expiry for two mints inside one
+  // second. The tokens still differ, and that is what must carry the proof.
+  const sameExpiry = new Date(Date.now() + 3600_000).toISOString();
+  let counter = 0;
+  const fetchImpl = async (url, init = {}) => {
+    counter += 1;
+    return {ok: true, status: 201, json: async () => ({
+      token: 'ghs_' + counter + '_' + 'z'.repeat(20),
+      expires_at: sameExpiry,
+      permissions: JSON.parse(init.body).permissions,
+      repositories: [{full_name: repository}],
+    })};
+  };
+  const lines = [];
+  const code = await runAppAuthCli(['verify'], {
+    env: {
+      WOLF_FACTORY_APP_ID: '5913418', WOLF_FACTORY_APP_PRIVATE_KEY: rsaPem,
+      WOLF_FACTORY_READER_INSTALLATION_ID: '1', WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: '1',
+      WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: '1', WOLF_CI_REPOSITORY: repository,
+    },
+    fetchImpl,
+    stdout: text => lines.push(text),
+  });
+  const report = JSON.parse(lines.join(''));
+  assert.equal(report.state, 'VERIFIED', 'a fast runner must not look like a failed renewal');
+  assert.ok(report.renewal.every(entry => entry.renews));
+  assert.ok(report.renewal.every(entry => entry.distinctExpiry === false), 'the fixture really did reuse the expiry');
+  assert.equal(code, 0);
+});
