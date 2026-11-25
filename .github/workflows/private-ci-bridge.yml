@@ -45,13 +45,15 @@ on:
       - 'scripts/private-ci-app-acceptance.mjs'
       - 'scripts/private-ci-app-acceptance-cli.mjs'
       - 'scripts/private-ci-app-diagnosis.mjs'
+      - 'scripts/private-ci-mission.mjs'
+      - 'scripts/private-ci-mission-cli.mjs'
       - 'scripts/private-ci-journal-cli.mjs'
       - 'tests/private-ci-bridge.test.mjs'
       - 'tests/private-ci-inventory.test.mjs'
       - 'tests/private-ci-execute.test.mjs'
       - 'tests/private-ci-publish-receipt.test.mjs'
       - 'tests/private-ci-diagnose.test.mjs'
-      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs tests/private-ci-app-installations.test.mjs tests/private-ci-activation-wizard.test.mjs tests/private-ci-app-acceptance.test.mjs tests/private-ci-app-acceptance-cli.test.mjs tests/private-ci-app-exposure.test.mjs tests/private-ci-app-diagnosis.test.mjs tests/private-ci-app-retirement.test.mjs'
+      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs tests/private-ci-app-installations.test.mjs tests/private-ci-activation-wizard.test.mjs tests/private-ci-app-acceptance.test.mjs tests/private-ci-app-acceptance-cli.test.mjs tests/private-ci-app-exposure.test.mjs tests/private-ci-app-diagnosis.test.mjs tests/private-ci-app-retirement.test.mjs tests/private-ci-mission.test.mjs tests/private-ci-mission-cli.test.mjs'
       - 'tests/private-ci-workflow.test.mjs'
       - 'tests/private-ci-app-auth.test.mjs'
       - 'tests/private-ci-dispatch-probe.test.mjs'
@@ -65,6 +67,8 @@ on:
       - 'tests/private-ci-app-exposure.test.mjs'
       - 'tests/private-ci-app-diagnosis.test.mjs'
       - 'tests/private-ci-app-retirement.test.mjs'
+      - 'tests/private-ci-mission.test.mjs'
+      - 'tests/private-ci-mission-cli.test.mjs'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
       - 'tests/private-controller-preflight-pin.test.mjs'
@@ -607,6 +611,35 @@ jobs:
           set -euo pipefail
           rm -rf "$WOLF_CI_LOG_DIR" "$WOLF_CI_RECEIPT"
           node scripts/private-ci-execute.mjs
+      - name: Validate the cross-repository mission, if this is one
+        id: mission
+        if: always()
+        shell: bash
+        # The payload comes from `github.event.client_payload`, which is
+        # attacker-controlled whenever the sender is not trusted. It is treated as
+        # data only: it can name a SHA, and nothing else.
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          WOLF_CI_MISSION_FILE: /tmp/wolf-ci-mission.json
+          WOLF_CI_JOURNAL: .wolf-ci/journal.jsonl
+          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          if test "${GITHUB_EVENT_NAME:-}" != "repository_dispatch"; then
+            echo "MISSION_STATE=NOT_A_MISSION_EVENT"
+            exit 0
+          fi
+          node -e 'process.stdout.write(JSON.stringify(process.env.CLIENT_PAYLOAD ?? null))'             > /tmp/wolf-ci-mission-payload.json 2>/dev/null || echo '{}' > /tmp/wolf-ci-mission-payload.json
+          code=0
+          node scripts/private-ci-mission-cli.mjs --payload /tmp/wolf-ci-mission-payload.json --out "$WOLF_CI_MISSION_FILE" || code=$?
+          # 0 accepted, 3 duplicate (not an error), 2 rejected (recorded, then a
+          # failure - a refused mission must not look like a completed one).
+          if test "$code" -eq 3; then
+            echo "MISSION_STATE=DUPLICATE"
+            exit 0
+          fi
+          test "$code" -eq 0
       - name: Journal the durable request for this immutable commit
         if: always()
         shell: bash
