@@ -648,6 +648,25 @@ jobs:
             echo PRIVATE_RECEIPT_PUBLICATION=BLOCKED
             test -s "$WOLF_CI_PRIVATE_PUBLICATION_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_RECEIPT_PUBLICATION_FAILED"}' > "$WOLF_CI_PRIVATE_PUBLICATION_FILE"
           fi
+      - name: Enforce the fallback-retirement decision for this run
+        id: retirement
+        if: always()
+        shell: bash
+        # Retirement is computed here, after acceptance, and takes effect for every
+        # later step through GITHUB_ENV. Computing it is not enough: the flag is
+        # what makes `selectCredential` refuse the PAT, which is the difference
+        # between recording a decision and enforcing one.
+        env:
+          WOLF_CI_AUTH_RECOVERY_FILE: /tmp/wolf-ci-auth-recovery.json
+          WOLF_CI_ACCEPTANCE_FILE: /tmp/wolf-ci-acceptance.json
+          WOLF_CI_RETIREMENT_FILE: /tmp/wolf-ci-retirement.json
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-app-auth-cli.mjs retirement
+          # Enforced, not merely recorded: the same selector the workflow uses must
+          # now refuse the PAT. Printing the verdict makes a silently-ignored flag
+          # impossible to miss.
+          node scripts/private-ci-app-auth-cli.mjs state reader || true
       - name: Mint the publisher token for the private check
         id: publisher_mint
         if: always()
@@ -669,6 +688,9 @@ jobs:
             # GITHUB_ENV carries it to every later step, already masked.
             cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"
             echo PUBLISHER_CREDENTIAL=app
+          elif test "${WOLF_CI_RETIRE_PAT:-}" = "true"; then
+            # Retired: no App token means no publication, never a quiet PAT fallback.
+            echo PUBLISHER_CREDENTIAL=retired-and-unavailable
           else
             echo PUBLISHER_CREDENTIAL=status-pat-fallback
           fi
@@ -705,6 +727,7 @@ jobs:
           WOLF_CI_DISPATCH_FILE: /tmp/wolf-ci-dispatch.json
           WOLF_CI_AUTH_RECOVERY_FILE: /tmp/wolf-ci-auth-recovery.json
           WOLF_CI_ACCEPTANCE_FILE: /tmp/wolf-ci-acceptance.json
+          WOLF_CI_RETIREMENT_FILE: /tmp/wolf-ci-retirement.json
           WOLF_CI_PR: '743'
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}

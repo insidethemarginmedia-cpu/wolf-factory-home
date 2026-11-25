@@ -56,12 +56,11 @@ test('the publisher token is minted inside the execute job, before it is publish
   // publish step. A job-scoped assertion is the only thing that catches a step
   // landing in the wrong job - a plain indexOf finds the probe job's publish step
   // first and proves nothing.
-  const {execFileSync} = require('node:child_process');
-  const parsed = JSON.parse(execFileSync('python3', ['-c', `
-import json, sys, yaml
-d = yaml.safe_load(open(sys.argv[1]))
-print(json.dumps({job: [s.get('name') for s in cfg.get('steps', [])] for job, cfg in d['jobs'].items()}))
-`, '.github/workflows/private-ci-bridge.yml'], {encoding: 'utf8'}));
+  // Parsed with the in-repo workflow reader rather than PyYAML: a test that needs a
+  // package the runner does not have passes locally and fails in CI, which is
+  // exactly what happened here.
+  const {parseWorkflowJobs} = require('../scripts/private-ci-workflow.mjs');
+  const parsed = Object.fromEntries(parseWorkflowJobs(workflow).map(job => [job.name, job.steps.map(step => step.name)]));
 
   const execute = parsed.execute;
   const mintAt = execute.indexOf('Mint the publisher token for the private check');

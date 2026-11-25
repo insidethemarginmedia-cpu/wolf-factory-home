@@ -222,6 +222,42 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
     return state === 'NOT_APPLICABLE' ? APP_AUTH_EXIT.BLOCKED : APP_AUTH_EXIT.DEFECT;
   }
 
+  if (command === 'retirement') {
+    // Computes the retirement decision from this run's artefacts and, only when it
+    // is RETIRE_FALLBACK, exports the enforcement flag for every later step.
+    //
+    // Nothing is retired on partial evidence: an absent artefact yields
+    // KEEP_FALLBACK, and KEEP_FALLBACK writes nothing, so a working credential is
+    // never withdrawn by omission.
+    const {decideFallbackRetirement} = await import('./private-ci-app-auth.mjs');
+    const load = path => {
+      if (!path) return null;
+      try {
+        return JSON.parse(fs.readFileSync(path, 'utf8'));
+      } catch {
+        return null;
+      }
+    };
+    const renewal = load(env.WOLF_CI_AUTH_RECOVERY_FILE);
+    const acceptance = load(env.WOLF_CI_ACCEPTANCE_FILE);
+    const decision = decideFallbackRetirement({
+      acceptance: acceptance ? {state: acceptance.state, accepted: acceptance.accepted, checks: acceptance.checks ?? []} : null,
+      authentication: renewal?.state === 'VERIFIED' ? {mode: 'github-app'} : {mode: 'pat-fallback'},
+      renewal,
+    });
+    const outFile = env.WOLF_CI_RETIREMENT_FILE;
+    if (outFile) {
+      fs.mkdirSync(path.dirname(outFile), {recursive: true});
+      fs.writeFileSync(outFile, JSON.stringify(decision, null, 2), {mode: 0o600});
+    }
+    stdout(JSON.stringify(decision) + '\n');
+    if (decision.retire && env.GITHUB_ENV) {
+      fs.appendFileSync(env.GITHUB_ENV, `${'WOLF_CI_RETIRE_PAT'}=true\n`);
+      stdout('FETCH_RETIREMENT_ENFORCED=' + 'true' + '\n');
+    }
+    return APP_AUTH_EXIT.OK;
+  }
+
   if (command === 'state') {
     // Reports the live auth state for one role without printing the token, so a
     // run can prove renewal and expiry handling from its own logs.

@@ -73,6 +73,10 @@ const PROVIDED = new Set([
   // Optional runtime configuration: expanded with ${VAR:-default}, so it is
   // deliberately absent from the workflow environment.
   'PIP_INDEX_URL',
+  // Written by the retirement step into GITHUB_ENV, so it exists at runtime but
+  // cannot be declared statically. It is listed here rather than declared, because
+  // a static value would defeat the point: the flag must reflect this run.
+  'WOLF_CI_RETIRE_PAT',
 ]);
 
 test('the job block reader returns the requested job only', () => {

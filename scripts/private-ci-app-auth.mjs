@@ -262,10 +262,35 @@ export function selectCredential(role, {env = process.env} = {}) {
     publisher: env.WOLF_FACTORY_STATUS_TOKEN,
     dispatcher: env.WOLF_FACTORY_REPO_TOKEN,
   };
+  // Retirement is enforced here, at the single place a credential is chosen.
+  //
+  // It is read from the run's own receipt (`WOLF_CI_RETIRE_PAT`), which is set by
+  // the retirement step once the decision is RETIRE_FALLBACK. Reporting a decision
+  // without acting on it is the same failure as reporting a check that never ran:
+  // the receipt would say the PAT is gone while the code kept using it.
+  if (isFallbackRetired(env) && report(patByRole[normalizedRole]) === 'present') {
+    return {
+      role: normalizedRole,
+      source: 'none',
+      fallback: false,
+      reason: 'PAT_FALLBACK_RETIRED',
+      retired: true,
+      // The credential exists but is deliberately unusable.
+      withheldCredential: patByRole[normalizedRole] ? 'pat' : null,
+    };
+  }
   if (report(patByRole[normalizedRole]) === 'present') {
     return {role: normalizedRole, source: 'pat-fallback', fallback: true, reason: 'APP_AUTH_INCOMPLETE'};
   }
   return {role: normalizedRole, source: 'none', fallback: false, reason: 'NO_CREDENTIAL_FOR_ROLE'};
+}
+
+// The environment flag that makes retirement operational rather than advisory.
+export const RETIREMENT_ENV = 'WOLF_CI_RETIRE_PAT';
+
+export function isFallbackRetired(env = process.env) {
+  const value = String(env[RETIREMENT_ENV] ?? '').trim().toLowerCase();
+  return value === 'true' || value === '1' || value === 'retired';
 }
 
 // ---------------------------------------------------------------------------

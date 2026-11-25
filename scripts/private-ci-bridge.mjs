@@ -78,6 +78,31 @@ export function readRetirementDecision({acceptance, authentication, renewal}) {
   return decideFallbackRetirement(classify);
 }
 
+/**
+ * Prefers the enforcement step's own verdict. Falls back to recomputing only when
+ * that artefact is absent, and reports which source was used.
+ */
+export function readRetirementArtefact(file, evidence = {}) {
+  const parsed = readJsonArtefact(file);
+  if (parsed && parsed !== 'UNREADABLE' && typeof parsed === 'object' && 'retire' in parsed) {
+    return {
+      state: parsed.state,
+      retire: parsed.retire === true,
+      reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
+      evaluated: true,
+      enforced: String(process.env.WOLF_CI_RETIRE_PAT ?? '').toLowerCase() === 'true',
+      source: 'enforcement-step',
+      credentialsPrinted: false,
+    };
+  }
+  const recomputed = readRetirementDecision(evidence);
+  return {
+    ...recomputed,
+    enforced: String(process.env.WOLF_CI_RETIRE_PAT ?? '').toLowerCase() === 'true',
+    source: parsed === 'UNREADABLE' ? 'recomputed-unreadable-artefact' : 'recomputed-no-artefact',
+  };
+}
+
 export function readAcceptance(file) {
   const parsed = readJsonArtefact(file);
   if (parsed === null) return {state: 'NOT_REPORTED'};
@@ -647,6 +672,22 @@ async function main(argv) {
     }
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
     const appPublisherToken = process.env.WOLF_CI_APP_PUBLISHER_TOKEN;
+    // Once the fallback is retired, a missing App token is a hard stop. Falling
+    // through to the PAT here would leave the receipt claiming retirement while the
+    // PAT quietly did the work.
+    const retired = String(process.env.WOLF_CI_RETIRE_PAT ?? '').toLowerCase() === 'true';
+    if (retired && !appPublisherToken) {
+      const blocked = {
+        state: 'BLOCKED',
+        reason: 'PAT_FALLBACK_RETIRED',
+        requiredPermission: 'WOLF_CI_APP_PUBLISHER_TOKEN (checks:write)',
+        identitySeparation: 'source-read and status-write are distinct credentials',
+        retired: true,
+        credentialsPrinted: false,
+      };
+      process.stdout.write(JSON.stringify(blocked) + '\n');
+      return BRIDGE_EXIT.OK;
+    }
     const result = await publishPrivateStatusChecks({
       // The App-issued publisher token is preferred; the status PAT remains a
       // fallback until the App can publish. Never both.
@@ -795,7 +836,10 @@ async function main(argv) {
       }),
       authRecovery: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
       appAcceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
-      fallbackRetirement: readRetirementDecision({
+      // Read from the artefact the enforcement step wrote, so the receipt shows the
+      // decision that actually took effect rather than a second, independent
+      // recomputation that could disagree with it.
+      fallbackRetirement: readRetirementArtefact(process.env.WOLF_CI_RETIREMENT_FILE, {
         acceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
         authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
         renewal: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
