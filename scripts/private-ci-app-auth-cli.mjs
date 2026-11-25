@@ -126,6 +126,12 @@ export function writeTokenFile(file, name, token) {
 
 export async function runAppAuthCli(argv, {env = process.env, fetchImpl = globalThis.fetch, now = Date.now(), stdout = text => process.stdout.write(text)} = {}) {
   const command = argv[0];
+  // Reads `--flag value` from argv. Numbers and paths only; no credential is ever
+  // passed on the command line, because argv is visible in process listings.
+  const flag = name => {
+    const index = argv.indexOf(name);
+    return index >= 0 ? argv[index + 1] : undefined;
+  };
   const summary = result => {
     const {token, ...rest} = result;
     return rest;
