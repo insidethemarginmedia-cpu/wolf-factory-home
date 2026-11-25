@@ -59,3 +59,29 @@ test('the CLI publishes what it read, and survives an unreadable file', async ()
   assert.match(body.output.summary, /NO REPORT/, 'an unreadable artefact is reported as absent, not crashed on');
   assert.ok(lines.join('').includes('DIAGNOSIS_PUBLISHED'));
 });
+
+test('the installation probe separates a bad ID from a missing permission', async () => {
+  const {probeInstallations} = await import('../scripts/private-ci-app-diagnosis.mjs');
+  // The reader ID works; the dispatcher ID belongs to the other account, so it
+  // cannot see this repository at all. That is the distinction being proven.
+  const mint = async ({installationId}) => {
+    if (installationId === '176017917') return {state: 'MINTED', token: 'ghs_x'};
+    return {state: 'FAILED', reason: 'APP_TOKEN_REQUEST_FAILED', httpStatus: 422, apiMessage: 'There is at least one repository that does not exist or is not accessible to the parent installation.'};
+  };
+  const probed = await probeInstallations({
+    env: {
+      WOLF_CI_REPOSITORY: 'donraposo1-source/project-wolf',
+      WOLF_FACTORY_APP_ID: '5913418', WOLF_FACTORY_APP_PRIVATE_KEY: 'k',
+      WOLF_FACTORY_READER_INSTALLATION_ID: '176017917',
+      WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: '176017917',
+      WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: '176144552',
+    },
+    mintInstallationToken: mint,
+  });
+  assert.deepEqual(probed.rolesWithCoveringId, ['reader', 'publisher']);
+  const dispatcher = probed.results.find(entry => entry.role === 'dispatcher');
+  assert.equal(dispatcher.idCoversRepository, false);
+  assert.match(dispatcher.apiMessage, /not accessible to the parent installation/);
+  // Only the shape is reported; the ID itself never appears.
+  assert.equal(JSON.stringify(probed).includes('176144552'), false);
+});

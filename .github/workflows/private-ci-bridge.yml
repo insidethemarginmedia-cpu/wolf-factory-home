@@ -573,6 +573,13 @@ jobs:
           AUTH_RECOVERY_FILE: /tmp/wolf-ci-auth-recovery.json
           ACCEPTANCE_FILE: /tmp/wolf-ci-acceptance.json
           PUBLIC_REPOSITORY: ${{ github.repository }}
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
+          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+          WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_DIAGNOSIS_PROBE: 'true'
         run: |
           set -euo pipefail
           node scripts/private-ci-app-diagnosis.mjs

@@ -95,7 +95,7 @@ export async function publishDiagnosis({
   }
 }
 
-export async function runDiagnosisCli(env = process.env, {fetchImpl = globalThis.fetch, readFile, write = () => {}} = {}) {
+export async function runDiagnosisCli(env = process.env, {fetchImpl = globalThis.fetch, readFile, write = () => {}, probe = false, mintInstallationToken} = {}) {
   const load = file => {
     if (!file) return null;
     try {
@@ -104,10 +104,28 @@ export async function runDiagnosisCli(env = process.env, {fetchImpl = globalThis
       return null;
     }
   };
-  const summary = buildDiagnosisSummary({
+  let summary = buildDiagnosisSummary({
     renewal: load(env.AUTH_RECOVERY_FILE),
     acceptance: load(env.ACCEPTANCE_FILE),
   });
+
+  if ((probe || env.WOLF_CI_DIAGNOSIS_PROBE === 'true') && env.WOLF_FACTORY_APP_ID && env.WOLF_FACTORY_APP_PRIVATE_KEY) {
+    try {
+      const engine = mintInstallationToken ?? (await import('./private-ci-app-auth.mjs')).mintInstallationToken;
+      const probed = await probeInstallations({env, fetchImpl, mintInstallationToken: engine});
+      const lines = ['', 'installation probe (minimal contents:read only):'];
+      for (const entry of probed.results) {
+        lines.push('  ' + entry.role + ' idCoversRepository=' + entry.idCoversRepository
+          + ' idLength=' + entry.idLength + ' numeric=' + entry.idIsNumeric
+          + (entry.reason ? ' reason=' + entry.reason : '')
+          + (entry.httpStatus ? ' http=' + entry.httpStatus : ''));
+        if (entry.apiMessage) lines.push('    api: ' + entry.apiMessage);
+      }
+      summary = (summary + lines.join('\n')).slice(0, 60000);
+    } catch (error) {
+      summary += '\ninstallation probe unavailable: ' + (error?.message ?? 'ERROR');
+    }
+  }
   write(summary + '\n');
   return publishDiagnosis({token: env.GH_TOKEN, repository: env.PUBLIC_REPOSITORY, sha: env.GITHUB_SHA_VALUE, summary, fetchImpl, write});
 }
@@ -117,4 +135,50 @@ if (import.meta.url === 'file://' + process.argv[1]) {
   runDiagnosisCli(process.env, {readFile: readFileSync, write: text => process.stdout.write(text)}).catch(() => {
     // Swallowed on purpose: see publishDiagnosis.
   });
+}
+
+// ---------------------------------------------------------------------------
+// Differential installation probe.
+//
+// A mint can fail for two very different reasons:
+//   (a) the installation ID does not cover the repository  -> repository error
+//   (b) the installation covers it but lacks the permission -> permission error
+//
+// Guessing between them wastes runs. This isolates the cause by re-minting each
+// role with the *minimal* permission set only: if the ID is valid, that succeeds
+// regardless of what the role really needs. No token is retained or reported.
+// ---------------------------------------------------------------------------
+
+export async function probeInstallations({env = process.env, fetchImpl = globalThis.fetch, now = Date.now(), mintInstallationToken, appSecretNames} = {}) {
+  const repository = env.WOLF_CI_REPOSITORY;
+  const results = [];
+  for (const role of ['reader', 'publisher', 'dispatcher']) {
+    const installationId = env[appSecretNames?.[role] ?? ('WOLF_FACTORY_' + role.toUpperCase() + '_INSTALLATION_ID')];
+    const minimal = await mintInstallationToken({
+      role: 'reader', // the minimal permission set, deliberately role-independent
+      appId: env[appSecretNames?.appId ?? 'WOLF_FACTORY_APP_ID'],
+      privateKey: env[appSecretNames?.privateKey ?? 'WOLF_FACTORY_APP_PRIVATE_KEY'],
+      installationId,
+      repository,
+      permissions: {contents: 'read', metadata: 'read'},
+      fetchImpl,
+      now,
+    });
+    results.push({
+      role,
+      // Whether this ID can reach this repository at all.
+      idCoversRepository: minimal.state === 'MINTED',
+      state: minimal.state,
+      reason: minimal.state === 'MINTED' ? null : minimal.reason ?? minimal.state,
+      httpStatus: minimal.httpStatus ?? null,
+      apiMessage: minimal.apiMessage ?? null,
+      // Only the shape of the ID, never its value: an ID that differs between
+      // roles is the whole question, and the answer is one bit, not the digits.
+      idLength: typeof installationId === 'string' ? installationId.trim().length : 0,
+      idIsNumeric: /^\d+$/.test(String(installationId ?? '').trim()),
+    });
+  }
+  const ids = results.map(entry => entry.role);
+  const covering = results.filter(entry => entry.idCoversRepository).map(entry => entry.role);
+  return {results, rolesWithCoveringId: covering, roles: ids};
 }
