@@ -844,6 +844,29 @@ async function main(argv) {
         authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
         renewal: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
       }),
+      // The acceptance target this run resolved, and whether the pin was still the
+      // PR head when it ran. Published so a stale acceptance cannot pass as current:
+      // a reader sees `acceptanceValid: false` on the receipt itself rather than
+      // having to re-derive it.
+      acceptanceTarget: (() => {
+        const file = process.env.WOLF_CI_TARGET_OUTPUT;
+        if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
+        try {
+          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+          return {
+            state: parsed.target?.state ?? 'UNKNOWN',
+            relation: parsed.target?.relation ?? null,
+            prHead: parsed.target?.prHead ?? null,
+            pinnedSha: parsed.target?.pinnedSha ?? null,
+            treeIdentical: parsed.target?.treeIdentity?.identical === true,
+            acceptanceValid: parsed.verdict?.acceptanceValid === true,
+            reason: parsed.verdict?.reason ?? null,
+            credentialsPrinted: false,
+          };
+        } catch {
+          return {state: 'UNREADABLE'};
+        }
+      })(),
       privateStatusCheck: (() => {
         const file = process.env.WOLF_CI_PRIVATE_STATUS_FILE;
         if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};

@@ -107,6 +107,9 @@ on:
       - 'tests/private-ci-listener-cli.test.mjs'
       - 'scripts/private-ci-retirement-integrity.mjs'
       - 'tests/private-ci-retirement-integrity.test.mjs'
+      - 'scripts/private-ci-resolve-target.mjs'
+      - 'scripts/private-ci-resolve-target-cli.mjs'
+      - 'tests/private-ci-resolve-target.test.mjs'
       - '.github/workflows/mission-listener.yml'
       - 'scripts/private-controller-preflight.mjs'
       - 'tests/private-controller-preflight.test.mjs'
@@ -427,48 +430,33 @@ jobs:
           set -euo pipefail
           node --test tests/private-ci-bridge.test.mjs tests/private-ci-inventory.test.mjs tests/private-ci-execute.test.mjs tests/private-ci-publish-receipt.test.mjs tests/private-ci-diagnose.test.mjs tests/workflow-pins-resolve.test.mjs tests/private-controller-preflight-pin.test.mjs tests/workflow-env-declared.test.mjs tests/private-ci-journal.test.mjs
           echo PRIVATE_CI_EXECUTOR_CONTRACT=PASS
-      - name: Resolve the private HEAD and report drift against the pinned SHA
+      - name: Resolve the authoritative PR head and compare it to the pin
         id: private_head
         if: always()
         continue-on-error: true
         shell: bash
-        # The workflow executes one immutable SHA, which is correct: a check result
-        # must be bound to a commit, not to a moving ref. The risk is the opposite -
-        # a stale pin that keeps verifying an old commit while the private branch has
-        # moved on, and nobody notices because the run is green.
+        # The workflow executes one immutable SHA, which is correct. The failure mode
+        # is the inverse: the pin stays behind while the PR moves, runs stay green,
+        # and stale acceptance passes as current.
         #
-        # This step resolves the live HEAD with the reader identity and reports the
-        # relation to the pin. It never changes the pin and never executes HEAD; it
-        # makes drift visible so a stale acceptance cannot pass as a current one.
+        # An earlier version compared the pin to the *default branch*, which a PR
+        # head never equals - so it would have reported STALE on a perfectly current
+        # pin, forever. A check that always fires is a check nobody reads. This
+        # resolves the actual PR head and reports the relation to it, plus tree
+        # identity so "same content" and "same commit" stay distinct.
+        #
+        # It never changes the pin and never executes the PR head.
         env:
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          # Hydrated by the earlier reader step through GITHUB_ENV. Declared here
-          # too, because the guard that audits this job requires every variable a
-          # shell block reads to be named in that step's own env - which is also
-          # what stops a typo from silently resolving to an empty string.
           WOLF_CI_APP_READER_TOKEN: ${{ env.WOLF_CI_APP_READER_TOKEN }}
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
-          WOLF_CI_PINNED_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
-          WOLF_CI_HEAD_OUTPUT: /tmp/wolf-ci-private-head.json
+          WOLF_CI_PR: '743'
+          WOLF_CI_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
+          WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json
         run: |
           set -euo pipefail
-          token="${WOLF_CI_APP_READER_TOKEN:-${WOLF_FACTORY_REPO_TOKEN:-}}"
-          if test -z "$token"; then
-            echo '{"state":"NOT_ATTEMPTED","reason":"NO_READER_CREDENTIAL"}' > "$WOLF_CI_HEAD_OUTPUT"
-            cat "$WOLF_CI_HEAD_OUTPUT"; exit 0
-          fi
-          branch=$(gh api "repos/$WOLF_CI_REPOSITORY" --jq .default_branch 2>/dev/null || echo main)
-          head=$(gh api "repos/$WOLF_CI_REPOSITORY/git/ref/heads/$branch" --jq .object.sha 2>/dev/null || true)
-          if ! printf '%s' "$head" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo '{"state":"BLOCKED","reason":"HEAD_UNREADABLE"}' > "$WOLF_CI_HEAD_OUTPUT"
-            cat "$WOLF_CI_HEAD_OUTPUT"; exit 0
-          fi
-          relation=CURRENT
-          if test "$head" != "$WOLF_CI_PINNED_SHA"; then relation=STALE; fi
-          node -e 'const[a,b,c,d]=process.argv.slice(1);process.stdout.write(JSON.stringify({state:"RESOLVED",relation:c,branch:a,head:b,pinned:d})+"\n")' \
-            "$branch" "$head" "$relation" "$WOLF_CI_PINNED_SHA" > "$WOLF_CI_HEAD_OUTPUT"
-          cat "$WOLF_CI_HEAD_OUTPUT"
-          echo "PRIVATE_HEAD_RELATION=$relation"
+          node scripts/private-ci-resolve-target-cli.mjs resolve --out "$WOLF_CI_TARGET_OUTPUT"
+          test -s "$WOLF_CI_TARGET_OUTPUT" || echo '{"target":{"state":"BLOCKED"},"verdict":{"acceptanceValid":false}}' > "$WOLF_CI_TARGET_OUTPUT"
       - name: Mint the reader installation token with the official action
         id: app_reader
         # Declarative alternative to the CLI path below. It is skipped unless the
