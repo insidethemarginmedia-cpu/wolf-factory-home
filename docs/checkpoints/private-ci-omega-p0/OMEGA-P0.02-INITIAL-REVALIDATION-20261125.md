@@ -1,7 +1,6 @@
 # Omega P0.02 — initial revalidation and history correction
 
-**Evidence cut:** 2026-11-25 UTC  
-**Disposition:** **BLOCKED — no private-target execution or acceptance**  
+**Evidence cut:** 2026-11-25 UTC. **Disposition:** **BLOCKED — no private-target execution or acceptance**.
 **Current Arena branch:** `arena/156d9fee-wolf-factory-home` at the time of this record; no branch switch or history rewrite was performed.
 
 This addendum preserves the original 11-finding evidence in [`docs/private-ci-omega-p0-evidence.md`](../../private-ci-omega-p0-evidence.md) and its structured checkpoint [`OMEGA-P0-VERIFICATION-20261125.json`](OMEGA-P0-VERIFICATION-20261125.json). The original report remains a point-in-time record; this addendum records new read-only checks and corrects an earlier history inference.

@@ -1,0 +1,173 @@
+{
+  "schemaVersion": "wolf.private-ci.p150-verification/v1",
+  "recordedAt": "2026-11-25T14:23:48Z",
+  "reportPath": "docs/private-ci-p150-verification.md",
+  "verdict": "BLOCKED_NOT_ACCEPTED",
+  "scope": {
+    "publicRepository": "insidethemarginmedia-cpu/wolf-factory-home",
+    "privateTargetRepository": "donraposo1-source/project-wolf",
+    "sessionBranch": "arena/156d9fee-wolf-factory-home",
+    "sourceCheckpointCommit": "d91645b65b91a987e3933bdbdc96818f000556f8",
+    "sourceCheckpointTree": "3766038d8cfed5ce5d1a72b65589f34c83927cb2",
+    "commonBranchPoint": "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
+    "integrationBranch": "arena/38f3a7f7-wolf-factory-home",
+    "integrationHead": "003b2488df3326c5b4a837b4a50625d9a355a339",
+    "integrationDistanceFromCommon": 16,
+    "sourceCheckpointDiff": {
+      "files": 34,
+      "insertions": 3813,
+      "deletions": 1062,
+      "generatedArtifactsFound": false,
+      "unrelatedProductChangesFound": false
+    },
+    "privateSourceFetched": false,
+    "liveTargetDispatchInitiated": false,
+    "exactShaAcceptance": false,
+    "eurSpend": 0,
+    "mergePerformed": false,
+    "forcePushPerformed": false,
+    "deploymentPerformed": false
+  },
+  "homePullRequests": {
+    "p150Review": {
+      "number": 3,
+      "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/3",
+      "state": "OPEN",
+      "draft": true,
+      "head": "d91645b65b91a987e3933bdbdc96818f000556f8",
+      "baseBranch": "arena/38f3a7f7-wolf-factory-home",
+      "mergeState": "CONFLICTING",
+      "mergePerformed": false
+    },
+    "existingIntegration": {
+      "number": 2,
+      "state": "OPEN",
+      "headBranch": "arena/38f3a7f7-wolf-factory-home",
+      "head": "003b2488df3326c5b4a837b4a50625d9a355a339",
+      "baseBranch": "feat/public-runtime-probe-20261022",
+      "modifiedByAudit": false
+    }
+  },
+  "localValidationAtSourceCheckpoint": {
+    "nodeVersion": "v22.22.3",
+    "fullSuiteCommand": "node --test tests/*.test.mjs",
+    "fullSuitePassed": 347,
+    "fullSuiteFailed": 0,
+    "focusedAdversarialPassed": 90,
+    "focusedAdversarialFailed": 0,
+    "nodeCheckFilesPassed": 65,
+    "diffCheck": "PASS",
+    "actionValidator": {
+      "package": "@action-validator/cli@0.6.0",
+      "exitCode": 0,
+      "warnings": [
+        "on.push.paths glob validation unsupported",
+        "on.pull_request.paths glob validation unsupported"
+      ]
+    },
+    "actionlintAvailable": false,
+    "shellcheckAvailable": false,
+    "secretScan": {
+      "realCredentialsFound": false,
+      "expectedSyntheticFixtureMarkers": true
+    }
+  },
+  "integrationTreeValidation": {
+    "commit": "003b2488df3326c5b4a837b4a50625d9a355a339",
+    "command": "node --test tests/*.test.mjs",
+    "testCount": 398,
+    "passed": 398,
+    "failed": 0,
+    "separateTreeFromSessionCheckpoint": true,
+    "combinedImplementationAcceptance": false,
+    "workflowPin": "96cab355878d6ca37dcd6d40ab79b7ac595d1c22",
+    "pinCommitExists": true,
+    "pinTreeContainsPrivateCiBridgeWorkflow": true
+  },
+  "originalOmegaFindings": [
+    {"id": "OMEGA-01", "severity": "P0", "sessionStatus": "LOCAL_PATCHED_TESTED", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-02", "severity": "P0", "sessionStatus": "LOCAL_PATCHED_TESTED", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-03", "severity": "P0", "sessionStatus": "LOCAL_PATCHED_TESTED_SYNTHETIC_ONLY", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-04", "severity": "P0", "sessionStatus": "LOCAL_PATCHED_TESTED_WORKFLOW_CONFLICTS_WITH_INTEGRATION", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-05", "severity": "P0", "sessionStatus": "LOCAL_PATCHED_TESTED", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-06", "severity": "P0", "sessionStatus": "LOCAL_CREATE_ONLY_GITHUB_REF_STORE_TESTED", "liveTargetAcceptance": "BLOCKED; DOES_NOT_REPAIR_P144_LISTENER"},
+    {"id": "OMEGA-07", "severity": "P0", "sessionStatus": "LOCAL_PATCHED_TESTED", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-08", "severity": "P1", "sessionStatus": "LOCAL_FULL_13_CHECK_CONTRACT_TESTED", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-09", "severity": "P1", "sessionStatus": "LOCAL_SCOPE_REDACTION_PATCHED_TESTED", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-10", "severity": "P1", "sessionStatus": "LOCAL_PR_HEAD_MISMATCH_BLOCKED_TESTED", "liveTargetAcceptance": "BLOCKED"},
+    {"id": "OMEGA-11", "severity": "P1", "sessionStatus": "LOCAL_COMPLETED_RUN_AND_CHECK_CORRELATION_TESTED", "liveTargetAcceptance": "BLOCKED"}
+  ],
+  "p144ListenerAudit": {
+    "senderFromAuthenticatedEvent": true,
+    "explicitSenderAllowlist": true,
+    "executorShaAllowlisted": true,
+    "executorPinVerifiedInHomeGitObjects": true,
+    "deliveriesArrayPassedByCli": 0,
+    "recentAdmissionsArrayPassedByCli": 0,
+    "admissionRecordDurablyPersisted": false,
+    "rateLimitDurablyEnforced": false,
+    "secondPrivilegedAdmissionGateEstablished": false,
+    "optionBActivated": false,
+    "activationVerdict": "BLOCKED"
+  },
+  "targetResolutionAudit": {
+    "privatePullRequest743Readable": false,
+    "readError": "HTTP_404_CURRENT_GITHUB_IDENTITY",
+    "reportedHistoricalPin": "8d319fc50be4e4d225e3bb80de963583899c25ec",
+    "userReportedTargetSha": "a866a4d62baf7b834283d11f5868b3d288729f18",
+    "currentTargetHead": null,
+    "reportedShasConfirmedAsCurrentHead": false,
+    "resolverChecksPullStateAndMergedState": false,
+    "resolverRequiresTreeResolutionForAcceptance": false,
+    "workflowGatesExecutionOnResolverAcceptance": false,
+    "targetCheckRunsRead": false,
+    "targetExecutionInitiated": false
+  },
+  "retirementLedgerAudit": {
+    "runtimeWriterUsesIntegrityAppendRecord": false,
+    "runtimeCheckUsesHardenedVerdict": false,
+    "workflowSuppliesIndependentExpectedHead": false,
+    "workflowSuppliesExpectedSequence": false,
+    "workflowHydrateReadFailureTreatedAsAbsent": true,
+    "workflowHydrateContinueOnError": true,
+    "workflowTextVariableContainsPathNotContent": true,
+    "contentsApiWriteHasConflictRetry": false,
+    "mergeLedgersCalledByWorkflow": false,
+    "syntheticTamperedVerdict": {
+      "integrity": "TAMPERED",
+      "retired": false,
+      "safeToFallBack": true
+    },
+    "syntheticTruncatedChainVerdict": {
+      "integrity": "ROLLED_BACK",
+      "retired": false,
+      "safeToFallBack": true
+    },
+    "retirementVerdict": "FAIL_CLOSED_REQUIRED"
+  },
+  "acceptance": {
+    "homeP150LocalTests": "PASS_ONLY",
+    "homeIntegrationTests": "PASS_SEPARATELY_ONLY",
+    "combinedTreeReview": "NOT_DONE_PR_CONFLICTS",
+    "privateTargetPrHead": "UNKNOWN",
+    "privateTargetCheckRun": "UNKNOWN",
+    "liveCompletedExecution": false,
+    "http204TreatedAsAcceptance": false,
+    "syntheticReceiptTreatedAsAcceptance": false,
+    "staleTargetShaAcceptance": "NOT_VERIFIABLE; no live target run, and integration resolver is not an execution gate; the clone's exact-HEAD check is a separate fail-closed guard",
+    "overall": "BLOCKED_NOT_ACCEPTED"
+  },
+  "notifications": {
+    "homeP150ReviewPrPublished": true,
+    "homeIntegrationPr2Comment": {
+      "posted": true,
+      "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/2#issuecomment-7165167110"
+    },
+    "factory2ExistingGithubChannelFound": false,
+    "kiloAndCoExistingGithubChannelFound": false,
+    "factory2Notified": false,
+    "kiloAndCoNotified": false,
+    "notificationBlocker": "No relevant existing issue/PR/channel was visible to the authenticated GitHub identity; no new or unrelated channel was created.",
+    "newIssuesCreated": false
+  }
+}

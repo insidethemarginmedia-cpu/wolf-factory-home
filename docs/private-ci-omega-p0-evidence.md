@@ -1,7 +1,6 @@
 # Project Wolf — Independent Verification Omega P0
 
-**Evidence cut:** 2026-11-25T10:53:23Z  
-**Verdict:** **BLOCKED / NOT ACCEPTED** — the Home-side evidence can be checked, but current private-target, PR #743, Factory/Factory 2, and exact-SHA acceptance cannot be independently completed with the available read access. Several Home-side fail-open behaviors are reproducible. This report is not a claim of LEGO, Factory, or production acceptance.
+**Evidence cut:** 2026-11-25T10:53:23Z. **Verdict:** **BLOCKED / NOT ACCEPTED** — the Home-side evidence can be checked, but current private-target, PR #743, Factory/Factory 2, and exact-SHA acceptance cannot be independently completed with the available read access. Several Home-side fail-open behaviors are reproducible. This report is not a claim of LEGO, Factory, or production acceptance.
 
 ## Scope and evidence rules
 
@@ -103,7 +102,7 @@ These line references are for Home HEAD `0e7c519a16fea7eb37c929885720cac87d9ffd3
 - Target-source build/security checks were **not run** because private source access was unavailable. No Home root `package.json`, `actionlint`, or `shellcheck` is present in this checkout/environment, so those local commands were not available.
 - The focused Home tests were run; they are contract/unit tests, not private-repository acceptance.
 - No exact-SHA acceptance is claimed. The private PR head and target check-runs remain unreadable from this identity.
-- No source code was changed in this audit pass. The sanitized matrix and structured checkpoint are the only additions, uncommitted on the current Arena session branch. No other branch or PR was changed or merged. This audit initiated no external dispatch.
+- At this initial OMEGA evidence cut (Home source `0e7c519a16fea7eb37c929885720cac87d9ffd3b`), no source code was changed; only the sanitized matrix and checkpoint were added to the then-unpublished session branch. The later P1.50 implementation and current verification are recorded in [`docs/private-ci-p150-verification.md`](private-ci-p150-verification.md). No other branch was changed or merged, and this initial audit initiated no external dispatch.
 
 ## Handoff / next safe action
 

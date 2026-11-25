@@ -82,6 +82,7 @@ test('current integration and OMEGA evidence documents trigger controller valida
   const relevantDocs = [
     'docs/private-ci-bridge-evidence.md',
     'docs/private-ci-omega-p0-evidence.md',
+    'docs/private-ci-p150-verification.md',
     'docs/integration-contract.md',
     'docs/activation-plan.md',
     'docs/zero-touch-activation.md',
