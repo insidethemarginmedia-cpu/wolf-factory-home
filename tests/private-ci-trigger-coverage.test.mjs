@@ -40,6 +40,13 @@ test('every bridge script and test is covered by the push trigger', () => {
   assert.deepEqual(missing, [], 'these files change without triggering the bridge: ' + missing.join(', '));
 });
 
+test('activation documentation is covered, because it claims test counts', () => {
+  // The activation package states the suite size and the security evidence. A doc
+  // stating numbers should be validated by the pipeline it describes.
+  const pushBlock = text.slice(text.indexOf('  push:'), text.indexOf('\npermissions:'));
+  assert.match(pushBlock, /docs\/activation\/\*\*/, 'docs/activation must be able to trigger the bridge');
+});
+
 test('the durable retirement scripts specifically are covered', () => {
   for (const file of [
     'scripts/private-ci-retirement-ledger.mjs',

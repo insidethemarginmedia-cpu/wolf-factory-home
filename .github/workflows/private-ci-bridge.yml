@@ -113,6 +113,7 @@ on:
       - 'tests/private-ci-journal.test.mjs'
       - 'docs/integration-contract.md'
       - 'docs/activation-plan.md'
+      - 'docs/activation/**'
       - 'docs/checkpoints/WOLF-P140-ZERO-TOUCH-MISSION-TRANSPORT.json'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
