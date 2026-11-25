@@ -105,6 +105,8 @@ on:
       - 'scripts/private-ci-listener-cli.mjs'
       - 'tests/private-ci-listener.test.mjs'
       - 'tests/private-ci-listener-cli.test.mjs'
+      - 'scripts/private-ci-retirement-integrity.mjs'
+      - 'tests/private-ci-retirement-integrity.test.mjs'
       - '.github/workflows/mission-listener.yml'
       - 'scripts/private-controller-preflight.mjs'
       - 'tests/private-controller-preflight.test.mjs'

@@ -14,6 +14,7 @@
 // credential. No key material is ever logged, returned or written to disk.
 import {createPrivateKey, createSign, randomUUID} from 'node:crypto';
 import {isRetiredDurably} from './private-ci-retirement-ledger.mjs';
+import {hardenedRetirementVerdict} from './private-ci-retirement-integrity.mjs';
 
 export const APP_ROLES = Object.freeze(['reader', 'publisher', 'dispatcher']);
 
@@ -281,6 +282,39 @@ export function selectCredential(role, {env = process.env, ledgerText = null} = 
     env,
     ledgerText: ledgerText ?? env.WOLF_CI_RETIREMENT_LEDGER_TEXT ?? null,
   });
+  // Hardened verdict, so a *lost or deleted* ledger cannot re-enable the fallback.
+  //
+  // This is the case the durable ledger alone could not cover: it made retirement
+  // survive a run, but a run that could not read the ledger simply saw "no
+  // evidence" and fell back. Storage loss is not retirement ending. When the
+  // verdict says the evidence is unverifiable, the fallback stays closed.
+  let hardened = null;
+  if (!retirement.retired) {
+    try {
+      // The expected head comes from the run's own configuration, not from the
+      // ledger - a ledger cannot vouch for its own completeness. When the workflow
+      // knows a retirement existed (WOLF_CI_RETIREMENT_EXPECTED_HEAD), a missing or
+      // empty ledger is treated as deletion.
+      hardened = hardenedRetirementVerdict(
+        ledgerText ?? env.WOLF_CI_RETIREMENT_LEDGER_TEXT ?? null,
+        {expectedHead: env.WOLF_CI_RETIREMENT_EXPECTED_HEAD || null},
+      );
+    } catch {
+      hardened = null;
+    }
+    if (hardened && hardened.safeToFallBack === false && report(patByRole[normalizedRole]) === 'present') {
+      return {
+        role: normalizedRole,
+        source: 'none',
+        fallback: false,
+        reason: hardened.reason ?? 'RETIREMENT_EVIDENCE_UNVERIFIABLE',
+        retired: false,
+        unverifiable: true,
+        retirementSource: 'hardened-ledger',
+        withheldCredential: patByRole[normalizedRole] ? 'pat' : null,
+      };
+    }
+  }
   if (retirement.retired && report(patByRole[normalizedRole]) === 'present') {
     return {
       role: normalizedRole,
