@@ -131,6 +131,31 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/private-ci-bridge.mjs secret-inventory
+      - name: Mint the publisher token for the private check
+        id: publisher_mint
+        if: always()
+        shell: bash
+        # A step's `env:` is resolved before its own run block executes, so a token
+        # exported inside the publish step could never reach that step's process.
+        # Minting here and writing to GITHUB_ENV is what actually makes the token
+        # available to the step that needs it.
+        env:
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
+          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+          WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
+          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-publisher-token.env
+        run: |
+          set -euo pipefail
+          if node scripts/private-ci-app-auth-cli.mjs mint publisher --out "$WOLF_CI_TOKEN_FILE" && test -s "$WOLF_CI_TOKEN_FILE"; then
+            # GITHUB_ENV carries it to every later step, already masked.
+            cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"
+            echo PUBLISHER_CREDENTIAL=app
+          else
+            echo PUBLISHER_CREDENTIAL=status-pat-fallback
+          fi
+          rm -f "$WOLF_CI_TOKEN_FILE"
       - name: Publish the authenticated check to the private commit
         if: always()
         continue-on-error: true
@@ -141,29 +166,16 @@ jobs:
           WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
           WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
           WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
-          WOLF_CI_APP_PUBLISHER_TOKEN: ${{ env.WOLF_CI_APP_PUBLISHER_TOKEN }}
-          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-publisher-token.env
           WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
           WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
         run: |
           set -euo pipefail
           : "${WOLF_CI_PRIVATE_STATUS_FILE:?STATUS_FILE_REQUIRED}"
           rm -f "$WOLF_CI_PRIVATE_STATUS_FILE"
-          # The App publisher token is minted here, in the step that uses it. It
-          # was previously referenced but never minted, so an installed App still
-          # could not publish a check - the STATUS PAT did all the work and the
-          # App path was never actually exercised.
-          #
-          # The token is exported only when the mint produced a file, and the
-          # reader's PAT is never substituted for it: a checks:write identity and
-          # a contents:read identity must not collapse into one.
-          if node scripts/private-ci-app-auth-cli.mjs mint publisher --out "$WOLF_CI_TOKEN_FILE" && test -s "$WOLF_CI_TOKEN_FILE"; then
-            echo PUBLISHER_CREDENTIAL=app
-            set -a; . "$WOLF_CI_TOKEN_FILE"; set +a
-          else
-            echo PUBLISHER_CREDENTIAL=status-pat-fallback
-          fi
-          rm -f "$WOLF_CI_TOKEN_FILE"
+          # The publisher token arrives from the mint step via GITHUB_ENV. The
+          # reader's PAT is never substituted for it: a checks:write identity and a
+          # contents:read identity must not collapse into one.
+          echo "PUBLISHER_TOKEN_PRESENT=$([ -n "${WOLF_CI_APP_PUBLISHER_TOKEN:-}" ] && echo yes || echo no)"
           node scripts/private-ci-bridge.mjs publish-private-status > "$WOLF_CI_PRIVATE_STATUS_FILE" || true
           test -s "$WOLF_CI_PRIVATE_STATUS_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_STATUS_NOT_REPORTED"}' > "$WOLF_CI_PRIVATE_STATUS_FILE"
           node -e 'const s=require(process.env.WOLF_CI_PRIVATE_STATUS_FILE); console.log("PRIVATE_STATUS=" + s.state + (s.reason ? " REASON=" + s.reason : ""))'
