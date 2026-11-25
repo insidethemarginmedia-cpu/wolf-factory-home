@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+const require = createRequire(import.meta.url);
 import {auditCredentialExposure, looksLikeCredential} from '../scripts/private-ci-app-acceptance.mjs';
 
 const workflow = readFileSync(new URL('../.github/workflows/private-ci-bridge.yml', import.meta.url), 'utf8');
@@ -49,20 +51,34 @@ test('the workflow never uploads an artefact', () => {
   assert.equal(/upload-artifact/.test(workflow), false, 'nothing is uploaded, so nothing can leak through one');
 });
 
-test('the publisher token is minted inside the execute job, before it is published', async () => {
+test('the publisher token is minted inside the execute job, before it is published', () => {
   // The mint was first inserted into the probe job, where it could never reach the
-  // publish step. A workflow-level assertion is the only thing that catches a
-  // step landing in the wrong job.
-  const mintIndex = workflow.indexOf('name: Mint the publisher token for the private check');
-  const publishIndex = workflow.indexOf('name: Publish the authenticated check to the private commit');
-  assert.ok(mintIndex > 0 && publishIndex > 0);
+  // publish step. A job-scoped assertion is the only thing that catches a step
+  // landing in the wrong job - a plain indexOf finds the probe job's publish step
+  // first and proves nothing.
+  const {execFileSync} = require('node:child_process');
+  const parsed = JSON.parse(execFileSync('python3', ['-c', `
+import json, sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+print(json.dumps({job: [s.get('name') for s in cfg.get('steps', [])] for job, cfg in d['jobs'].items()}))
+`, '.github/workflows/private-ci-bridge.yml'], {encoding: 'utf8'}));
 
-  const jobFor = index => {
-    const before = workflow.slice(0, index);
-    const matches = [...before.matchAll(/^  ([a-z][a-z0-9-]*):$/gm)];
-    return matches.length ? matches[matches.length - 1][1] : null;
-  };
-  assert.equal(jobFor(mintIndex), 'execute', 'the mint must live in the execute job');
-  assert.ok(mintIndex < publishIndex, 'the token must be minted before the step that uses it');
-  assert.match(workflow.slice(mintIndex, publishIndex), /GITHUB_ENV/, 'it must reach later steps through GITHUB_ENV');
+  const execute = parsed.execute;
+  const mintAt = execute.indexOf('Mint the publisher token for the private check');
+  const publishAt = execute.indexOf('Publish the authenticated check to the private commit');
+  assert.ok(mintAt >= 0, 'the mint step must exist in the execute job');
+  assert.ok(publishAt >= 0, 'the publish step must exist in the execute job');
+  assert.ok(mintAt < publishAt, 'the token must be minted before the step that uses it');
+
+  // And it must not be duplicated into another job.
+  for (const [job, steps] of Object.entries(parsed)) {
+    if (job === 'execute') continue;
+    assert.equal(steps.includes('Mint the publisher token for the private check'), false, `the mint must not live in ${job}`);
+  }
+
+  const mintBlock = workflow.slice(
+    workflow.indexOf('name: Mint the publisher token for the private check'),
+    workflow.indexOf('name: Mint the publisher token for the private check') + 2200,
+  );
+  assert.match(mintBlock, /GITHUB_ENV/, 'it must reach later steps through GITHUB_ENV');
 });

@@ -6,7 +6,21 @@
 // costs a blind iteration. The payload is state and reasons only - no token, no
 // key, no response body - so it is safe to publish next to public source.
 
+import {decideFallbackRetirement} from './private-ci-app-auth.mjs';
+
 const API = 'https://api.github.com';
+
+const decideFrom = (renewal, acceptance) => {
+  try {
+    return decideFallbackRetirement({
+      acceptance: acceptance ? {state: acceptance.state, accepted: acceptance.accepted, checks: acceptance.checks ?? []} : null,
+      authentication: renewal?.state === 'VERIFIED' ? {mode: 'github-app'} : {mode: 'pat-fallback'},
+      renewal,
+    });
+  } catch {
+    return null;
+  }
+};
 
 const redact = text => String(text ?? '')
   .replace(/gh[pousr]_[A-Za-z0-9_]{16,}/g, '[REDACTED_TOKEN]')
@@ -17,7 +31,7 @@ const redact = text => String(text ?? '')
   .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----/g, '[REDACTED_PRIVATE_KEY]');
 
 /** Builds the human-readable summary from the two report artefacts. */
-export function buildDiagnosisSummary({renewal = null, acceptance = null} = {}) {
+export function buildDiagnosisSummary({renewal = null, acceptance = null, retirement = null} = {}) {
   const lines = [];
   if (!renewal) {
     lines.push('renewal: NO REPORT (the verify step wrote no file)');
@@ -37,6 +51,11 @@ export function buildDiagnosisSummary({renewal = null, acceptance = null} = {}) 
       if (entry.firstMessage) lines.push('    api: ' + entry.firstMessage);
       if (entry.requestedPermissions) lines.push('    requested: ' + JSON.stringify(entry.requestedPermissions));
     }
+  }
+
+  if (retirement) {
+    lines.push('fallback retirement: ' + String(retirement.state)
+      + (retirement.reasons?.length ? ' (' + retirement.reasons.join(',') + ')' : ''));
   }
 
   if (!acceptance) {
@@ -108,9 +127,12 @@ export async function runDiagnosisCli(env = process.env, {fetchImpl = globalThis
       return null;
     }
   };
+  const renewalReport = load(env.AUTH_RECOVERY_FILE);
+  const acceptanceReport = load(env.ACCEPTANCE_FILE);
   let summary = buildDiagnosisSummary({
-    renewal: load(env.AUTH_RECOVERY_FILE),
-    acceptance: load(env.ACCEPTANCE_FILE),
+    renewal: renewalReport,
+    acceptance: acceptanceReport,
+    retirement: decideFrom(renewalReport, acceptanceReport),
   });
 
   if ((probe || env.WOLF_CI_DIAGNOSIS_PROBE === 'true') && env.WOLF_FACTORY_APP_ID && env.WOLF_FACTORY_APP_PRIVATE_KEY) {

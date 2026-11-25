@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {decideFallbackRetirement} from './private-ci-app-auth.mjs';
 
 export const BRIDGE_REPOSITORIES = Object.freeze(['donraposo1-source/project-wolf']);
 // The runner that hosts this bridge. It is only ever touched to publish the
@@ -62,6 +63,19 @@ export function readAuthRecovery(file) {
       : [],
     credentialsPrinted: false,
   };
+}
+
+/**
+ * The fallback-retirement decision, evaluated from this run's own evidence.
+ * `retire: true` is the only state in which the PAT may be withdrawn.
+ */
+export function readRetirementDecision({acceptance, authentication, renewal}) {
+  const checks = acceptance?.checks ?? [];
+  const classify = {accepted: acceptance?.accepted, authentication, renewal, acceptance: acceptance ? {
+    state: acceptance.state, accepted: acceptance.accepted,
+    checks: checks.map(check => ({check: check.check, state: check.state})),
+  } : null};
+  return decideFallbackRetirement(classify);
 }
 
 export function readAcceptance(file) {
@@ -753,6 +767,11 @@ async function main(argv) {
       dispatchVerification: readDispatchVerification(process.env.WOLF_CI_DISPATCH_FILE),
       authRecovery: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
       appAcceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
+      fallbackRetirement: readRetirementDecision({
+        acceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
+        authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
+        renewal: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
+      }),
       privateStatusCheck: (() => {
         const file = process.env.WOLF_CI_PRIVATE_STATUS_FILE;
         if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};

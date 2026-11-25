@@ -432,3 +432,62 @@ export async function resolveInstallationForRepository({
 }
 
 export { indicatesWrongInstallation };
+
+// ---------------------------------------------------------------------------
+// Fallback retirement gate.
+//
+// The PAT fallback is not deleted on a hunch: it is retired only when the run can
+// prove the App took over. The gate is deliberately one-way and fail-closed - an
+// absent or unreadable acceptance report keeps the fallback in place, because
+// removing a working credential on ambiguous evidence is how an outage starts.
+// ---------------------------------------------------------------------------
+
+export const RETIREMENT_STATES = Object.freeze({
+  KEEP_FALLBACK: 'KEEP_FALLBACK',
+  RETIRE_FALLBACK: 'RETIRE_FALLBACK',
+});
+
+/**
+ * Decides whether the PAT fallback may be retired for this run.
+ *
+ * Requirements, all of which must hold:
+ *   - the acceptance report says ACCEPTED with every check PASS;
+ *   - authentication mode is github-app, not pat-fallback;
+ *   - every role minted from the App, and none fell back.
+ */
+export function decideFallbackRetirement({acceptance, authentication, renewal} = {}) {
+  const reasons = [];
+  if (!acceptance || typeof acceptance !== 'object') reasons.push('ACCEPTANCE_REPORT_ABSENT');
+  else {
+    if (acceptance.accepted !== true) reasons.push('ACCEPTANCE_NOT_ACCEPTED');
+    if (acceptance.state !== 'ACCEPTED') reasons.push('ACCEPTANCE_STATE_' + String(acceptance.state));
+    const blocked = (acceptance.checks ?? []).filter(check => check.state !== 'PASS');
+    if (blocked.length) reasons.push('CHECKS_NOT_ALL_PASS:' + blocked.map(check => check.check).join(','));
+  }
+  if (!authentication || authentication.mode !== 'github-app') reasons.push('AUTH_MODE_NOT_GITHUB_APP');
+  // Accept both shapes: the raw report uses `renewal`, the receipt reader
+  // normalises it to `roles`. A decision that only understood one of them would
+  // report RENEWAL_REPORT_ABSENT on a perfectly good run.
+  const roles = renewal?.renewal ?? renewal?.roles ?? [];
+  if (!roles.length) reasons.push('RENEWAL_REPORT_ABSENT');
+  else if (roles.some(entry => entry.source !== 'github-app')) reasons.push('RENEWAL_USED_FALLBACK');
+  if (renewal && renewal.state !== 'VERIFIED') reasons.push('RENEWAL_STATE_' + String(renewal.state));
+
+  const retire = reasons.length === 0;
+  return {
+    state: retire ? RETIREMENT_STATES.RETIRE_FALLBACK : RETIREMENT_STATES.KEEP_FALLBACK,
+    retire,
+    reasons,
+    // Stated explicitly so nobody reads "keep" as "not evaluated".
+    evaluated: true,
+    credentialsPrinted: false,
+  };
+}
+
+/**
+ * Reports whether a role is permitted to fall back, given the decision.
+ * Once retired, a role with no App token fails instead of silently using a PAT.
+ */
+export function fallbackAllowed(decision) {
+  return decision?.retire === true ? false : true;
+}
