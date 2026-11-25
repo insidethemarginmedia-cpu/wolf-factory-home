@@ -180,13 +180,14 @@ registry.
 
 ## 8. Local verification
 
-`node --test tests/*.test.mjs` → **274 passing, 0 failing**, covering the bridge,
+`node --test tests/*.test.mjs` → **299 passing, 0 failing**, covering the bridge,
 probe, dispatch diagnosis, inventory, executor, workflow reader, schema
 provisioning, receipt publication, private status checks, durable journal,
 workflow pin resolution, workflow environment declaration, GitHub App
 authentication, the App manifest flow, installation mapping across two personal accounts, the activation wizard, the
 recovery ladder, the dispatch probe, live App acceptance, credential-exposure
-auditing, the diagnosis publisher and the fallback-retirement gate.
+auditing, the diagnosis publisher, the fallback-retirement gate, the mission contract
+and the mission intake CLI.
 
 ## 9. Zero-touch authentication
 
@@ -325,7 +326,7 @@ installations, two repositories. Three roles share one installation ID by design
 
 ### 10.3 Defects the live run found that tests could not
 
-| Defect | Why 274 green tests missed it | Repair |
+| Defect | Why the green suite missed it | Repair |
 | --- | --- | --- |
 | Renewal check could never pass | It judged the second token against a simulated hour-ahead clock while GitHub issues expiry from the real clock, so the token always landed exactly on its expiry. Only a real `expires_at` exposes that. | Restart modelled one second later; renewal proven by token identity |
 | Dispatcher installation did not cover the repository | A fixture keyed by role hid the fact that IDs are per *account* | Installation resolved by coverage; permission set still fixed per role |
@@ -363,3 +364,73 @@ and every role renewed from the App. Any missing or unreadable artefact returns
 
 `EUR_SPEND=0`. No paid endpoint, no billing change, no artefact upload, no fork
 trigger. A test audits the workflow for all four exposure vectors on every run.
+
+## 11. Cross-repository mission contract
+
+The bridge accepts work from other repositories, but only as a *data payload that
+names an immutable commit*. It cannot name a workflow, a ref, a token or a price.
+
+### 11.1 Payload and invariants
+
+```json
+{
+  "schemaVersion": 1,
+  "missionId": "factory-nightly-0001",
+  "repository": "donraposo1-source/project-wolf",
+  "sha": "8d319fc50be4e4d225e3bb80de963583899c25ec",
+  "issuedAt": "2026-11-24T09:00:00.000Z"
+}
+```
+
+| Invariant | Behaviour |
+| --- | --- |
+| Identity key | `missionId@sha` — excludes `issuedAt` and `attempt`, so a retry is not new work |
+| SHA | Full 40-hex only. Abbreviations, refs and branch names are rejected |
+| Repository | Must be in `ALLOWED_REPOSITORIES` |
+| Forbidden keys | Any of `workflow`, `workflowFile`, `token`, `permissions`, `credentials`, `ref`, `paid` (present at all, even `false`) → REJECTED |
+| Age | Maximum 1 hour between `issuedAt` and now |
+| Rate | 12 missions per sender per hour |
+| Retries | Bounded at 3; never retried on `PAT_FALLBACK_RETIRED`, `PERMISSION_OR_RATE_LIMIT` or `NOT_FOUND_OR_NO_ACCESS` |
+| Refusal | A rejected mission is still journaled with its reason — refusals are evidence, not gaps |
+| Exit codes | `0` ACCEPTED, `3` DUPLICATE (success, not new work), `2` REJECTED |
+
+A duplicate returns `3` and the workflow treats it as success: re-delivery of the
+same `missionId@sha` must be free, not an error.
+
+### 11.2 Proven blocker: the trigger is not on the default branch
+
+The mission intake is complete and tested, but a **real** cross-repository
+dispatch cannot start it from this branch. This is measured, not inferred:
+
+| Probe | Result |
+| --- | --- |
+| `gh api -X POST …/dispatches -f event_type=wolf-private-ci` | 2xx accepted, **zero runs created** |
+| `/contents/.github/workflows/private-ci-bridge.yml?ref=main` | **404 — the file does not exist on `main`** |
+| `repository_dispatch` listeners on `main` | **none** (night-shift-wakeup, preflight and runtime-probe carry no such trigger) |
+| `POST …/actions/workflows/429186774/dispatches -f ref=<branch>` | **403 Resource not accessible by integration** |
+| Same call against a default-branch workflow | **403** — so the 403 is token capability, not a branch problem |
+
+GitHub starts `repository_dispatch` workflows **only from the default branch** —
+the bridge is not on `main` (`main` = `3742bcc`; this branch is 53 commits ahead
+and 1 behind). The API accepts the dispatch, records no run, and still lists the
+workflow as `active`, so the failure is silent. The sandbox token also cannot
+issue `workflow_dispatch` at all, so no branch-ref path is open to automation.
+
+**The single required Founder action** is to land
+`.github/workflows/private-ci-bridge.yml` on `main` (merge PR #2, or cherry-pick
+that one file). Nothing else is needed: the App, its permissions, the
+installation IDs and the receipt publication all already work from this branch.
+
+Once the trigger is on `main`, a mission is:
+
+```bash
+gh api -X POST repos/insidethemarginmedia-cpu/wolf-factory-home/dispatches \
+  -f event_type=wolf-private-ci \
+  -f 'client_payload[schemaVersion]=1' \
+  -f 'client_payload[missionId]=factory-nightly-0001' \
+  -f 'client_payload[repository]=donraposo1-source/project-wolf' \
+  -f 'client_payload[sha]=8d319fc50be4e4d225e3bb80de963583899c25ec' \
+  -f "client_payload[issuedAt]=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+```
+
+No mission has been simulated to claim otherwise. `EUR_SPEND=0` throughout.
