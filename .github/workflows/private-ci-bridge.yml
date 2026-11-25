@@ -5,6 +5,25 @@ on:
   # and cancelable; it never implies a mutable ref.
   repository_dispatch:
     types: [wolf-private-ci]
+  # Reusable entry point. The mission listener on the default branch invokes this
+  # workflow at an approved immutable SHA with a job-level `uses:` reference, so
+  # starting a privileged execution needs NO credential at all: GitHub resolves the
+  # reference itself. That is what removes the dispatch token from the listener.
+  workflow_call:
+    inputs:
+      sha:
+        description: Immutable private commit SHA to verify
+        required: true
+        type: string
+      missionId:
+        description: Mission identifier from the admitted payload
+        required: true
+        type: string
+      deliveryId:
+        description: Delivery identity recorded at admission
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       sha:
@@ -80,6 +99,13 @@ on:
       # Found by the trigger-coverage test, which flagged itself along with these:
       # they could change without the pipeline ever running against them.
       - 'tests/private-ci-trigger-coverage.test.mjs'
+      # Mission listener (Option B). Its admission logic and adversarial tests must
+      # be exercised by the same pipeline that would execute an admitted mission.
+      - 'scripts/private-ci-listener.mjs'
+      - 'scripts/private-ci-listener-cli.mjs'
+      - 'tests/private-ci-listener.test.mjs'
+      - 'tests/private-ci-listener-cli.test.mjs'
+      - '.github/workflows/mission-listener.yml'
       - 'scripts/private-controller-preflight.mjs'
       - 'tests/private-controller-preflight.test.mjs'
       - 'tests/private-ci-journal.test.mjs'
@@ -101,7 +127,7 @@ concurrency:
 jobs:
   probe:
     continue-on-error: true
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_call')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -194,7 +220,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/wolf-ci-probe.json"
 
   inventory:
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_call')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -245,7 +271,7 @@ jobs:
           fi
 
   execute:
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_call')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
