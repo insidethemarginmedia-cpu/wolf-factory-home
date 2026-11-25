@@ -13,7 +13,7 @@
 | Current Home integration branch when checked | `arena/38f3a7f7-wolf-factory-home` at `003b2488df3326c5b4a837b4a50625d9a355a339`, tree `a82b7b30253adc203f7103f69a2867e3b337d9e2` |
 | Integration distance | 16 commits ahead of the common branch point; session source checkpoint is one commit ahead of it |
 | Source-checkpoint diff accounting | 34 files, **3,813 insertions / 1,062 deletions** against `0e7c519`; all paths are CI source, tests, workflow, or related evidence/docs; no generated binaries or unrelated product files found |
-| Review PR | [Home PR #3](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/3), head `d91645b…`, base `arena/38f3a7f7-wolf-factory-home`, OPEN / DRAFT / CONFLICTING |
+| Review PR | [Home PR #3](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/3), base `arena/38f3a7f7-wolf-factory-home`, OPEN / DRAFT / CONFLICTING at last status refresh; the reviewed P1.50 source checkpoint is `d91645b…` |
 | Existing integration PR | [Home PR #2](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/2), OPEN from the integration branch to `feat/public-runtime-probe-20261022`; unchanged by this audit |
 
 The P1.50 session branch was pushed only to its authorized existing branch. I did **not** merge PR #2 or #3, rebase, force-push, dispatch a workflow, or modify a default branch. A local attempt to preview the integration merge exposed conflicts in the bridge workflow, evidence docs, and trigger-coverage test; it was aborted before committing. PR #3 therefore remains a draft/conflicting review artifact rather than a merge-ready combined implementation.

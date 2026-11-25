@@ -1,6 +1,6 @@
 {
   "schemaVersion": "wolf.private-ci.p150-verification/v1",
-  "recordedAt": "2026-11-25T14:24:38Z",
+  "recordedAt": "2026-11-25T14:25:22Z",
   "reportPath": "docs/private-ci-p150-verification.md",
   "verdict": "BLOCKED_NOT_ACCEPTED",
   "scope": {
@@ -35,7 +35,8 @@
       "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/3",
       "state": "OPEN",
       "draft": true,
-      "head": "d91645b65b91a987e3933bdbdc96818f000556f8",
+      "sourceCheckpointCommit": "d91645b65b91a987e3933bdbdc96818f000556f8",
+      "sourceCheckpointTree": "3766038d8cfed5ce5d1a72b65589f34c83927cb2",
       "baseBranch": "arena/38f3a7f7-wolf-factory-home",
       "mergeState": "CONFLICTING",
       "mergePerformed": false
