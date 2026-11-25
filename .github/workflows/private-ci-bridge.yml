@@ -44,13 +44,14 @@ on:
       - 'scripts/private-ci-activation-wizard.mjs'
       - 'scripts/private-ci-app-acceptance.mjs'
       - 'scripts/private-ci-app-acceptance-cli.mjs'
+      - 'scripts/private-ci-app-diagnosis.mjs'
       - 'scripts/private-ci-journal-cli.mjs'
       - 'tests/private-ci-bridge.test.mjs'
       - 'tests/private-ci-inventory.test.mjs'
       - 'tests/private-ci-execute.test.mjs'
       - 'tests/private-ci-publish-receipt.test.mjs'
       - 'tests/private-ci-diagnose.test.mjs'
-      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs tests/private-ci-app-installations.test.mjs tests/private-ci-activation-wizard.test.mjs tests/private-ci-app-acceptance.test.mjs tests/private-ci-app-acceptance-cli.test.mjs tests/private-ci-app-exposure.test.mjs'
+      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs tests/private-ci-app-installations.test.mjs tests/private-ci-activation-wizard.test.mjs tests/private-ci-app-acceptance.test.mjs tests/private-ci-app-acceptance-cli.test.mjs tests/private-ci-app-exposure.test.mjs tests/private-ci-app-diagnosis.test.mjs'
       - 'tests/private-ci-workflow.test.mjs'
       - 'tests/private-ci-app-auth.test.mjs'
       - 'tests/private-ci-dispatch-probe.test.mjs'
@@ -62,6 +63,7 @@ on:
       - 'tests/private-ci-app-acceptance.test.mjs'
       - 'tests/private-ci-app-acceptance-cli.test.mjs'
       - 'tests/private-ci-app-exposure.test.mjs'
+      - 'tests/private-ci-app-diagnosis.test.mjs'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
       - 'tests/private-controller-preflight-pin.test.mjs'
@@ -563,76 +565,17 @@ jobs:
       - name: Publish the diagnosis to a public check run the agent can read
         if: always()
         shell: bash
-        # Job logs are not reachable from the agent's environment, and a failed
-        # step never reaches the receipt step. This publishes the renewal verdict
-        # (state and per-role reasons only) as an annotation on the public
-        # repository, which is readable - so a failure explains itself instead of
-        # costing another blind iteration. No credential enters this payload.
+        # An embedded Python heredoc inside a YAML block scalar broke indentation
+        # and failed the step. A real script is testable and cannot mis-indent.
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA_VALUE: ${{ github.sha }}
           AUTH_RECOVERY_FILE: /tmp/wolf-ci-auth-recovery.json
           ACCEPTANCE_FILE: /tmp/wolf-ci-acceptance.json
           PUBLIC_REPOSITORY: ${{ github.repository }}
-          WOLF_CI_AUTH_RECOVERY_CODE: ${{ steps.auth_recovery.outcome }}
         run: |
           set -euo pipefail
-          python3 - <<'PYEOF'
-          import json, os, urllib.request
-
-          def load(path):
-              try:
-                  with open(path) as handle:
-                      return json.load(handle)
-              except Exception:
-                  return None
-
-          recovery = load(os.environ.get('AUTH_RECOVERY_FILE', ''))
-          acceptance = load(os.environ.get('ACCEPTANCE_FILE', ''))
-
-          lines = []
-          if recovery is None:
-              lines.append('renewal: NO REPORT (step did not write a file)')
-          else:
-              lines.append('renewal state: ' + str(recovery.get('state')))
-              lines.append('renewal reason: ' + str(recovery.get('reason')))
-              for entry in recovery.get('renewal', []) or []:
-                  lines.append('  %s source=%s renews=%s restart=%s first=%s second=%s reason=%s' % (
-                      entry.get('role'), entry.get('source'), entry.get('renews'),
-                      entry.get('restartRecovered'),
-                      (entry.get('first') or {}).get('authState'),
-                      (entry.get('second') or {}).get('authState'),
-                      entry.get('firstReason') or '')
-                  if entry.get('firstMessage'):
-                      lines.append('    api: ' + str(entry.get('firstMessage')))
-          if acceptance is None:
-              lines.append('acceptance: NO REPORT')
-          else:
-              lines.append('acceptance state: ' + str(acceptance.get('state')))
-              for check in acceptance.get('checks', []) or []:
-                  lines.append('  %s = %s %s' % (check.get('check'), check.get('state'), check.get('reason') or ''))
-
-          body = '\n'.join(lines)[:60000]
-          payload = json.dumps({
-              'name': 'wolf-app-diagnosis',
-              'head_sha': os.environ['GITHUB_SHA_VALUE'],
-              'status': 'completed',
-              'conclusion': 'neutral',
-              'output': {'title': 'App authentication diagnosis', 'summary': body},
-          }).encode()
-          request = urllib.request.Request(
-              'https://api.github.com/repos/%s/check-runs' % os.environ['PUBLIC_REPOSITORY'],
-              data=payload, method='POST',
-              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                       'Accept': 'application/vnd.github+json',
-                       'X-GitHub-Api-Version': '2022-11-28',
-                       'Content-Type': 'application/json'})
-          try:
-              urllib.request.urlopen(request, timeout=20)
-              print('DIAGNOSIS_PUBLISHED')
-          except Exception as error:
-              print('DIAGNOSIS_UNAVAILABLE: ' + type(error).__name__)
-          PYEOF
+          node scripts/private-ci-app-diagnosis.mjs
       - name: Report the authentication posture of this run
         shell: bash
         env:
