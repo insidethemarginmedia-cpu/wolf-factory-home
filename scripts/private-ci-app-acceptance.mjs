@@ -24,10 +24,22 @@ const API = 'https://api.github.com';
  * that produced a spurious 'inputs' entry the first time.
  */
 export function parseInputNames(block = '') {
-  if (!/inputs\s*:/.test(block)) return [];
-  return [...String(block).matchAll(/^\s{4,10}([a-z_][a-z0-9_]*)\s*:/gim)]
-    .map(match => match[1])
-    .filter(name => name !== 'inputs');
+  const lines = String(block).split(/\r?\n/);
+  const inputsAt = lines.findIndex(line => /^\s*inputs\s*:\s*$/.test(line));
+  if (inputsAt < 0) return [];
+  const baseIndent = lines[inputsAt].match(/^\s*/)[0].length;
+  const names = [];
+  for (const line of lines.slice(inputsAt + 1)) {
+    if (!line.trim()) continue;
+    const indent = line.match(/^\s*/)[0].length;
+    // Only keys defined directly under `inputs` are inputs; deeper keys such as
+    // `required` and `default` describe an input, they are not inputs.
+    if (indent <= baseIndent) break;
+    if (indent !== baseIndent + 2) continue;
+    const match = line.match(/^\s*([a-z_][a-z0-9_]*)\s*:/i);
+    if (match) names.push(match[1]);
+  }
+  return names;
 }
 
 export const ACCEPTANCE_STATES = Object.freeze({PASS: 'PASS', BLOCKED: 'BLOCKED', FAIL: 'FAIL', SKIPPED: 'SKIPPED'});
@@ -261,7 +273,7 @@ export async function checkPrivateCheckPublication({token, repository, sha, name
  * Check 5 — the dispatcher token can dispatch, and a second identical dispatch is
  * suppressed. Suppression is read from the run count, not assumed.
  */
-export async function checkDispatch({token, repository, workflow, ref = 'main', sha, pr, settleMs = 6000, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), fetchImpl = globalThis.fetch} = {}) {
+export async function checkDispatch({token, readToken, repository, workflow, ref = 'main', sha, pr, settleMs = 6000, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), fetchImpl = globalThis.fetch} = {}) {
   if (!token) return {check: 'dispatch', state: ACCEPTANCE_STATES.BLOCKED, reason: 'DISPATCHER_TOKEN_ABSENT'};
   if (!workflow) return {check: 'dispatch', state: ACCEPTANCE_STATES.BLOCKED, reason: 'WORKFLOW_NOT_RESOLVED'};
 
@@ -293,7 +305,7 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
     let chosenSchema = null;
     const examined = [];
     for (const candidate of candidates) {
-      const file = await call(`${API}/repos/${repository}/contents/${candidate.path}?ref=${encodeURIComponent(ref)}`, token, {}, fetchImpl);
+      const file = await call(`${API}/repos/${repository}/contents/${candidate.path}?ref=${encodeURIComponent(ref)}`, readToken ?? token, {}, fetchImpl);
       const text = file.ok && typeof file.body?.content === 'string'
         ? Buffer.from(file.body.content, file.body.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8')
         : null;
@@ -349,13 +361,19 @@ export async function checkDispatch({token, repository, workflow, ref = 'main', 
   // Inputs must match what the workflow declares. Sending an undeclared input is a
   // 422, and the error does not say which one is wrong - so the declaration is
   // read first and only declared inputs are sent.
-  // Prefer the schema parsed from the workflow file during discovery; otherwise
-  // read the pinned workflow's own declaration, which needs no extra permission.
+  // Prefer the schema parsed during discovery; otherwise read the configured
+  // workflow's own declaration.
+  //
+  // The read uses the *reader* credential. The dispatcher holds actions:write and
+  // nothing else, by design, so asking it to read contents is a 403 - which the
+  // first version of this check did, and reported as a missing trigger. Widening
+  // the dispatcher would have "fixed" the wrong problem.
+  const reader = readToken ?? token;
   let declared = null;
   if (Array.isArray(resolved.schema)) {
     declared = resolved.schema.map(name => ({name}));
   } else {
-    const own = await call(`${API}/repos/${repository}/contents/.github/workflows/${workflow}?ref=${encodeURIComponent(ref)}`, token, {}, fetchImpl);
+    const own = await call(`${API}/repos/${repository}/contents/.github/workflows/${workflow}?ref=${encodeURIComponent(ref)}`, reader, {}, fetchImpl);
     if (own.ok && typeof own.body?.content === 'string') {
       const text = Buffer.from(own.body.content, 'base64').toString('utf8');
       const block = text.match(/workflow_dispatch\s*:\s*\n([\s\S]*?)(?=\n\S|$)/);

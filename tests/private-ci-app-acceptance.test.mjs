@@ -301,3 +301,27 @@ test('the input parser does not treat the `inputs` mapping key as an input', asy
   assert.deepEqual(parseInputNames(block), ['sha', 'pr']);
   assert.deepEqual(parseInputNames('    description: no inputs here'), []);
 });
+
+test('contents are read with the reader credential, not the dispatcher', async () => {
+  const authSeen = [];
+  const fetchImpl = async (url, init = {}) => {
+    authSeen.push({url, auth: (init.headers ?? {}).authorization});
+    if (url.includes('/workflows/x.yml/')) return {ok: false, status: 404, json: async () => ({})};
+    if (url.includes('/workflows?per_page=100')) return {ok: true, status: 200, json: async () => ({workflows: [{id: 3, path: '.github/workflows/w.yml', created_at: '2026-01-01T00:00:00Z'}]})};
+    if (url.includes('/contents/')) return contents(['sha']);
+    if (url.includes('/workflows/3/runs')) return {ok: true, status: 200, json: async () => ({total_count: 0})};
+    if (url.includes('/workflows/3/dispatches')) return {ok: true, status: 204, json: async () => ({})};
+    return {ok: false, status: 404, json: async () => ({})};
+  };
+  const result = await checkDispatch({
+    token: 'Bearer-dispatcher', readToken: 'Bearer-reader',
+    repository: repo, workflow: 'x.yml', sha: SHA, settleMs: 0, sleep: async () => {}, fetchImpl,
+  });
+  assert.equal(result.state, ACCEPTANCE_STATES.PASS);
+  // Every contents read used the reader; every dispatch used the dispatcher.
+  const contentCalls = authSeen.filter(entry => entry.url.includes('/contents/'));
+  assert.ok(contentCalls.length > 0);
+  assert.ok(contentCalls.every(entry => entry.auth.includes('Bearer-reader')), 'contents never use the dispatcher');
+  const dispatchCalls = authSeen.filter(entry => entry.url.includes('/dispatches'));
+  assert.ok(dispatchCalls.every(entry => entry.auth.includes('Bearer-dispatcher')));
+});

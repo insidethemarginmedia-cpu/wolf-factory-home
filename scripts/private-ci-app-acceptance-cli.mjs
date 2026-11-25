@@ -105,6 +105,9 @@ export async function runAcceptance({env = process.env, fetchImpl = globalThis.f
   // is the 204 and the run count, not a second execution.
   checks.push(await checkDispatch({
     token: dispatcherToken,
+    // Contents are read with the reader credential; the dispatcher holds
+    // actions:write only and must not be given more just to inspect a file.
+    readToken: readerToken,
     repository,
     workflow: env.WOLF_ACCEPTANCE_WORKFLOW || null,
     ref: env.WOLF_ACCEPTANCE_REF || 'main',
