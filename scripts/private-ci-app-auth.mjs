@@ -153,12 +153,28 @@ export async function mintInstallationToken({
 
   if (!response.ok) {
     const status = Number.isInteger(response.status) ? response.status : 0;
-    try { await response.body?.cancel(); } catch {}
+    // GitHub's own message is the difference between a diagnosis and a guess. It
+    // is a sentence about permissions, never a credential, and it is truncated
+    // and redacted before it can reach a log or an artefact.
+    let apiMessage = null;
+    try {
+      const body = await response.json();
+      if (typeof body?.message === 'string') {
+        apiMessage = body.message
+          .replace(/gh[pousr]_[A-Za-z0-9_]{16,}/g, '[REDACTED]')
+          .replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[REDACTED]')
+          .slice(0, 300);
+      }
+    } catch {
+      try { await response.body?.cancel(); } catch {}
+    }
     return {
       state: status === 403 || status === 404 ? 'BLOCKED' : 'FAILED',
       role: normalizedRole,
       reason: status === 401 ? 'APP_JWT_REJECTED' : status === 403 ? 'APP_INSTALLATION_FORBIDDEN' : status === 404 ? 'APP_INSTALLATION_NOT_FOUND' : 'APP_TOKEN_REQUEST_FAILED',
       httpStatus: status,
+      apiMessage,
+      requestedPermissions: requestPermissions,
     };
   }
 

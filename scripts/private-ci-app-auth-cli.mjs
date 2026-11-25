@@ -147,6 +147,7 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
         // The mint's own reason, so a BLOCKED role names its cause instead of
         // only showing NONE.
         firstReason: first.state === 'MINTED' ? null : (first.reason ?? first.state ?? null),
+        firstMessage: first.state === 'MINTED' ? null : (first.apiMessage ?? null),
         secondReason: second.state === 'MINTED' ? null : (second.reason ?? second.state ?? null),
         requestedPermissions: ROLE_PERMISSIONS[normalizeRole(role)],
         // Proof of a second, independent token.

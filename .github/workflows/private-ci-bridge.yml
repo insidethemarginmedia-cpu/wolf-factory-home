@@ -602,7 +602,9 @@ jobs:
                       entry.get('restartRecovered'),
                       (entry.get('first') or {}).get('authState'),
                       (entry.get('second') or {}).get('authState'),
-                      entry.get('firstReason') or ''))
+                      entry.get('firstReason') or '')
+                  if entry.get('firstMessage'):
+                      lines.append('    api: ' + str(entry.get('firstMessage')))
           if acceptance is None:
               lines.append('acceptance: NO REPORT')
           else:

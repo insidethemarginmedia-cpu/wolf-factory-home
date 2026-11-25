@@ -312,3 +312,33 @@ test('mint leaves no token file when it falls back, so a caller cannot source a 
   assert.equal(printed.includes('ghp_reader'), false, 'the PAT must not reach stdout');
   assert.match(printed, /FALLBACK/);
 });
+
+
+test('a rejected mint reports the API message so the cause is not guessed', async () => {
+  const {mintInstallationToken} = await import('../scripts/private-ci-app-auth.mjs');
+  const {generateKeyPairSync} = await import('node:crypto');
+  const {privateKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
+  const pem = privateKey.export({type: 'pkcs1', format: 'pem'});
+  const result = await mintInstallationToken({
+    role: 'dispatcher', appId: '5913418', privateKey: pem, installationId: '1',
+    repository: 'donraposo1-source/project-wolf', permissions: {actions: 'write', metadata: 'read'},
+    fetchImpl: async () => ({ok: false, status: 422, json: async () => ({message: 'There is at least one error with your input.'})}),
+  });
+  assert.equal(result.state, 'FAILED');
+  assert.equal(result.httpStatus, 422);
+  assert.match(result.apiMessage, /error with your input/);
+  assert.deepEqual(result.requestedPermissions, {actions: 'write', metadata: 'read'});
+});
+
+test('the API message is redacted before it is retained', async () => {
+  const {mintInstallationToken} = await import('../scripts/private-ci-app-auth.mjs');
+  const {generateKeyPairSync} = await import('node:crypto');
+  const {privateKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
+  const pem = privateKey.export({type: 'pkcs1', format: 'pem'});
+  const result = await mintInstallationToken({
+    role: 'dispatcher', appId: '1', privateKey: pem, installationId: '1',
+    repository: 'r/r', permissions: {actions: 'write'},
+    fetchImpl: async () => ({ok: false, status: 500, json: async () => ({message: 'failed for ghp_aaaaaaaaaaaaaaaaaaaaaaaa'})}),
+  });
+  assert.equal(result.apiMessage.includes('ghp_'), false);
+});
