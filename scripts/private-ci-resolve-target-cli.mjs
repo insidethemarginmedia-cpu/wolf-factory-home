@@ -56,3 +56,11 @@ export async function resolveTargetCli(argv = [], {
   }) + '\n');
   return RESOLVE_EXIT.OK;
 }
+
+// Direct invocation. Without this the command prints nothing and exits 0, which
+// the workflow would read as a successful resolution of nothing - a silent failure
+// in the same family as the ones this pipeline exists to prevent.
+const invokedDirectly = process.argv[1] && new URL('file://' + process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  resolveTargetCli(process.argv.slice(2)).then(code => process.exit(code));
+}

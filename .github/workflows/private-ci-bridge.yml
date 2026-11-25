@@ -110,6 +110,7 @@ on:
       - 'scripts/private-ci-resolve-target.mjs'
       - 'scripts/private-ci-resolve-target-cli.mjs'
       - 'tests/private-ci-resolve-target.test.mjs'
+      - 'tests/private-ci-resolve-target-cli.test.mjs'
       - '.github/workflows/mission-listener.yml'
       - 'scripts/private-controller-preflight.mjs'
       - 'tests/private-controller-preflight.test.mjs'
