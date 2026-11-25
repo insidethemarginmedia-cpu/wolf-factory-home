@@ -45,6 +45,7 @@ on:
       # The evidence doc states the check table and the test counts, so it is
       # validated with the code it describes rather than after it.
       - 'docs/private-ci-bridge-evidence.md'
+      - 'docs/private-ci-target-resolution.md'
       - 'docs/zero-touch-activation.md'
       - 'docs/app-activation/**'
       - 'scripts/private-ci-bridge.mjs'
