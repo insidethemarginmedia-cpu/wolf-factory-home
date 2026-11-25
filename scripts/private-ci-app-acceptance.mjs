@@ -14,6 +14,7 @@
 
 import {mintInstallationToken, ROLE_PERMISSIONS, APP_SECRET_NAMES, describeAuthState, classifyRejection} from './private-ci-app-auth.mjs';
 import {mapInstallations, INSTALL_MAP_STATES} from './private-ci-app-installations.mjs';
+import {mintRoleToken} from './private-ci-app-auth-cli.mjs';
 
 const API = 'https://api.github.com';
 
@@ -130,18 +131,12 @@ export async function checkIndependentTokens({env = process.env, fetchImpl = glo
   }
 
   for (const role of ['reader', 'publisher', 'dispatcher']) {
-    const result = await mintInstallationToken({
-      role,
-      appId: env[APP_SECRET_NAMES.appId],
-      privateKey: env[APP_SECRET_NAMES.privateKey],
-      installationId: env[APP_SECRET_NAMES[role]],
-      repository,
-      permissions: ROLE_PERMISSIONS[role],
-      fetchImpl,
-      now,
-    });
+    // Through the CLI, so the coverage-based installation resolution applies here
+    // too: acceptance must exercise the same path the workflow does, otherwise it
+    // grades a configuration nobody runs.
+    const result = await mintRoleToken({role, env, fetchImpl, now});
     if (result.state !== 'MINTED') {
-      problems.push({role, state: result.state, reason: result.reason});
+      problems.push({role, state: result.state, reason: result.reason, httpStatus: result.httpStatus ?? null, apiMessage: result.apiMessage ?? null});
       continue;
     }
     // Granted permissions must equal the requested set exactly.
@@ -150,7 +145,14 @@ export async function checkIndependentTokens({env = process.env, fetchImpl = glo
     for (const [permission, level] of Object.entries(expected)) {
       if (granted[permission] !== level) problems.push({role, reason: 'GRANTED_PERMISSION_DIFFERS', permission, granted: granted[permission] ?? 'absent', expected: level});
     }
-    issued[role] = {token: result.token, permissions: granted, expiresAt: result.expiresAt, repositoryScoped: result.repositoryScoped};
+    issued[role] = {
+      token: result.token,
+      permissions: granted,
+      expiresAt: result.expiresAt,
+      repositoryScoped: result.repositoryScoped,
+      installationSource: result.installationSource ?? role,
+      installationRepaired: result.installationRepaired === true,
+    };
   }
 
   // Independence: no two roles may hold the same token string.
@@ -169,6 +171,8 @@ export async function checkIndependentTokens({env = process.env, fetchImpl = glo
       permissions: entry.permissions,
       expiresAt: entry.expiresAt,
       repositoryScoped: entry.repositoryScoped,
+      installationSource: entry.installationSource,
+      installationRepaired: entry.installationRepaired,
     }])),
     distinctTokens,
     problems,
@@ -298,20 +302,14 @@ export async function checkRenewalWithClock({env = process.env, fetchImpl = glob
   }
   const results = [];
   for (const role of ['reader', 'publisher', 'dispatcher']) {
-    const first = await mintInstallationToken({
-      role, appId: env[APP_SECRET_NAMES.appId], privateKey: env[APP_SECRET_NAMES.privateKey],
-      installationId: env[APP_SECRET_NAMES[role]], repository, permissions: ROLE_PERMISSIONS[role], fetchImpl, now,
-    });
+    const first = await mintRoleToken({role, env, fetchImpl, now});
     // A restart is a re-mint moments later, not an hour later: GitHub issues
     // `expires_at` from the real clock, so judging the second token against a
     // simulated hour-ahead clock put it exactly on its expiry. One second is the
     // smallest honest step, and it is enough to require an independent token.
     advance();
     const restartAt = now + 1000;
-    const second = await mintInstallationToken({
-      role, appId: env[APP_SECRET_NAMES.appId], privateKey: env[APP_SECRET_NAMES.privateKey],
-      installationId: env[APP_SECRET_NAMES[role]], repository, permissions: ROLE_PERMISSIONS[role], fetchImpl, now: restartAt,
-    });
+    const second = await mintRoleToken({role, env, fetchImpl, now: restartAt});
     const firstState = first.state === 'MINTED' ? describeAuthState({state: 'MINTED', expiresAt: first.expiresAt, now}).state : first.state;
     const secondState = second.state === 'MINTED' ? describeAuthState({state: 'MINTED', expiresAt: second.expiresAt, now: restartAt}).state : second.state;
     results.push({
@@ -341,10 +339,7 @@ export async function checkExpiryAndDenial({env = process.env, fetchImpl = globa
   if (!env[APP_SECRET_NAMES.appId] || !env[APP_SECRET_NAMES.privateKey]) {
     return {check: 'expiry-denial', state: ACCEPTANCE_STATES.BLOCKED, reason: 'APP_SECRETS_ABSENT', credentialsPrinted: false};
   }
-  const reader = await mintInstallationToken({
-    role: 'reader', appId: env[APP_SECRET_NAMES.appId], privateKey: env[APP_SECRET_NAMES.privateKey],
-    installationId: env[APP_SECRET_NAMES.reader], repository, permissions: ROLE_PERMISSIONS.reader, fetchImpl, now,
-  });
+  const reader = await mintRoleToken({role: 'reader', env, fetchImpl, now});
   if (reader.state !== 'MINTED') return {check: 'expiry-denial', state: ACCEPTANCE_STATES.BLOCKED, reason: reader.reason ?? 'READER_TOKEN_ABSENT'};
 
   // Denial: dispatching with a contents:read token must be refused.

@@ -75,18 +75,12 @@ export async function runAcceptance({env = process.env, fetchImpl = globalThis.f
   // acceptance run does not depend on tokens issued in an earlier step, which
   // also exercises the mint path a second time.
   const mintFor = async role => {
-    const {mintInstallationToken, ROLE_PERMISSIONS, APP_SECRET_NAMES} = await import('./private-ci-app-auth.mjs');
+    const {APP_SECRET_NAMES} = await import('./private-ci-app-auth.mjs');
+    const {mintRoleToken} = await import('./private-ci-app-auth-cli.mjs');
     if (!env[APP_SECRET_NAMES.appId] || !env[APP_SECRET_NAMES.privateKey]) return null;
-    const result = await mintInstallationToken({
-      role,
-      appId: env[APP_SECRET_NAMES.appId],
-      privateKey: env[APP_SECRET_NAMES.privateKey],
-      installationId: env[APP_SECRET_NAMES[role]],
-      repository,
-      permissions: ROLE_PERMISSIONS[role],
-      fetchImpl,
-      now,
-    });
+    // The same resolver the workflow uses, so a corrected installation pointer is
+    // corrected here too and acceptance grades the configuration that ships.
+    const result = await mintRoleToken({role, env, fetchImpl, now});
     return result.state === 'MINTED' ? result.token : null;
   };
 
