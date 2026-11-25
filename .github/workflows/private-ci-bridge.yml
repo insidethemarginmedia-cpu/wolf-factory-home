@@ -131,31 +131,6 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/private-ci-bridge.mjs secret-inventory
-      - name: Mint the publisher token for the private check
-        id: publisher_mint
-        if: always()
-        shell: bash
-        # A step's `env:` is resolved before its own run block executes, so a token
-        # exported inside the publish step could never reach that step's process.
-        # Minting here and writing to GITHUB_ENV is what actually makes the token
-        # available to the step that needs it.
-        env:
-          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
-          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
-          WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
-          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
-          WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
-          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-publisher-token.env
-        run: |
-          set -euo pipefail
-          if node scripts/private-ci-app-auth-cli.mjs mint publisher --out "$WOLF_CI_TOKEN_FILE" && test -s "$WOLF_CI_TOKEN_FILE"; then
-            # GITHUB_ENV carries it to every later step, already masked.
-            cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"
-            echo PUBLISHER_CREDENTIAL=app
-          else
-            echo PUBLISHER_CREDENTIAL=status-pat-fallback
-          fi
-          rm -f "$WOLF_CI_TOKEN_FILE"
       - name: Publish the authenticated check to the private commit
         if: always()
         continue-on-error: true
@@ -672,6 +647,31 @@ jobs:
             echo PRIVATE_RECEIPT_PUBLICATION=BLOCKED
             test -s "$WOLF_CI_PRIVATE_PUBLICATION_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_RECEIPT_PUBLICATION_FAILED"}' > "$WOLF_CI_PRIVATE_PUBLICATION_FILE"
           fi
+      - name: Mint the publisher token for the private check
+        id: publisher_mint
+        if: always()
+        shell: bash
+        # A step's `env:` is resolved before its own run block executes, so a token
+        # exported inside the publish step could never reach that step's process.
+        # Minting here and writing to GITHUB_ENV is what actually makes the token
+        # available to the step that needs it.
+        env:
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
+          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+          WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
+          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-publisher-token.env
+        run: |
+          set -euo pipefail
+          if node scripts/private-ci-app-auth-cli.mjs mint publisher --out "$WOLF_CI_TOKEN_FILE" && test -s "$WOLF_CI_TOKEN_FILE"; then
+            # GITHUB_ENV carries it to every later step, already masked.
+            cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"
+            echo PUBLISHER_CREDENTIAL=app
+          else
+            echo PUBLISHER_CREDENTIAL=status-pat-fallback
+          fi
+          rm -f "$WOLF_CI_TOKEN_FILE"
       - name: Publish the authenticated check to the private commit
         if: always()
         continue-on-error: true
