@@ -10,7 +10,7 @@
 | P1.50 source checkpoint tested | `d91645b65b91a987e3933bdbdc96818f000556f8` |
 | Source checkpoint tree | `3766038d8cfed5ce5d1a72b65589f34c83927cb2` |
 | Common branch point | `0e7c519a16fea7eb37c929885720cac87d9ffd3b` |
-| Current Home integration branch when checked | `arena/38f3a7f7-wolf-factory-home` at `003b2488df3326c5b4a837b4a50625d9a355a339` |
+| Current Home integration branch when checked | `arena/38f3a7f7-wolf-factory-home` at `003b2488df3326c5b4a837b4a50625d9a355a339`, tree `a82b7b30253adc203f7103f69a2867e3b337d9e2` |
 | Integration distance | 16 commits ahead of the common branch point; session source checkpoint is one commit ahead of it |
 | Source-checkpoint diff accounting | 34 files, **3,813 insertions / 1,062 deletions** against `0e7c519`; all paths are CI source, tests, workflow, or related evidence/docs; no generated binaries or unrelated product files found |
 | Review PR | [Home PR #3](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/3), head `d91645b…`, base `arena/38f3a7f7-wolf-factory-home`, OPEN / DRAFT / CONFLICTING |

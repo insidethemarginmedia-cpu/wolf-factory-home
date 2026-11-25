@@ -1,6 +1,6 @@
 {
   "schemaVersion": "wolf.private-ci.p150-verification/v1",
-  "recordedAt": "2026-11-25T14:23:48Z",
+  "recordedAt": "2026-11-25T14:24:38Z",
   "reportPath": "docs/private-ci-p150-verification.md",
   "verdict": "BLOCKED_NOT_ACCEPTED",
   "scope": {
@@ -12,6 +12,7 @@
     "commonBranchPoint": "0e7c519a16fea7eb37c929885720cac87d9ffd3b",
     "integrationBranch": "arena/38f3a7f7-wolf-factory-home",
     "integrationHead": "003b2488df3326c5b4a837b4a50625d9a355a339",
+    "integrationTree": "a82b7b30253adc203f7103f69a2867e3b337d9e2",
     "integrationDistanceFromCommon": 16,
     "sourceCheckpointDiff": {
       "files": 34,
