@@ -13,6 +13,7 @@
 // with a fetch implementation and an RS256 signer so it is testable without any
 // credential. No key material is ever logged, returned or written to disk.
 import {createPrivateKey, createSign, randomUUID} from 'node:crypto';
+import {isRetiredDurably} from './private-ci-retirement-ledger.mjs';
 
 export const APP_ROLES = Object.freeze(['reader', 'publisher', 'dispatcher']);
 
@@ -250,7 +251,7 @@ export function needsRenewal(expiresAt, now = Date.now()) {
 
 // Chooses the credential for a role at run time. App first, PAT fallback second,
 // and never a silent degradation: the caller gets the decision it made.
-export function selectCredential(role, {env = process.env} = {}) {
+export function selectCredential(role, {env = process.env, ledgerText = null} = {}) {
   const normalizedRole = normalizeRole(role);
   const inventory = inventoryAppSecrets(env);
   const installationSecret = APP_SECRET_NAMES[normalizedRole];
@@ -264,17 +265,32 @@ export function selectCredential(role, {env = process.env} = {}) {
   };
   // Retirement is enforced here, at the single place a credential is chosen.
   //
-  // It is read from the run's own receipt (`WOLF_CI_RETIRE_PAT`), which is set by
-  // the retirement step once the decision is RETIRE_FALLBACK. Reporting a decision
-  // without acting on it is the same failure as reporting a check that never ran:
-  // the receipt would say the PAT is gone while the code kept using it.
-  if (isFallbackRetired(env) && report(patByRole[normalizedRole]) === 'present') {
+  // It consults two independent sources, and either one is sufficient:
+  //
+  //   1. the run's own flag (`WOLF_CI_RETIRE_PAT`), set by the retirement step
+  //      once this run decides RETIRE_FALLBACK, and
+  //   2. the durable ledger on the retirement branch, which records decisions
+  //      made by *earlier* runs.
+  //
+  // The ledger is what makes the retirement a property of the repository rather
+  // than of one workflow run. Without it, any fresh run — a retry, a manual
+  // dispatch, a different workflow — would silently regain the fallback, and
+  // "retired" would mean only "retired during that run". A per-run flag is
+  // evidence; the ledger is enforcement.
+  const retirement = isRetiredDurably({
+    env,
+    ledgerText: ledgerText ?? env.WOLF_CI_RETIREMENT_LEDGER_TEXT ?? null,
+  });
+  if (retirement.retired && report(patByRole[normalizedRole]) === 'present') {
     return {
       role: normalizedRole,
       source: 'none',
       fallback: false,
       reason: 'PAT_FALLBACK_RETIRED',
       retired: true,
+      // Which evidence closed the fallback: this run, an earlier run, or both.
+      retirementSource: retirement.source,
+      retirementSince: retirement.since,
       // The credential exists but is deliberately unusable.
       withheldCredential: patByRole[normalizedRole] ? 'pat' : null,
     };

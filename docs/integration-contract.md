@@ -146,9 +146,22 @@ became missions. A refusal always leaves evidence.
 
 ### 5.1 The blocker, precisely
 
-GitHub starts `repository_dispatch` workflows **only from the default branch**,
-and the default branch here cannot carry the bridge by any path available to
-automation. Each step below was measured:
+**Corrected 2026-11-25.** An earlier revision of this document claimed `main` was
+an "orphan root with no shared history", and concluded no merge was possible.
+**That was wrong**, and the error was mine. The sandbox clone was shallow
+(`git rev-parse --is-shallow-repository` → `true`, with `.git/shallow` cutting at
+both `20f1872` and `3742bcc`), so `git merge-base` could not see the common
+ancestor and returned "unrelated histories". After `git fetch --unshallow`:
+
+```
+git merge-base origin/main HEAD   -> da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd
+git rev-list --left-right --count origin/main...HEAD -> 2   251
+```
+
+`main` shares history with this branch and is **2 commits ahead / 251 behind**.
+An ordinary merge is possible. The orphan-history claim is retracted.
+
+What survives, measured:
 
 | Probe | Result |
 | --- | --- |
@@ -156,32 +169,25 @@ automation. Each step below was measured:
 | `GET …/contents/.github/workflows/private-ci-bridge.yml?ref=main` | **404** |
 | `repository_dispatch` listeners on `main` | **none** — `main` holds only `night-shift-wakeup.yml` (`schedule`, `workflow_dispatch`) and `ollama-public-synthetic-qualification.yml` (`workflow_dispatch`) |
 | `POST …/actions/workflows/429186774/dispatches -f ref=<branch>` | **403** |
-| Same call against a *default-branch* workflow | **403** — so this is token capability, not a branch problem |
+| Same call against a *default-branch* workflow | **403** — token capability, not a branch problem |
 | `PATCH …/repos/… -f default_branch=…` | **403** |
-| `git merge-base HEAD origin/main` | **no merge base — unrelated histories** |
-| `git rev-list --max-parents=0` (each) | `main` root `3742bcc`; this branch root `20f1872` |
 
-The last two rows are the real constraint and they are easy to miss. `main` is a
-**single orphan commit** with no shared history with this branch, so there is no
-fast-forward and no ordinary merge. PR #2 targets
-`feat/public-runtime-probe-20261022`, **not** `main` — merging it would not put
-the trigger on the default branch.
+So the real constraint is narrower and more tractable than first reported:
+GitHub starts `repository_dispatch` workflows **only from the default branch**,
+and the default branch does not carry the bridge. It is a **landing** problem
+with an ordinary merge available, not a history-rewrite problem.
 
-**Required Founder action — one, and it must be a landing, not a merge.** Land
-`.github/workflows/private-ci-bridge.yml` and the `scripts/` it imports on
-`main`. Two workable shapes:
+One real merge conflict exists and is legitimate to resolve: `main` carries
+registration-only (inert) `night-shift-wakeup.yml` and
+`ollama-public-synthetic-qualification.yml`; this branch carries executable
+versions of both. The inert entrypoints on `main` are a deliberate safety
+posture — the merge must preserve main's inertness rather than silently
+activate Ollama on the default branch.
 
-1. **Adopt this history as default (preferred).** Set the repository default
-   branch to `feat/public-runtime-probe-20261022`, or fast-forward `main` to that
-   tip. This is a settings change, reversible, and needs no history rewrite.
-2. **Copy the files onto `main`.** Commit the bridge workflow plus the
-   `scripts/` it imports onto `main` as a new commit. This keeps the orphan
-   history and is a vanilla file commit; the `scripts/` must travel with it or
-   the workflow fails at its first `node` call.
-
-Either shape is small. Nothing else is outstanding: the App, its permissions, the
-installation IDs, the receipt publisher and the retirement enforcement are all
-verified working from this branch.
+**Required Founder action** remains a landing, but it is now a normal merge:
+merge this branch's history into `main` with the two workflow files resolved in
+favour of *inert on the default branch*. That is a founder decision because it
+activates the bridge on the default branch; it is not blocked by history.
 
 **Until then, do not dispatch.** The API answers 2xx and nothing runs. That
 silent acceptance is the most dangerous property of this integration — it looks

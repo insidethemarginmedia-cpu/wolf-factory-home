@@ -306,6 +306,47 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
           ref: ${{ github.sha }}
+      # Retirement must be known before the first credential is chosen, not after.
+      #
+      # Earlier revisions hydrated this only in a late step, so every step that ran
+      # before it - the probe among them - could still use the PAT. That is a
+      # per-run flag enforcing itself too late to matter. Hydrating here, as the
+      # first action after checkout, means no step in this job can select the
+      # fallback without the durable ledger already having been consulted.
+      #
+      # Fails open on absence by design: no ledger means no retirement evidence,
+      # and the App path does not depend on the PAT. It fails closed on a ledger
+      # that says RETIRED, because that evidence is positive.
+      - name: Hydrate durable retirement before any credential is selected
+        id: retirement-hydrate
+        continue-on-error: true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WOLF_CI_RETIREMENT_LEDGER_FILE: .wolf-ci/retirement-ledger.jsonl
+          WOLF_CI_RETIREMENT_LEDGER_TEXT: /tmp/wolf-ci-retirement-ledger.txt
+          WOLF_CI_RETIREMENT_VERDICT: /tmp/wolf-ci-retirement-verdict.json
+        run: |
+          set -euo pipefail
+          # The ledger lives on a dedicated branch; it is never the default branch,
+          # so reading it cannot activate anything.
+          if gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl?ref=wolf-ci-retirement" \
+               --jq .content 2>/dev/null | base64 -d > "$WOLF_CI_RETIREMENT_LEDGER_TEXT" 2>/dev/null; then
+            echo RETIREMENT_LEDGER=FETCHED
+          else
+            : > "$WOLF_CI_RETIREMENT_LEDGER_TEXT"
+            echo RETIREMENT_LEDGER=ABSENT
+          fi
+          cp "$WOLF_CI_RETIREMENT_LEDGER_TEXT" "$WOLF_CI_RETIREMENT_LEDGER_FILE" 2>/dev/null || true
+          node scripts/private-ci-app-auth-cli.mjs retirement-check > "$WOLF_CI_RETIREMENT_VERDICT"
+          cat "$WOLF_CI_RETIREMENT_VERDICT"
+          if node -e 'const v=require(process.argv[1]); process.exit(v.retired===true?0:1)' "$WOLF_CI_RETIREMENT_VERDICT"; then
+            echo 'WOLF_CI_RETIRE_PAT=true' >> "$GITHUB_ENV"
+            echo RETIREMENT_ENFORCED_FROM_LEDGER=true
+          else
+            echo RETIREMENT_ENFORCED_FROM_LEDGER=false
+          fi
       - name: Prepare the private schema database and the DBOS database
         shell: bash
         run: |
@@ -700,6 +741,40 @@ jobs:
           # now refuse the PAT. Printing the verdict makes a silently-ignored flag
           # impossible to miss.
           node scripts/private-ci-app-auth-cli.mjs state reader || true
+      - name: Persist the retirement decision so later runs inherit it
+        id: retirement_persist
+        if: always()
+        continue-on-error: true
+        shell: bash
+        # A per-run flag cannot claim permanent retirement. This step turns this
+        # run's decision into repository state that every later run reads before
+        # choosing a credential, so retirement survives the end of the run.
+        #
+        # Nothing is written when the decision keeps the fallback, and the write is
+        # append-only: an existing RETIRE record is never removed or amended.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          WOLF_CI_RETIREMENT_FILE: /tmp/wolf-ci-retirement.json
+          WOLF_CI_RETIREMENT_LEDGER_FILE: .wolf-ci/retirement-ledger.jsonl
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-app-auth-cli.mjs retirement-record
+          test -s "$WOLF_CI_RETIREMENT_LEDGER_FILE" || { echo RETIREMENT_LEDGER_WRITE=NONE; exit 0; }
+          encoded=$(base64 -w0 "$WOLF_CI_RETIREMENT_LEDGER_FILE")
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl?ref=wolf-ci-retirement" --jq .sha 2>/dev/null || true)
+          if test -n "$existing"; then
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl" \
+              -f message="chore(ci): record fallback retirement at ${GITHUB_SHA}" \
+              -f content="$encoded" -f sha="$existing" -f branch=wolf-ci-retirement >/dev/null \
+              && echo RETIREMENT_LEDGER_WRITE=APPENDED || echo RETIREMENT_LEDGER_WRITE=FAILED
+          else
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl" \
+              -f message="chore(ci): record fallback retirement at ${GITHUB_SHA}" \
+              -f content="$encoded" -f branch=wolf-ci-retirement >/dev/null \
+              && echo RETIREMENT_LEDGER_WRITE=CREATED || echo RETIREMENT_LEDGER_WRITE=FAILED
+          fi
       - name: Mint the publisher token for the private check
         id: publisher_mint
         if: always()

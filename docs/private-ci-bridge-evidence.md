@@ -410,9 +410,23 @@ dispatch cannot start it from this branch. This is measured, not inferred:
 | `POST …/actions/workflows/429186774/dispatches -f ref=<branch>` | **403 Resource not accessible by integration** |
 | Same call against a default-branch workflow | **403** — so the 403 is token capability, not a branch problem |
 
-GitHub starts `repository_dispatch` workflows **only from the default branch**.
-The bridge is not on `main`, and `main` cannot receive it by any path automation
-has. Both the branch state and the history state were measured:
+**Correction (2026-11-25): the orphan-history conclusion in the previous
+revision was wrong.** The sandbox clone was shallow — `git rev-parse
+--is-shallow-repository` → `true`, with `.git/shallow` cutting at both `20f1872`
+and `3742bcc`. `git merge-base` therefore could not see the common ancestor and
+reported unrelated histories. After `git fetch --unshallow`:
+
+```
+git merge-base origin/main HEAD                        -> da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd
+git rev-list --left-right --count origin/main...HEAD   -> 2   251
+```
+
+`main` shares history with this branch; an ordinary merge is available. The
+orphan-root claim is retracted. The lesson is recorded rather than hidden: a
+shallow clone turns "I cannot see the ancestor" into "there is no ancestor", and
+the tool reports the second with no warning.
+
+The dispatch blocker itself stands, re-measured:
 
 ```
 POST …/dispatches                                 -> 2xx, zero runs created
@@ -421,24 +435,17 @@ repository_dispatch listeners on main             -> none
 POST …/workflows/429186774/dispatches (branch)    -> 403
 POST …/workflows/<default-branch wf>/dispatches   -> 403   (token, not branch)
 PATCH …/repos/… -f default_branch=…               -> 403
-git merge-base HEAD origin/main                   -> no merge base
-git rev-list --max-parents=0 (each)               -> main 3742bcc / branch 20f1872
 ```
 
-The second `POST` rules out a branch-ref workaround: the 403 is token capability,
-so automation cannot dispatch a branch at all.
+GitHub starts `repository_dispatch` workflows only from the default branch, and
+`main` carries only `night-shift-wakeup.yml` (`schedule`, `workflow_dispatch`) and
+`ollama-public-synthetic-qualification.yml` (`workflow_dispatch`).
 
-The last two rows are the constraint that a merge-based plan misses. `main` is a
-**single orphan commit** with no shared history with this branch, so there is no
-fast-forward and no ordinary merge. PR #2 targets
-`feat/public-runtime-probe-20261022`, **not** `main`; merging it would not put the
-trigger on the default branch.
-
-**The single required Founder action** is to land the bridge workflow, and the
-`scripts/` it imports, on `main` — either by adopting this history as the default
-branch (settings change, reversible, no rewrite) or by committing those files
-onto `main` directly. The `scripts/` must travel with the workflow or it fails at
-its first `node` call. Nothing else is outstanding.
+**The remaining Founder action is a normal merge to `main`**, resolving the two
+workflow files in favour of *inert on the default branch* — `main` currently
+holds registration-only versions of both, and that inertness is a safety posture
+the merge must preserve. Merging PR #2 as-is would not achieve this: PR #2
+targets `feat/public-runtime-probe-20261022`, not `main`.
 
 Once the trigger is on `main`, a mission is:
 

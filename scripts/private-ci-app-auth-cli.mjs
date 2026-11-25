@@ -258,6 +258,70 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
     return APP_AUTH_EXIT.OK;
   }
 
+  if (command === 'retirement-record') {
+    // Appends this run's retirement decision to the durable ledger file.
+    //
+    // Only a RETIRE_FALLBACK decision is appended. A KEEP decision writes nothing:
+    // the ledger is an append-only record of the point at which the fallback was
+    // withdrawn, and adding "still keeping it" lines would bury that point. The
+    // file is created parentally so the workflow can commit it to the ledger
+    // branch, and never contains a credential.
+    const {retirementRecord} = await import('./private-ci-retirement-ledger.mjs');
+    const source = flag('--from') ?? env.WOLF_CI_RETIREMENT_FILE;
+    let decision = null;
+    if (source) {
+      try {
+        decision = JSON.parse(fs.readFileSync(source, 'utf8'));
+      } catch {
+        decision = null;
+      }
+    }
+    if (!decision) {
+      stdout(JSON.stringify({state: 'ACTIVE', appended: false, reason: 'NO_RETIREMENT_DECISION'}) + '\n');
+      return APP_AUTH_EXIT.OK;
+    }
+    if (decision.retire !== true) {
+      // Deliberately silent on the ledger. Recorded here so the run's log shows
+      // the ledger was consulted and intentionally left alone.
+      stdout(JSON.stringify({state: 'ACTIVE', appended: false, reason: 'DECISION_KEEPS_FALLBACK'}) + '\n');
+      return APP_AUTH_EXIT.OK;
+    }
+    const target = flag('--out') ?? env.WOLF_CI_RETIREMENT_LEDGER_FILE;
+    if (!target) {
+      stdout(JSON.stringify({state: 'ERROR', appended: false, reason: 'LEDGER_FILE_REQUIRED'}) + '\n');
+      return APP_AUTH_EXIT.USAGE;
+    }
+    const record = retirementRecord(decision, {
+      commit: env.WOLF_CI_COMMIT ?? env.GITHUB_SHA ?? null,
+      runId: env.GITHUB_RUN_ID ?? null,
+      source: 'retirement-record',
+    });
+    const existing = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
+    const separator = existing && !existing.endsWith('\n') ? '\n' : '';
+    fs.mkdirSync(path.dirname(target), {recursive: true});
+    fs.appendFileSync(target, separator + JSON.stringify(record) + '\n', {mode: 0o600});
+    stdout(JSON.stringify({state: 'RETIRED', appended: true, ledger: target, credentialsPrinted: false}) + '\n');
+    return APP_AUTH_EXIT.OK;
+  }
+
+  if (command === 'retirement-check') {
+    // Answers the only question the credential selector asks, from the ledger
+    // alone. Used to prove, in a run that has no per-run flag, that retirement
+    // still holds.
+    const {readLedgerVerdict} = await import('./private-ci-retirement-ledger.mjs');
+    const file = flag('--ledger') ?? env.WOLF_CI_RETIREMENT_LEDGER_FILE;
+    let text = null;
+    if (file) {
+      try {
+        text = fs.readFileSync(file, 'utf8');
+      } catch {
+        text = null;
+      }
+    }
+    stdout(JSON.stringify(readLedgerVerdict(text)) + '\n');
+    return APP_AUTH_EXIT.OK;
+  }
+
   if (command === 'state') {
     // Reports the live auth state for one role without printing the token, so a
     // run can prove renewal and expiry handling from its own logs.
