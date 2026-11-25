@@ -123,6 +123,7 @@ on:
       - 'docs/activation/**'
       - 'docs/checkpoints/WOLF-P140-ZERO-TOUCH-MISSION-TRANSPORT.json'
       - 'docs/checkpoints/WOLF-P144-MISSION-LISTENER.json'
+      - 'docs/checkpoints/WOLF-P145-FINAL-ACCEPTANCE.json'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
       - 'tests/private-controller-preflight-pin.test.mjs'
