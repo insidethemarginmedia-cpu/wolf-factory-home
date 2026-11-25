@@ -406,20 +406,39 @@ dispatch cannot start it from this branch. This is measured, not inferred:
 | --- | --- |
 | `gh api -X POST …/dispatches -f event_type=wolf-private-ci` | 2xx accepted, **zero runs created** |
 | `/contents/.github/workflows/private-ci-bridge.yml?ref=main` | **404 — the file does not exist on `main`** |
-| `repository_dispatch` listeners on `main` | **none** (night-shift-wakeup, preflight and runtime-probe carry no such trigger) |
+| `repository_dispatch` listeners on `main` | **none** — `main` holds only `night-shift-wakeup.yml` (`schedule`, `workflow_dispatch`) and `ollama-public-synthetic-qualification.yml` (`workflow_dispatch`) |
 | `POST …/actions/workflows/429186774/dispatches -f ref=<branch>` | **403 Resource not accessible by integration** |
 | Same call against a default-branch workflow | **403** — so the 403 is token capability, not a branch problem |
 
-GitHub starts `repository_dispatch` workflows **only from the default branch** —
-the bridge is not on `main` (`main` = `3742bcc`; this branch is 53 commits ahead
-and 1 behind). The API accepts the dispatch, records no run, and still lists the
-workflow as `active`, so the failure is silent. The sandbox token also cannot
-issue `workflow_dispatch` at all, so no branch-ref path is open to automation.
+GitHub starts `repository_dispatch` workflows **only from the default branch**.
+The bridge is not on `main`, and `main` cannot receive it by any path automation
+has. Both the branch state and the history state were measured:
 
-**The single required Founder action** is to land
-`.github/workflows/private-ci-bridge.yml` on `main` (merge PR #2, or cherry-pick
-that one file). Nothing else is needed: the App, its permissions, the
-installation IDs and the receipt publication all already work from this branch.
+```
+POST …/dispatches                                 -> 2xx, zero runs created
+GET  …/contents/.../private-ci-bridge.yml?ref=main -> 404
+repository_dispatch listeners on main             -> none
+POST …/workflows/429186774/dispatches (branch)    -> 403
+POST …/workflows/<default-branch wf>/dispatches   -> 403   (token, not branch)
+PATCH …/repos/… -f default_branch=…               -> 403
+git merge-base HEAD origin/main                   -> no merge base
+git rev-list --max-parents=0 (each)               -> main 3742bcc / branch 20f1872
+```
+
+The second `POST` rules out a branch-ref workaround: the 403 is token capability,
+so automation cannot dispatch a branch at all.
+
+The last two rows are the constraint that a merge-based plan misses. `main` is a
+**single orphan commit** with no shared history with this branch, so there is no
+fast-forward and no ordinary merge. PR #2 targets
+`feat/public-runtime-probe-20261022`, **not** `main`; merging it would not put the
+trigger on the default branch.
+
+**The single required Founder action** is to land the bridge workflow, and the
+`scripts/` it imports, on `main` — either by adopting this history as the default
+branch (settings change, reversible, no rewrite) or by committing those files
+onto `main` directly. The `scripts/` must travel with the workflow or it fails at
+its first `node` call. Nothing else is outstanding.
 
 Once the trigger is on `main`, a mission is:
 
