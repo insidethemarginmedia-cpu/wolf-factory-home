@@ -762,6 +762,19 @@ jobs:
           set -euo pipefail
           node scripts/private-ci-app-auth-cli.mjs retirement-record
           test -s "$WOLF_CI_RETIREMENT_LEDGER_FILE" || { echo RETIREMENT_LEDGER_WRITE=NONE; exit 0; }
+
+          # The contents API writes files into an existing branch; it cannot create
+          # one. An earlier revision assumed otherwise and failed with a 404 that
+          # the step's continue-on-error hid, so the ledger silently never existed.
+          # The branch is created explicitly from the current commit first.
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/wolf-ci-retirement" >/dev/null 2>&1; then
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref=refs/heads/wolf-ci-retirement -f sha="$GITHUB_SHA" >/dev/null \
+              && echo RETIREMENT_LEDGER_BRANCH=CREATED || { echo RETIREMENT_LEDGER_BRANCH=FAILED; exit 0; }
+          else
+            echo RETIREMENT_LEDGER_BRANCH=EXISTS
+          fi
+
           encoded=$(base64 -w0 "$WOLF_CI_RETIREMENT_LEDGER_FILE")
           existing=$(gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl?ref=wolf-ci-retirement" --jq .sha 2>/dev/null || true)
           if test -n "$existing"; then

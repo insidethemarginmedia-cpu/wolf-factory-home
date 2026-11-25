@@ -71,6 +71,22 @@ test('no step writes retirement evidence to the default branch', () => {
   assert.deepEqual(offenders.map(s => s.name), []);
 });
 
+test('the persistence step creates its branch before writing to it', () => {
+  // The contents API writes into an existing branch and cannot create one. A write
+  // attempted first returns 404, and with continue-on-error the run stays green
+  // while the ledger silently never exists.
+  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision so later runs inherit it');
+  const body = String(persist.run);
+  const createsRef = body.indexOf('git/refs');
+  const writesContent = body.indexOf('contents/.wolf-ci/retirement-ledger.jsonl');
+  assert.ok(createsRef >= 0, 'the step must create the ledger branch explicitly');
+  assert.ok(writesContent >= 0, 'the step must write the ledger file');
+  assert.ok(createsRef < writesContent, 'the branch must be created before the first write');
+  // The existence probe reads the file; only the writes must come after the
+  // branch exists, and the ref creation is what guarantees that.
+  assert.ok(/git\/ref\/heads\/wolf-ci-retirement/.test(body), 'the step must probe for the branch before creating it');
+});
+
 test('the hydration step does not fail the run when no ledger exists', () => {
   // Absence of retirement evidence must never be an outage: the App path does not
   // depend on the PAT, and a missing ledger is not evidence of retirement.
