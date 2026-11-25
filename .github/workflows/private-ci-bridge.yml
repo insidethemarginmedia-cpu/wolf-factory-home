@@ -508,9 +508,16 @@ jobs:
           : "${WOLF_CI_AUTH_RECOVERY_FILE:?AUTH_RECOVERY_FILE_REQUIRED}"
           code=0
           node scripts/private-ci-app-auth-cli.mjs verify > "$WOLF_CI_AUTH_RECOVERY_FILE" || code=$?
+          # Always print the report, even when the command exited non-zero: the
+          # report is the only thing that explains a failure, and job logs are not
+          # reachable from the agent's environment.
+          if test -s "$WOLF_CI_AUTH_RECOVERY_FILE"; then
+            cat "$WOLF_CI_AUTH_RECOVERY_FILE"
+          else
+            echo "AUTH_RECOVERY_NO_OUTPUT exit=$code"
+          fi
           # 0 is VERIFIED, 78 is NOT_APPLICABLE (no App yet). Anything else -
           # including 1, a failed renewal - is a defect and fails the run.
-          cat "$WOLF_CI_AUTH_RECOVERY_FILE"
           test "$code" -eq 0 || test "$code" -eq 78
       - name: Run live App acceptance against the real API
         id: acceptance
