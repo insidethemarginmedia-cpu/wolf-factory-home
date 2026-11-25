@@ -42,13 +42,15 @@ on:
       - 'scripts/private-ci-app-preflight.mjs'
       - 'scripts/private-ci-app-installations.mjs'
       - 'scripts/private-ci-activation-wizard.mjs'
+      - 'scripts/private-ci-app-acceptance.mjs'
+      - 'scripts/private-ci-app-acceptance-cli.mjs'
       - 'scripts/private-ci-journal-cli.mjs'
       - 'tests/private-ci-bridge.test.mjs'
       - 'tests/private-ci-inventory.test.mjs'
       - 'tests/private-ci-execute.test.mjs'
       - 'tests/private-ci-publish-receipt.test.mjs'
       - 'tests/private-ci-diagnose.test.mjs'
-      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs tests/private-ci-app-installations.test.mjs tests/private-ci-activation-wizard.test.mjs'
+      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs tests/private-ci-app-installations.test.mjs tests/private-ci-activation-wizard.test.mjs tests/private-ci-app-acceptance.test.mjs tests/private-ci-app-acceptance-cli.test.mjs tests/private-ci-app-exposure.test.mjs'
       - 'tests/private-ci-workflow.test.mjs'
       - 'tests/private-ci-app-auth.test.mjs'
       - 'tests/private-ci-dispatch-probe.test.mjs'
@@ -57,6 +59,9 @@ on:
       - 'tests/private-ci-app-preflight.test.mjs'
       - 'tests/private-ci-app-installations.test.mjs'
       - 'tests/private-ci-activation-wizard.test.mjs'
+      - 'tests/private-ci-app-acceptance.test.mjs'
+      - 'tests/private-ci-app-acceptance-cli.test.mjs'
+      - 'tests/private-ci-app-exposure.test.mjs'
       - 'tests/workflow-pins-resolve.test.mjs'
       - 'tests/workflow-env-declared.test.mjs'
       - 'tests/private-controller-preflight-pin.test.mjs'
@@ -507,6 +512,47 @@ jobs:
           # including 1, a failed renewal - is a defect and fails the run.
           cat "$WOLF_CI_AUTH_RECOVERY_FILE"
           test "$code" -eq 0 || test "$code" -eq 78
+      - name: Run live App acceptance against the real API
+        id: acceptance
+        shell: bash
+        # This is the only place the App secrets exist, so this is where real
+        # acceptance has to happen. Every check is proven by an actual response:
+        # installation mapping, three independent tokens, exact-SHA read, check
+        # publication, dispatch, renewal/restart and expiry/denial handling.
+        #
+        # 0 = ACCEPTED, 78 = BLOCKED (capability absent, not a pass), 1 = a real
+        # defect. BLOCKED never fails the run - the thirteen checks are still the
+        # shipment gate - but it is never reported as success either.
+        env:
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
+          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+          WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
+          WOLF_CI_ACCEPTANCE_FILE: /tmp/wolf-ci-acceptance.json
+          WOLF_ACCEPTANCE_WORKFLOW: ${{ vars.WOLF_CI_WORKFLOW_FILE || 'private-ci.yml' }}
+        run: |
+          set -euo pipefail
+          : "${WOLF_CI_ACCEPTANCE_FILE:?ACCEPTANCE_FILE_REQUIRED}"
+          code=0
+          node scripts/private-ci-app-acceptance-cli.mjs --out "$WOLF_CI_ACCEPTANCE_FILE" || code=$?
+          # Only a genuine defect (1) fails the run. A missing capability (78) is
+          # reported and handled by the checks policy, not hidden.
+          test "$code" -eq 0 || test "$code" -eq 78
+      - name: Preserve acceptance evidence and destroy it with the run's secrets
+        if: always()
+        shell: bash
+        env:
+          ACCEPTANCE_FILE: /tmp/wolf-ci-acceptance.json
+        run: |
+          set -euo pipefail
+          if test -s "$ACCEPTANCE_FILE"; then
+            # Never uploaded as an artifact: it records which checks ran and their
+            # outcomes, and it is published through the sanitised receipt only.
+            node -e 'const a=require(process.env.ACCEPTANCE_FILE); console.log("ACCEPTANCE_STATE=" + a.state + " ACCEPTED=" + a.accepted + " CHECKS=" + JSON.stringify(a.counts));'
+          else
+            echo ACCEPTANCE_STATE=NOT_REPORTED
+          fi
       - name: Report the authentication posture of this run
         shell: bash
         env:
@@ -615,6 +661,7 @@ jobs:
           WOLF_CI_APP_AUTH_FILE: /tmp/wolf-ci-app-auth.json
           WOLF_CI_DISPATCH_FILE: /tmp/wolf-ci-dispatch.json
           WOLF_CI_AUTH_RECOVERY_FILE: /tmp/wolf-ci-auth-recovery.json
+          WOLF_CI_ACCEPTANCE_FILE: /tmp/wolf-ci-acceptance.json
           WOLF_CI_PR: '743'
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}

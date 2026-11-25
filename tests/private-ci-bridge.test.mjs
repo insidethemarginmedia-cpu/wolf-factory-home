@@ -427,3 +427,34 @@ test('the reader PAT is still refused as a status writer, App token or not', asy
   assert.equal(result.state, 'DENIED');
   assert.equal(result.reason, 'STATUS_TOKEN_MUST_DIFFER_FROM_SOURCE_TOKEN');
 });
+
+test('the receipt carries per-check acceptance outcomes and no credential', async () => {
+  const {readAcceptance} = await import('../scripts/private-ci-bridge.mjs');
+  const {mkdtempSync, writeFileSync} = await import('node:fs');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const file = join(mkdtempSync(join(tmpdir(), 'acceptance-receipt-')), 'a.json');
+  writeFileSync(file, JSON.stringify({
+    state: 'ACCEPTED', accepted: true, counts: {PASS: 7, BLOCKED: 0, FAIL: 0, SKIPPED: 0},
+    generatedAt: '2026-11-24T00:00:00.000Z',
+    checks: [{check: 'independent-tokens', state: 'PASS', reason: null, token: 'ghs_leak'}, {check: 'dispatch', state: 'PASS'}],
+  }));
+  const result = readAcceptance(file);
+  assert.equal(result.state, 'ACCEPTED');
+  assert.equal(result.checks.length, 2);
+  assert.equal(result.checks[0].token, undefined, 'only check/state/reason survive');
+  assert.equal(JSON.stringify(result).includes('ghs_leak'), false);
+  assert.equal(result.credentialsPrinted, false);
+});
+
+test('a blocked acceptance is reported as blocked, never as accepted', async () => {
+  const {readAcceptance} = await import('../scripts/private-ci-bridge.mjs');
+  const {mkdtempSync, writeFileSync} = await import('node:fs');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const file = join(mkdtempSync(join(tmpdir(), 'acceptance-blocked-')), 'a.json');
+  writeFileSync(file, JSON.stringify({state: 'BLOCKED', accepted: false, counts: {PASS: 5, BLOCKED: 2}, checks: [{check: 'dispatch', state: 'BLOCKED', reason: 'ACTIONS_WRITE_ABSENT'}]}));
+  const result = readAcceptance(file);
+  assert.equal(result.accepted, false);
+  assert.equal(result.checks[0].reason, 'ACTIONS_WRITE_ABSENT');
+});
