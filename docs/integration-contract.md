@@ -9,10 +9,13 @@ Status as of 2026-11-24: **BLOCKED — no mission dispatch or worker acceptance 
 claimed.** The older direct-dispatch contract below is superseded where noted;
 its historical run claims were not revalidated in this session. The engineering
 branch contains an authenticated listener and reusable-workflow admission gate,
-but neither is activated on `main`; the configured listener executor pin currently
-does not resolve to a commit in this repository. Factory/Factory 2 P1.59/P1.47+
-contracts have not been reconciled from authoritative sources, and no durable
-execution lease/recovery path is enabled.
+but neither is activated on `main`. The former unresolved executor value has been
+replaced with repository-history candidate `b3f397fd959f41c1a843e917b35e0a5914f53c11`,
+whose remote tree contains the exact reusable inputs and durable admission gates;
+this resolves only the local SHA/interface defect, not activation approval.
+Factory/Factory 2 P1.59/P1.47+ contracts have not been reconciled from authoritative
+sources, and no durable execution lease/recovery path is enabled. See
+[`executor-pin-recovery.md`](executor-pin-recovery.md) for the verification boundary.
 
 ---
 
@@ -181,21 +184,23 @@ refusal is not permission to try another transport or credential.
 | Capability | Status on 2026-11-24 | Evidence / boundary |
 | --- | --- | --- |
 | Target SHA fallback | **REPAIRED IN LOCAL CODE; NOT LIVE-ACCEPTED** | `WOLF_CI_SHA` resolves only from typed `inputs.sha`; missing input stays empty and fails closed |
-| Listener executor pin | **BLOCKED / UNRESOLVED** | Current `9679aa76397c7b248c3708be2c063e75a7058ae5` is not found in this repository (GitHub API returned 422); older pins do not contain the current gate interface |
+| Listener executor pin | **RESOLVED FOR PUBLIC CANDIDATE; NOT ACTIVATED** | `b3f397fd959f41c1a843e917b35e0a5914f53c11` resolves via GitHub and its tree contains the required workflow, `workflow_call` inputs, durable pre-job admission and in-job recheck; the former `9679aa...` value was invalid. No activation approval is implied |
+| Public regression suite | **PASSED LOCALLY; PUBLIC CI PENDING** | `node --test tests/*.test.mjs`: 490 passed, 0 failed; earlier GitHub run logs were unavailable, so a fresh run is still required |
 | Private mission entrypoint | **IMPLEMENTED IN THE PR WORKTREE; NOT ACTIVATED** | Fake-GitHub tests exercise admission/anchor logic; the listener is absent from `main`, and no production admission occurred |
 | Raw bridge `repository_dispatch` | **REMOVED** | The bridge has no raw dispatch trigger; a read-only pre-job gate and an in-job re-check require the trusted default-branch listener caller and typed mission inputs before private access |
 | Direct manual private execution | **DENIED BY CONDITION** | Full execute job is limited to a `repository_dispatch` call from `mission-listener.yml@refs/heads/main`; manual inputs cannot satisfy it |
 | Durable admission/replay ledger | **UNIT-TESTED, LIVE PERSISTENCE UNKNOWN** | Fake GitHub API exercises anchored append, stale/conflict refusal, replay and gate; no production admission run occurred |
 | Durable execution queue / lease / fence / schedule recovery | **NOT IMPLEMENTED / BLOCKED** | The local JSON journal is test-only; no cron is exposed |
 | Factory P1.59 / Factory 2 P1.47+ envelope compatibility | **NOT VERIFIED** | The authoritative versioned contracts were not present in this checkout or independently fetched |
-| Real Compute worker output / authenticated callback | **NOT VERIFIED** | A public-standard-runner canary or fixture is not real worker acceptance |
+| Real Compute worker output / authenticated callback | **NOT VERIFIED** | The public-standard-runner canary is not a private worker callback or acceptance receipt |
+| Build Wolf / Wolf Compute contract coordination | **REQUESTED; RESPONSE PENDING** | [Issue #2](https://github.com/donraposo1-source/wolf-compute/issues/2) asks for authoritative admission, callback, recovery, receipt, and zero-cost approval contracts; no schema is inferred |
 | Independent verification | **NOT AVAILABLE IN THIS RUN** | No new verifier result was obtained; prior acceptance remains blocked |
 | Mission, spend, production deploy, default-branch change | **NONE** | `EUR_SPEND=0`; no mission dispatch or production action occurred |
 
 ### 5.1 Minimum Founder actions before any dispatch
 
 1. **Approve the default-branch listener activation** (or provide the authoritative existing dispatch entrypoint) and confirm the exact sender allowlist. No `main` change is authorized from this session.
-2. **Provide/review the canonical Factory P1.59 and Factory 2 P1.47+ contract artifacts**: authenticated envelope, nonce/replay rules, signature/callback verification, lease/fence fields, idempotency key, and durable terminal receipt. Reconcile them against this code before widening its schema.
+2. **Provide/review the canonical Build Wolf / Factory P1.59 and Factory 2 P1.47+ contract artifacts**: authenticated envelope, nonce/replay rules, signature/callback verification, lease/fence fields, idempotency key, and durable terminal receipt. A request is open in [Wolf Compute issue #2](https://github.com/donraposo1-source/wolf-compute/issues/2); no authoritative response is available yet. Reconcile the versioned artifacts against this code before widening its schema.
 3. **Confirm the existing Home/Compute authorization path and durable queue owner**, including safe `contents:write` or approved store access for the admission/receipt ledger. Do not create a second scheduler or queue.
 4. **Authorize one bounded, zero-cost validation only after all prior gates**, with exact target and executor SHAs, real worker output, authenticated callback, and an independent verifier. No public canary substitutes for this.
 

@@ -8,11 +8,14 @@ dispatch a mission, or change repository settings based on this file.
 
 A read-only GitHub API check on 2026-11-24 confirmed that `main` is the default
 branch and that `.github/workflows/mission-listener.yml` and
-`.github/workflows/private-ci-bridge.yml` are absent there. The engineering PR
-worktree has a configured listener executor pin
-`9679aa76397c7b248c3708be2c063e75a7058ae5` that does not resolve to a commit in
-the repository. The upstream Factory/Factory 2 contract, callback authentication,
-durable execution recovery, and required approvals remain unresolved.
+`.github/workflows/private-ci-bridge.yml` are absent there. The former invalid
+listener executor pin `9679aa76397c7b248c3708be2c063e75a7058ae5` has been replaced
+for the public PR candidate with `b3f397fd959f41c1a843e917b35e0a5914f53c11`,
+which resolves remotely and contains the exact reusable interface and admission
+gates. This closes only the repository-local SHA/interface defect; it does not
+authorize activation. The upstream Factory/Factory 2 contract, callback
+authentication, durable execution recovery, and required approvals remain
+unresolved. See [`executor-pin-recovery.md`](executor-pin-recovery.md).
 
 No mission dispatch, private worker run, authenticated callback, production
 write, new GitHub App, new secret, billing change, or spend occurred in this

@@ -6,7 +6,7 @@ The historical public-runtime proof is archived in `docs/checkpoints/WOLF-202610
 
 ## Current integration status: blocked / not activated
 
-The private mission listener and reusable bridge are present only in the open engineering PR, not on the default branch. The configured executor SHA does not resolve in this repository. The authoritative Factory/Compute request and callback contract, durable execution/recovery owner, and required approvals are still unresolved.
+The private mission listener and reusable bridge are present only in the open engineering PR, not on the default branch. The former invalid executor value has been replaced with the repository-history candidate `b3f397fd959f41c1a843e917b35e0a5914f53c11`; its remote tree contains the exact reusable interface and durable admission gates. This resolves the SHA/interface defect for review only, not activation approval. The authoritative Factory/Build Wolf/Compute request and callback contract, durable execution/recovery owner, and required approvals are still unresolved; see [`docs/executor-pin-recovery.md`](docs/executor-pin-recovery.md).
 
 No mission was dispatched, no private worker or authenticated callback ran, and no production write or paid inference occurred. `EUR_SPEND=0`. Tests, public canaries, old receipts, HTTP success responses and green runs do not establish private-worker acceptance.
 

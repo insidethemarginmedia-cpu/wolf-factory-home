@@ -54,11 +54,12 @@ At this historical snapshot (`0cc694f`), the listener was configured to use
 `executorSha` input, and explicit secret contract; it is not a valid activation pin
 for the current implementation.
 
-The later worktree value `9679aa76397c7b248c3708be2c063e75a7058ae5` was checked
-against both the local Git object database and GitHub's commit API and does not
-resolve. No replacement was guessed. A usable pin must resolve to a real remote
-commit whose workflow tree passes `tests/private-ci-listener-pin.test.mjs` and
-`tests/workflow-pins-resolve.test.mjs`; a 40-hex string alone is insufficient.
+At the time this historical manifest was prepared, the worktree value
+`9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve. The current public
+candidate now uses `b3f397fd959f41c1a843e917b35e0a5914f53c11`, verified against the
+remote commit/tree and by the pin/interface regression tests. This later
+repository-history candidate does not make this old patch applicable or authorize
+activation; a 40-hex string alone is insufficient.
 
 ## 4. Activation instructions — withdrawn
 

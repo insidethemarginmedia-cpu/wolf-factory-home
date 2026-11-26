@@ -29,7 +29,7 @@ export function buildWizardHtml() {
 <body>
 <h1>Former App activation flow withdrawn</h1>
 <div class="blocked"><strong>BLOCKED / NOT AUTHORIZED.</strong> This page does not create or install a GitHub App and does not request secrets. Do not use earlier forms to create duplicate infrastructure, change repository settings, or dispatch a mission.</div>
-<p>The listener and bridge are not on the default branch. The executor pin, authoritative Factory/Compute callback contract, durable recovery owner, and required approvals remain unresolved. No private-worker acceptance is claimed. EUR_SPEND=0.</p>
+<p>The listener and bridge are not on the default branch. The executor pin now resolves to a repository-history candidate, but activation approval, the authoritative Factory/Build Wolf/Compute callback contract, durable recovery ownership, and required approvals remain unresolved. No private-worker acceptance is claimed. EUR_SPEND=0.</p>
 <p>See <a href="../integration-contract.md">the current blocked integration contract</a>. Never send credential values to an agent or public artifact.</p>
 </body>
 </html>

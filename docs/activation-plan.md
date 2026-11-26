@@ -68,10 +68,13 @@ before private checkout or credential mint and the listener maps only named
 workflow secrets. These are implementation claims supported by local tests, not
 live admission evidence.
 
-The listener's configured SHA `9679aa76397c7b248c3708be2c063e75a7058ae5` does
-not resolve in this repository (GitHub returned 422); the older existing pins do
-not contain the current gate/input contract. Therefore the executor pin is a
-separate unresolved blocker. Do not dispatch or treat the handoff as runnable.
+The former listener SHA `9679aa76397c7b248c3708be2c063e75a7058ae5` did not
+resolve. It has been replaced for this public candidate with the existing-history
+commit `b3f397fd959f41c1a843e917b35e0a5914f53c11`, whose tree contains the exact
+`workflow_call` inputs and durable gates. The repository-local SHA/interface
+defect is now fixed for review; this does not approve activation or dispatch.
+Authoritative Factory/Build Wolf/Compute contracts, recovery ownership and
+required approvals remain unresolved.
 
 This is **not activated**: the file remains on this engineering PR branch, no
 listener run was observed, and no default-branch change was authorized. The older

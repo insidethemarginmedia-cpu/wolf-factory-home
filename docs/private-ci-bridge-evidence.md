@@ -330,11 +330,17 @@ This code has only fake-GitHub/unit-test evidence so far; no production admissio
 or mission run occurred.
 
 The listener and bridge are absent from the default branch `main` (read-only
-GitHub API lookups returned 404 for both workflow files on 2026-11-24). The
-configured worktree executor value
-`9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve locally or through
-GitHub's commit API. Older existing pins do not contain the current `executorSha`
-input and durable gate; do not substitute one. No dispatch command is provided.
+GitHub API lookups returned 404 for both workflow files on 2026-11-24). The former
+worktree value `9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve. It is
+now replaced in this candidate by `b3f397fd959f41c1a843e917b35e0a5914f53c11`,
+which resolves through GitHub and whose tree contains the bridge, listener store,
+and admission-gate files. Its reusable interface declares exactly `sha`,
+`missionId`, `deliveryId`, and `executorSha`; the bridge also has a read-only
+pre-job admission and a mandatory execution-time recheck. The older valid
+`6c2848d1849d85e70ff3a9590a42b3df0465c487` predates the current executor input
+and durable gate, so it was not substituted. This is repository-local pin and
+interface verification only; no upstream contract, approval, activation, or
+worker acceptance follows from it. No dispatch command is provided.
 
 ### 11.1 Non-executable schema sketch
 
@@ -378,8 +384,9 @@ credential probe, or public workflow run supplies that evidence.
 ### 11.3 Activation blockers
 
 - Founder approval to place the listener on `main` and confirm its sender allowlist.
-- A verified immutable remote executor pin whose workflow tree matches the inputs,
-  durable admission gate, named secrets, and tests.
+- Explicit review/approval of the now-verified immutable executor candidate and
+  its workflow tree, exact inputs, durable admission gate, named secrets, and tests;
+  the SHA/interface proof alone is not activation approval.
 - Authoritative Factory / Factory 2 envelope and callback-contract reconciliation.
 - The existing owner-approved durable recovery/queue path and terminal correlation.
 - Independent security review and one explicitly authorized zero-cost validation.

@@ -120,6 +120,7 @@ on:
       - 'tests/private-ci-listener.test.mjs'
       - 'tests/private-ci-listener-cli.test.mjs'
       - 'tests/private-ci-listener-pin.test.mjs'
+      - 'tests/private-ci-git-pin-helpers.mjs'
       - 'tests/private-ci-entrypoint-safety.test.mjs'
       - 'scripts/private-ci-retirement-integrity.mjs'
       - 'scripts/private-ci-retirement-persist.mjs'
