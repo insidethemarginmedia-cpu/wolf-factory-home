@@ -51,7 +51,7 @@ test('the workflow never uploads an artefact', () => {
   assert.equal(/upload-artifact/.test(workflow), false, 'nothing is uploaded, so nothing can leak through one');
 });
 
-test('the publisher token is minted inside the execute job, before it is published', () => {
+test('the publisher token is minted and scoped only to the private-status publication step', () => {
   // The mint was first inserted into the probe job, where it could never reach the
   // publish step. A job-scoped assertion is the only thing that catches a step
   // landing in the wrong job - a plain indexOf finds the probe job's publish step
@@ -63,8 +63,10 @@ test('the publisher token is minted inside the execute job, before it is publish
   const parsed = Object.fromEntries(parseWorkflowJobs(workflow).map(job => [job.name, job.steps.map(step => step.name)]));
 
   const execute = parsed.execute;
-  const mintAt = execute.indexOf('Mint the publisher token for the private check');
-  const publishAt = execute.indexOf('Publish the authenticated check to the private commit');
+  const mintName = 'Mint the least-privilege publisher token for the private check';
+  const publishName = 'Publish the authenticated check to the private commit';
+  const mintAt = execute.indexOf(mintName);
+  const publishAt = execute.indexOf(publishName);
   assert.ok(mintAt >= 0, 'the mint step must exist in the execute job');
   assert.ok(publishAt >= 0, 'the publish step must exist in the execute job');
   assert.ok(mintAt < publishAt, 'the token must be minted before the step that uses it');
@@ -72,12 +74,15 @@ test('the publisher token is minted inside the execute job, before it is publish
   // And it must not be duplicated into another job.
   for (const [job, steps] of Object.entries(parsed)) {
     if (job === 'execute') continue;
-    assert.equal(steps.includes('Mint the publisher token for the private check'), false, `the mint must not live in ${job}`);
+    assert.equal(steps.includes(mintName), false, `the mint must not live in ${job}`);
   }
 
-  const mintBlock = workflow.slice(
-    workflow.indexOf('name: Mint the publisher token for the private check'),
-    workflow.indexOf('name: Mint the publisher token for the private check') + 2200,
-  );
-  assert.match(mintBlock, /GITHUB_ENV/, 'it must reach later steps through GITHUB_ENV');
+  const mintStart = workflow.indexOf('name: ' + mintName);
+  const mintBlock = workflow.slice(mintStart, workflow.indexOf('      - name:', mintStart + 10));
+  const publishStart = workflow.indexOf('name: ' + publishName);
+  const publishBlock = workflow.slice(publishStart, workflow.indexOf('      - name:', publishStart + 10));
+  assert.match(mintBlock, /actions\/create-github-app-token@/);
+  assert.doesNotMatch(mintBlock, /GITHUB_ENV/, 'the token must not be exported job-wide');
+  assert.match(publishBlock, /steps\.publisher_mint\.outputs\.token/);
+  assert.doesNotMatch(publishBlock, /\$\{\{\s*env\.WOLF_CI_APP_PUBLISHER_TOKEN/);
 });

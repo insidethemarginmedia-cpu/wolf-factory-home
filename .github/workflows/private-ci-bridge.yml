@@ -1,10 +1,5 @@
 name: Wolf Private CI Bridge
 on:
-  # Durable entry point: the private Factory (or any authorized caller) can ask
-  # for execution of one immutable commit. The request is journaled, deduplicated
-  # and cancelable; it never implies a mutable ref.
-  repository_dispatch:
-    types: [wolf-private-ci]
   # Reusable entry point. The mission listener on the default branch invokes this
   # workflow at an approved immutable SHA with a job-level `uses:` reference, so
   # starting a privileged execution needs NO credential at all: GitHub resolves the
@@ -21,9 +16,27 @@ on:
         type: string
       deliveryId:
         description: Delivery identity recorded at admission
-        required: false
+        required: true
         type: string
-        default: ''
+      executorSha:
+        description: Approved immutable executor commit that admitted the mission
+        required: true
+        type: string
+    secrets:
+      WOLF_FACTORY_APP_ID:
+        required: false
+      WOLF_FACTORY_APP_PRIVATE_KEY:
+        required: false
+      WOLF_FACTORY_READER_INSTALLATION_ID:
+        required: false
+      WOLF_FACTORY_PUBLISHER_INSTALLATION_ID:
+        required: false
+      WOLF_FACTORY_DISPATCHER_INSTALLATION_ID:
+        required: false
+      WOLF_FACTORY_DEPLOY_KEY:
+        required: false
+      WOLF_FACTORY_REPO_TOKEN:
+        required: false
   workflow_dispatch:
     inputs:
       sha:
@@ -34,10 +47,6 @@ on:
         description: Pull request number
         required: false
         type: string
-  schedule:
-    # Recovery sweep: reclaims expired leases so a crashed runner cannot stall
-    # the queue.
-    - cron: '17 * * * *'
   push:
     branches: [arena/38f3a7f7-wolf-factory-home]
     paths:
@@ -73,7 +82,6 @@ on:
       - 'tests/private-ci-execute.test.mjs'
       - 'tests/private-ci-publish-receipt.test.mjs'
       - 'tests/private-ci-diagnose.test.mjs'
-      - 'tests/private-ci-journal.test.mjs tests/private-ci-workflow.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-dispatch-probe.test.mjs tests/private-ci-app-auth-recovery.test.mjs tests/private-ci-app-manifest.test.mjs tests/private-ci-app-preflight.test.mjs tests/private-ci-app-installations.test.mjs tests/private-ci-activation-wizard.test.mjs tests/private-ci-app-acceptance.test.mjs tests/private-ci-app-acceptance-cli.test.mjs tests/private-ci-app-exposure.test.mjs tests/private-ci-app-diagnosis.test.mjs tests/private-ci-app-retirement.test.mjs tests/private-ci-mission.test.mjs tests/private-ci-mission-cli.test.mjs'
       - 'tests/private-ci-workflow.test.mjs'
       - 'tests/private-ci-app-auth.test.mjs'
       - 'tests/private-ci-dispatch-probe.test.mjs'
@@ -104,17 +112,28 @@ on:
       # be exercised by the same pipeline that would execute an admitted mission.
       - 'scripts/private-ci-listener.mjs'
       - 'scripts/private-ci-listener-cli.mjs'
+      - 'scripts/private-ci-listener-store.mjs'
+      - 'scripts/private-ci-listener-gate-cli.mjs'
+      - 'tests/private-ci-listener-fake-github.mjs'
+      - 'tests/private-ci-listener-store.test.mjs'
+      - 'tests/private-ci-listener-gate-cli.test.mjs'
       - 'tests/private-ci-listener.test.mjs'
       - 'tests/private-ci-listener-cli.test.mjs'
       - 'tests/private-ci-listener-pin.test.mjs'
+      - 'tests/private-ci-entrypoint-safety.test.mjs'
       - 'scripts/private-ci-retirement-integrity.mjs'
+      - 'scripts/private-ci-retirement-persist.mjs'
       - 'tests/private-ci-retirement-integrity.test.mjs'
+      - 'tests/private-ci-retirement-persist.test.mjs'
       - 'scripts/private-ci-ledger-seal-cli.mjs'
       - 'tests/private-ci-ledger-seal-cli.test.mjs'
       - 'scripts/private-ci-resolve-target.mjs'
       - 'scripts/private-ci-resolve-target-cli.mjs'
       - 'tests/private-ci-resolve-target.test.mjs'
       - 'tests/private-ci-resolve-target-cli.test.mjs'
+      - 'tests/private-ci-anchor-wiring.test.mjs'
+      - 'tests/private-ci-credential-routing.test.mjs'
+      - 'tests/private-ci-target-gate.test.mjs'
       - '.github/workflows/mission-listener.yml'
       - 'scripts/private-controller-preflight.mjs'
       - 'tests/private-controller-preflight.test.mjs'
@@ -131,16 +150,32 @@ on:
       - '.github/workflows/night-shift-wakeup.yml'
 permissions:
   contents: read
-env:
-  WOLF_CI_JOURNAL: .wolf-ci/journal.json
-  WOLF_CI_INBOX: .wolf-ci/inbox
 concurrency:
   group: wolf-private-ci-bridge-${{ github.sha }}
   cancel-in-progress: false
 jobs:
+  validate:
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the public controller without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Run the public-controller regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/*.test.mjs
+
   probe:
     continue-on-error: true
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_call')
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.event_name == 'workflow_dispatch' && inputs.sha != '' && (github.actor == 'insidethemarginmedia-cpu' || github.actor == 'donraposo1-source')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -148,7 +183,7 @@ jobs:
       checks: write
     env:
       WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
-      WOLF_CI_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
+      WOLF_CI_SHA: ${{ inputs.sha || '' }}
       WOLF_CI_PR: '743'
       WOLF_CI_CHECKS: security,lint,typecheck,unit,integration,build
       WOLF_CI_PROBE_OUTPUT: /tmp/wolf-ci-probe.json
@@ -158,17 +193,29 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.executorSha || github.sha }}
       - name: Verify the public bridge contract
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/private-ci-bridge.test.mjs
           echo PUBLIC_BRIDGE_CONTRACT=PASS
+      - name: Mint the least-privilege reader token for the metadata probe
+        id: probe_app_reader
+        if: vars.WOLF_FACTORY_APP_AUTH == 'enabled'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          app-id: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          private-key: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          owner: donraposo1-source
+          repositories: project-wolf
+          permission-contents: read
+          permission-metadata: read
+          permission-pull-requests: read
       - name: Probe private CI metadata without fetching source
         env:
           WOLF_CI_PROBE_OUTPUT: ${{ runner.temp }}/wolf-ci-probe.json
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_APP_READER_TOKEN: ${{ steps.probe_app_reader.outputs.token }}
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
@@ -179,11 +226,9 @@ jobs:
       - name: Inventory credential presence without reading values
         if: always()
         env:
-          WOLF_CI_SECRET_NAMES: WOLF_FACTORY_REPO_TOKEN,WOLF_FACTORY_APP_ID,WOLF_FACTORY_APP_PRIVATE_KEY,WOLF_FACTORY_APP_INSTALLATION_ID,WOLF_FACTORY_DEPLOY_KEY
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_SECRET_NAMES: WOLF_FACTORY_APP_ID,WOLF_FACTORY_APP_PRIVATE_KEY,WOLF_FACTORY_READER_INSTALLATION_ID,WOLF_FACTORY_DEPLOY_KEY
           WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
           WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
-          WOLF_FACTORY_APP_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_APP_INSTALLATION_ID }}
           WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -192,29 +237,6 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/private-ci-bridge.mjs secret-inventory
-      - name: Publish the authenticated check to the private commit
-        if: always()
-        continue-on-error: true
-        shell: bash
-        env:
-          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
-          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
-          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
-          WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
-          WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
-        run: |
-          set -euo pipefail
-          : "${WOLF_CI_PRIVATE_STATUS_FILE:?STATUS_FILE_REQUIRED}"
-          rm -f "$WOLF_CI_PRIVATE_STATUS_FILE"
-          # The publisher token arrives from the mint step via GITHUB_ENV. The
-          # reader's PAT is never substituted for it: a checks:write identity and a
-          # contents:read identity must not collapse into one.
-          echo "PUBLISHER_TOKEN_PRESENT=$([ -n "${WOLF_CI_APP_PUBLISHER_TOKEN:-}" ] && echo yes || echo no)"
-          node scripts/private-ci-bridge.mjs publish-private-status > "$WOLF_CI_PRIVATE_STATUS_FILE" || true
-          test -s "$WOLF_CI_PRIVATE_STATUS_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_STATUS_NOT_REPORTED"}' > "$WOLF_CI_PRIVATE_STATUS_FILE"
-          node -e 'const s=require(process.env.WOLF_CI_PRIVATE_STATUS_FILE); console.log("PRIVATE_STATUS=" + s.state + (s.reason ? " REASON=" + s.reason : ""))'
       - name: Publish the sanitized public receipt
         if: always()
         env:
@@ -233,7 +255,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/wolf-ci-probe.json"
 
   inventory:
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_call')
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.event_name == 'workflow_dispatch' && inputs.sha != '' && (github.actor == 'insidethemarginmedia-cpu' || github.actor == 'donraposo1-source')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -241,7 +263,7 @@ jobs:
       checks: write
     env:
       WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
-      WOLF_CI_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
+      WOLF_CI_SHA: ${{ inputs.sha || '' }}
       WOLF_CI_PR: '743'
     steps:
       - name: Checkout the public controller without persisted credentials
@@ -249,7 +271,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.executorSha || github.sha }}
       - name: Verify the inventory contract
         shell: bash
         run: |
@@ -283,8 +305,57 @@ jobs:
             echo INVENTORY_RECEIPT_ABSENT
           fi
 
+  mission_admission:
+    # This read-only job starts before the privileged execute job. It runs only
+    # when called by the listener on the repository default branch with the full
+    # mission identity; no private credential is mapped into this job.
+    if: >-
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+      github.workflow_ref == 'insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/mission-listener.yml@refs/heads/main' &&
+      github.event_name == 'repository_dispatch' &&
+      inputs.sha != '' && inputs.missionId != '' && inputs.deliveryId != '' && inputs.executorSha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      verified: ${{ steps.admission_gate.outcome == 'success' }}
+    steps:
+      - name: Checkout the immutable public executor without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: insidethemarginmedia-cpu/wolf-factory-home
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ inputs.executorSha }}
+      - name: Verify durable mission admission with a read-only token
+        id: admission_gate
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          WOLF_CI_MISSION_ID: ${{ inputs.missionId }}
+          WOLF_CI_MISSION_TARGET_SHA: ${{ inputs.sha }}
+          WOLF_CI_MISSION_TARGET_REPOSITORY: donraposo1-source/project-wolf
+          WOLF_CI_MISSION_DELIVERY_ID: ${{ inputs.deliveryId }}
+          WOLF_CI_MISSION_EXECUTOR_SHA: ${{ inputs.executorSha }}
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-listener-gate-cli.mjs
+
   execute:
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_call')
+    needs: mission_admission
+    # Require successful read-only admission before starting any privileged job,
+    # service container, or secret-bearing step. Re-check in this job immediately
+    # before private access as a second line of defence.
+    if: >-
+      always() &&
+      needs.mission_admission.outputs.verified == 'true' &&
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+      github.workflow_ref == 'insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/mission-listener.yml@refs/heads/main' &&
+      github.event_name == 'repository_dispatch' &&
+      inputs.sha != '' && inputs.missionId != '' && inputs.deliveryId != '' && inputs.executorSha != ''
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -335,12 +406,15 @@ jobs:
           --health-retries 10
     env:
       WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
-      WOLF_CI_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
+      # Required workflow_call inputs carry the schema-validated immutable target.
+      # Empty inputs fail the job condition; there is no checked-in SHA fallback.
+      WOLF_CI_SHA: ${{ inputs.sha || '' }}
       WOLF_CI_PR: '743'
       WOLF_CI_CHECKS: security,lint,typecheck,unit,integration,build,migrations,postgres-concurrency,postgres-schema,test,http-load-evidence,ocr-tesseract,ocr-paddle
       WOLF_CI_PRIVATE_ROOT: /tmp/wolf-private
       WOLF_CI_LOG_DIR: /tmp/wolf-ci-logs
       WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
+      WOLF_CI_MISSION_ADMISSION_FILE: /tmp/wolf-ci-mission-admission.json
       # Job-level so the step that writes the resolution and the step that builds
       # the receipt agree on the path. Declared only in the resolver step, the
       # receipt builder could not see it and published NOT_REPORTED - a resolution
@@ -366,47 +440,93 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-          ref: ${{ github.sha }}
-      # Retirement must be known before the first credential is chosen, not after.
-      #
-      # Earlier revisions hydrated this only in a late step, so every step that ran
-      # before it - the probe among them - could still use the PAT. That is a
-      # per-run flag enforcing itself too late to matter. Hydrating here, as the
-      # first action after checkout, means no step in this job can select the
-      # fallback without the durable ledger already having been consulted.
-      #
-      # Fails open on absence by design: no ledger means no retirement evidence,
-      # and the App path does not depend on the PAT. It fails closed on a ledger
-      # that says RETIRED, because that evidence is positive.
-      - name: Hydrate durable retirement before any credential is selected
-        id: retirement-hydrate
-        continue-on-error: true
+          ref: ${{ inputs.executorSha }}
+      - name: Re-verify durable mission admission before private access
+        id: mission_admission
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          WOLF_CI_RETIREMENT_LEDGER_FILE: .wolf-ci/retirement-ledger.jsonl
-          WOLF_CI_RETIREMENT_LEDGER_TEXT: /tmp/wolf-ci-retirement-ledger.txt
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          WOLF_CI_MISSION_ID: ${{ inputs.missionId }}
+          WOLF_CI_MISSION_TARGET_SHA: ${{ inputs.sha }}
+          WOLF_CI_MISSION_TARGET_REPOSITORY: donraposo1-source/project-wolf
+          WOLF_CI_MISSION_DELIVERY_ID: ${{ inputs.deliveryId }}
+          WOLF_CI_MISSION_EXECUTOR_SHA: ${{ inputs.executorSha }}
+          WOLF_CI_MISSION_ADMISSION_FILE: /tmp/wolf-ci-mission-admission.json
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-listener-gate-cli.mjs
+      # Retirement must be known before the first credential is chosen, not after.
+      #
+      # Earlier revisions hydrated this only in a late step, so every step that ran
+      # before it - the probe among them - could still use the PAT. That is a
+      # per-run flag enforcing itself too late to matter. Admission is verified
+      # first; hydrating immediately afterwards means no credential selector can
+      # use the fallback without the durable retirement ledger already consulted.
+      #
+      # An unreadable/missing ledger or anchor blocks only the legacy PAT fallback;
+      # the GitHub App path remains available. No missing evidence is interpreted as
+      # permission to revive a credential whose retirement may have been recorded.
+      - name: Hydrate and verify durable retirement evidence before credential selection
+        id: retirement-hydrate
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WOLF_CI_RETIREMENT_LEDGER_FILE: /tmp/wolf-ci-retirement-ledger.jsonl
+          WOLF_CI_RETIREMENT_ANCHOR_FILE: /tmp/wolf-ci-retirement-head.json
           WOLF_CI_RETIREMENT_VERDICT: /tmp/wolf-ci-retirement-verdict.json
         run: |
           set -euo pipefail
-          # The ledger lives on a dedicated branch; it is never the default branch,
-          # so reading it cannot activate anything.
+          : "${WOLF_CI_RETIREMENT_LEDGER_FILE:?LEDGER_FILE_REQUIRED}"
+          : "${WOLF_CI_RETIREMENT_ANCHOR_FILE:?ANCHOR_FILE_REQUIRED}"
+          rm -f "$WOLF_CI_RETIREMENT_LEDGER_FILE" "$WOLF_CI_RETIREMENT_ANCHOR_FILE" "$WOLF_CI_RETIREMENT_VERDICT"
+
+          # A missing/error response is recorded as unavailable, never converted to
+          # empty evidence that can authorize a PAT. The selector receives the exact
+          # bytes checked below and requires an anchor for every fallback decision.
           if gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl?ref=wolf-ci-retirement" \
-               --jq .content 2>/dev/null | base64 -d > "$WOLF_CI_RETIREMENT_LEDGER_TEXT" 2>/dev/null; then
+               --jq .content 2>/dev/null | base64 -d > "$WOLF_CI_RETIREMENT_LEDGER_FILE" 2>/dev/null; then
             echo RETIREMENT_LEDGER=FETCHED
           else
-            : > "$WOLF_CI_RETIREMENT_LEDGER_TEXT"
-            echo RETIREMENT_LEDGER=ABSENT
+            : > "$WOLF_CI_RETIREMENT_LEDGER_FILE"
+            echo RETIREMENT_LEDGER=UNAVAILABLE
           fi
-          cp "$WOLF_CI_RETIREMENT_LEDGER_TEXT" "$WOLF_CI_RETIREMENT_LEDGER_FILE" 2>/dev/null || true
-          node scripts/private-ci-app-auth-cli.mjs retirement-check > "$WOLF_CI_RETIREMENT_VERDICT"
+          if gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json?ref=wolf-ci-retirement" \
+               --jq .content 2>/dev/null | base64 -d > "$WOLF_CI_RETIREMENT_ANCHOR_FILE" 2>/dev/null; then
+            echo RETIREMENT_ANCHOR=FETCHED
+          else
+            : > "$WOLF_CI_RETIREMENT_ANCHOR_FILE"
+            echo RETIREMENT_ANCHOR=UNAVAILABLE
+          fi
+
+          check_code=0
+          node scripts/private-ci-app-auth-cli.mjs retirement-check \
+            --ledger "$WOLF_CI_RETIREMENT_LEDGER_FILE" \
+            --anchor "$WOLF_CI_RETIREMENT_ANCHOR_FILE" \
+            --require-anchor > "$WOLF_CI_RETIREMENT_VERDICT" || check_code=$?
+          test -s "$WOLF_CI_RETIREMENT_VERDICT" || { echo RETIREMENT_VERDICT=NOT_REPORTED; exit 1; }
           cat "$WOLF_CI_RETIREMENT_VERDICT"
-          if node -e 'const v=require(process.argv[1]); process.exit(v.retired===true?0:1)' "$WOLF_CI_RETIREMENT_VERDICT"; then
+
+          # Propagate evidence to later credential selectors. Base64 is one line and
+          # avoids GITHUB_ENV delimiter ambiguity for JSONL. No credential is present.
+          printf 'WOLF_CI_RETIREMENT_LEDGER_B64=%s\n' "$(base64 -w0 "$WOLF_CI_RETIREMENT_LEDGER_FILE")" >> "$GITHUB_ENV"
+          printf 'WOLF_CI_RETIREMENT_ANCHOR_B64=%s\n' "$(base64 -w0 "$WOLF_CI_RETIREMENT_ANCHOR_FILE")" >> "$GITHUB_ENV"
+          echo 'WOLF_CI_RETIREMENT_REQUIRE_ANCHOR=true' >> "$GITHUB_ENV"
+
+          state=$(node -e 'const v=require(process.argv[1]); process.stdout.write(String(v.state ?? "UNKNOWN"))' "$WOLF_CI_RETIREMENT_VERDICT")
+          if test "$state" = RETIRED; then
             echo 'WOLF_CI_RETIRE_PAT=true' >> "$GITHUB_ENV"
             echo RETIREMENT_ENFORCED_FROM_LEDGER=true
+          elif test "$state" = ACTIVE && test "$check_code" -eq 0; then
+            echo RETIREMENT_EVIDENCE=VERIFIED_ACTIVE
+          elif test "$check_code" -eq 78; then
+            echo 'WOLF_CI_RETIREMENT_EVIDENCE_BLOCKED=true' >> "$GITHUB_ENV"
+            echo RETIREMENT_FALLBACK=WITHHELD_EVIDENCE_UNVERIFIABLE
           else
-            echo RETIREMENT_ENFORCED_FROM_LEDGER=false
+            echo RETIREMENT_HYDRATION=FAILED
+            exit 1
           fi
       - name: Prepare the private schema database and the DBOS database
         shell: bash
@@ -439,7 +559,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/private-ci-bridge.test.mjs tests/private-ci-inventory.test.mjs tests/private-ci-execute.test.mjs tests/private-ci-publish-receipt.test.mjs tests/private-ci-diagnose.test.mjs tests/workflow-pins-resolve.test.mjs tests/private-controller-preflight-pin.test.mjs tests/workflow-env-declared.test.mjs tests/private-ci-journal.test.mjs
+          node --test tests/private-ci-bridge.test.mjs tests/private-ci-inventory.test.mjs tests/private-ci-execute.test.mjs tests/private-ci-publish-receipt.test.mjs tests/private-ci-diagnose.test.mjs tests/workflow-pins-resolve.test.mjs tests/private-controller-preflight-pin.test.mjs tests/workflow-env-declared.test.mjs tests/private-ci-journal.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-resolve-target.test.mjs tests/private-ci-resolve-target-cli.test.mjs tests/private-ci-target-gate.test.mjs tests/private-ci-credential-routing.test.mjs tests/private-ci-anchor-wiring.test.mjs tests/private-ci-retirement-integrity.test.mjs tests/private-ci-retirement-record-cli.test.mjs tests/private-ci-ledger-seal-cli.test.mjs tests/private-ci-retirement-ordering.test.mjs tests/private-ci-retirement-persist.test.mjs tests/private-ci-trigger-coverage.test.mjs
           echo PRIVATE_CI_EXECUTOR_CONTRACT=PASS
       - name: Mint the reader installation token with the official action
         id: app_reader
@@ -455,7 +575,8 @@ jobs:
           repositories: project-wolf
           permission-contents: read
           permission-metadata: read
-      - name: Authenticate to the private Factory with a GitHub App installation token
+          permission-pull-requests: read
+      - name: Inventory credential inputs without exporting tokens
         shell: bash
         env:
           WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
@@ -463,40 +584,12 @@ jobs:
           WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
           WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
           WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
           WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
-          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-app-token.env
-          GITHUB_STEP_SUMMARY: ${{ runner.temp }}/wolf-ci-app-auth.md
         run: |
           set -euo pipefail
-          # Presence-only inventory first: no value is ever printed.
           node scripts/private-ci-app-auth-cli.mjs inventory
-          # Reader may come from the App or, until the App is installed, from the
-          # PAT fallback. A non-zero exit is reported, never fatal: the deploy key
-          # remains the working source path either way.
-          # Same convention as the dispatcher: exit 0 can mean "minted" or
-          # "fell back", so the token file is the authority.
-          reader_state=pat-fallback
-          if node scripts/private-ci-app-auth-cli.mjs mint reader; then
-            if test -s "$WOLF_CI_TOKEN_FILE"; then
-              reader_state=app
-            fi
-          else
-            reader_state=unavailable
-          fi
-          echo "PRIVATE_CI_READER_AUTH=$reader_state"
-          if test -s "$WOLF_CI_TOKEN_FILE"; then
-            cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"
-            rm -f "$WOLF_CI_TOKEN_FILE"
-            echo PRIVATE_CI_READER_TOKEN_EXPORTED=YES
-          else
-            echo PRIVATE_CI_READER_TOKEN_EXPORTED=NO
-          fi
       - name: Resolve the authoritative PR head and compare it to the pin
         id: private_head
-        if: always()
-        continue-on-error: true
         shell: bash
         # The workflow executes one immutable SHA, which is correct. The failure mode
         # is the inverse: the pin stays behind while the PR moves, runs stay green,
@@ -510,16 +603,26 @@ jobs:
         #
         # It never changes the pin and never executes the PR head.
         env:
-          WOLF_CI_APP_READER_TOKEN: ${{ env.WOLF_CI_APP_READER_TOKEN }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          # Scope the read token to this metadata-only resolver step. It is not
+          # exported through GITHUB_ENV and cannot reach private build/test steps.
+          WOLF_CI_APP_READER_TOKEN: ${{ steps.app_reader.outputs.token }}
           WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
           WOLF_CI_PR: '743'
-          WOLF_CI_SHA: 8d319fc50be4e4d225e3bb80de963583899c25ec
+          WOLF_CI_SHA: ${{ env.WOLF_CI_SHA }}
           WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json
         run: |
           set -euo pipefail
           node scripts/private-ci-resolve-target-cli.mjs resolve --out "$WOLF_CI_TARGET_OUTPUT"
-          test -s "$WOLF_CI_TARGET_OUTPUT" || echo '{"target":{"state":"BLOCKED"},"verdict":{"acceptanceValid":false}}' > "$WOLF_CI_TARGET_OUTPUT"
+          test -s "$WOLF_CI_TARGET_OUTPUT" || { echo TARGET_RESOLUTION_OUTPUT_MISSING; exit 1; }
+      - name: Require current exact PR target before private checkout
+        id: target_gate
+        shell: bash
+        env:
+          WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json
+          WOLF_CI_SHA: ${{ env.WOLF_CI_SHA }}
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-resolve-target-cli.mjs gate --in "$WOLF_CI_TARGET_OUTPUT" --execution-sha "$WOLF_CI_SHA"
       - name: Clone the private commit at its immutable SHA over the authorized deploy key
         shell: bash
         env:
@@ -584,7 +687,6 @@ jobs:
           WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
           WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
           WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-dispatcher-token.env
           WOLF_CI_DISPATCH_FILE: /tmp/wolf-ci-dispatch.json
           # The probe resolves the target workflow itself; these stay as the
@@ -623,8 +725,6 @@ jobs:
           WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
           WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
           WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
           WOLF_CI_AUTH_RECOVERY_FILE: /tmp/wolf-ci-auth-recovery.json
         run: |
           set -euo pipefail
@@ -684,7 +784,7 @@ jobs:
             echo ACCEPTANCE_STATE=NOT_REPORTED
           fi
       - name: Publish the diagnosis to a public check run the agent can read
-        if: always()
+        if: always() && steps.mission_admission.outcome == 'success'
         shell: bash
         # An embedded Python heredoc inside a YAML block scalar broke indentation
         # and failed the step. A real script is testable and cannot mis-indent.
@@ -699,7 +799,6 @@ jobs:
           WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
           WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
           WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
           WOLF_CI_DIAGNOSIS_PROBE: 'true'
         run: |
           set -euo pipefail
@@ -712,8 +811,6 @@ jobs:
           WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
           WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
           WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
           WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
           WOLF_CI_APP_AUTH_FILE: /tmp/wolf-ci-app-auth.json
           ISSUED_READER_TOKEN: ${{ steps.app_reader.outputs.token != '' }}
@@ -740,59 +837,8 @@ jobs:
           set -euo pipefail
           rm -rf "$WOLF_CI_LOG_DIR" "$WOLF_CI_RECEIPT"
           node scripts/private-ci-execute.mjs
-      - name: Validate the cross-repository mission, if this is one
-        id: mission
-        if: always()
-        shell: bash
-        # The payload comes from `github.event.client_payload`, which is
-        # attacker-controlled whenever the sender is not trusted. It is treated as
-        # data only: it can name a SHA, and nothing else.
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          WOLF_CI_MISSION_FILE: /tmp/wolf-ci-mission.json
-          WOLF_CI_JOURNAL: .wolf-ci/journal.jsonl
-          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-        run: |
-          set -euo pipefail
-          if test "${GITHUB_EVENT_NAME:-}" != "repository_dispatch"; then
-            echo "MISSION_STATE=NOT_A_MISSION_EVENT"
-            exit 0
-          fi
-          node -e 'process.stdout.write(JSON.stringify(process.env.CLIENT_PAYLOAD ?? null))'             > /tmp/wolf-ci-mission-payload.json 2>/dev/null || echo '{}' > /tmp/wolf-ci-mission-payload.json
-          code=0
-          node scripts/private-ci-mission-cli.mjs --payload /tmp/wolf-ci-mission-payload.json --out "$WOLF_CI_MISSION_FILE" || code=$?
-          # 0 accepted, 3 duplicate (not an error), 2 rejected (recorded, then a
-          # failure - a refused mission must not look like a completed one).
-          if test "$code" -eq 3; then
-            echo "MISSION_STATE=DUPLICATE"
-            exit 0
-          fi
-          test "$code" -eq 0
-      - name: Journal the durable request for this immutable commit
-        if: always()
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          REQUEST_SHA: ${{ github.event.client_payload.sha || inputs.sha || '' }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$WOLF_CI_INBOX"
-          # A caller-supplied SHA is written to the inbox exactly as received and
-          # validated by the journal, which only accepts a full 40-character SHA.
-          if test -n "${REQUEST_SHA:-}"; then
-            printf '%s\n' "$REQUEST_SHA" > "$WOLF_CI_INBOX/request.sha"
-          else
-            rm -f "$WOLF_CI_INBOX/request.sha"
-          fi
-          node scripts/private-ci-journal-cli.mjs enqueue
-          node scripts/private-ci-journal-cli.mjs claim > /dev/null || true
-          node scripts/private-ci-journal-cli.mjs status
       - name: Publish the SHA-bound receipt to a dedicated private branch
-        if: always()
+        if: always() && steps.mission_admission.outcome == 'success'
         continue-on-error: true
         shell: bash
         env:
@@ -812,7 +858,7 @@ jobs:
           fi
       - name: Enforce the fallback-retirement decision for this run
         id: retirement
-        if: always()
+        if: always() && steps.mission_admission.outcome == 'success'
         shell: bash
         # Retirement is computed here, after acceptance, and takes effect for every
         # later step through GITHUB_ENV. Computing it is not enough: the flag is
@@ -829,152 +875,78 @@ jobs:
           # now refuse the PAT. Printing the verdict makes a silently-ignored flag
           # impossible to miss.
           node scripts/private-ci-app-auth-cli.mjs state reader || true
-      - name: Prove the ledger closes the fallback with no per-run flag
-        id: retirement_ledger_proof
-        if: always()
-        continue-on-error: true
-        shell: bash
-        # This step runs after the per-run enforcement step, but it deliberately
-        # ignores that flag: it re-reads the durable ledger and asks the real
-        # credential selector to choose with the flag *unset*.
-        #
-        # That is the difference the founder asked for. A per-run flag proves a
-        # decision was made during this run. This proves a later run - one that
-        # never saw the decision - is still denied the fallback.
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          WOLF_CI_RETIRE_PAT: ''
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-        run: |
-          set -euo pipefail
-          node scripts/probes/durable-ledger-proof.mjs > /tmp/wolf-ci-ledger-proof.json && status=0 || status=$?
-          cat /tmp/wolf-ci-ledger-proof.json || true
-          echo RETIREMENT_ENFORCED_BY_LEDGER_ONLY=$(node -e 'try{const d=require("/tmp/wolf-ci-ledger-proof.json");process.stdout.write(String(d.enforcedByLedgerAlone))}catch{process.stdout.write("false")}')
-          exit 0
-      - name: Persist the retirement decision so later runs inherit it
+      - name: Persist the retirement decision without rewriting remote history
         id: retirement_persist
-        if: always()
+        if: always() && steps.mission_admission.outcome == 'success'
         continue-on-error: true
         shell: bash
-        # A per-run flag cannot claim permanent retirement. This step turns this
-        # run's decision into repository state that every later run reads before
-        # choosing a credential, so retirement survives the end of the run.
-        #
-        # Nothing is written when the decision keeps the fallback, and the write is
-        # append-only: an existing RETIRE record is never removed or amended.
+        # The persistence CLI reads the existing remote ledger AND anchor before
+        # appending. Missing pairs, legacy history, truncation, conflicts and API
+        # failures are reported; they never cause a fresh anchor to replace history.
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
           WOLF_CI_RETIREMENT_FILE: /tmp/wolf-ci-retirement.json
-          WOLF_CI_RETIREMENT_LEDGER_FILE: .wolf-ci/retirement-ledger.jsonl
-          WOLF_CI_RETIREMENT_ANCHOR_FILE: .wolf-ci/retirement-head.json
-          WOLF_CI_RETIREMENT_ANCHOR_IN: /tmp/wolf-ci-retirement-head-prev.json
+          WOLF_CI_RETIREMENT_PERSIST_FILE: /tmp/wolf-ci-retirement-persist.json
         run: |
           set -euo pipefail
-          node scripts/private-ci-app-auth-cli.mjs retirement-record
-
-          # Fetch the previously published anchor first, so the seal can compare the
-          # ledger to it and report a truncation rather than overwriting the evidence
-          # of one.
-          if gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json?ref=wolf-ci-retirement" --jq .content 2>/dev/null | base64 -d > "$WOLF_CI_RETIREMENT_ANCHOR_IN" 2>/dev/null; then
-            echo RETIREMENT_ANCHOR_PREVIOUS=FETCHED
+          : "${WOLF_CI_RETIREMENT_PERSIST_FILE:?RETIREMENT_PERSIST_FILE_REQUIRED}"
+          code=0
+          node scripts/private-ci-retirement-persist.mjs persist \
+            --out "$WOLF_CI_RETIREMENT_PERSIST_FILE" > "$WOLF_CI_RETIREMENT_PERSIST_FILE.stdout" || code=$?
+          if test -s "$WOLF_CI_RETIREMENT_PERSIST_FILE"; then
+            cat "$WOLF_CI_RETIREMENT_PERSIST_FILE"
           else
-            rm -f "$WOLF_CI_RETIREMENT_ANCHOR_IN"
-            echo RETIREMENT_ANCHOR_PREVIOUS=ABSENT
+            echo RETIREMENT_PERSISTENCE=NOT_REPORTED
+            printf '%s\n' '{"state":"FAILED","reason":"RETIREMENT_PERSISTENCE_NOT_REPORTED","credentialsPrinted":false}' > "$WOLF_CI_RETIREMENT_PERSIST_FILE"
           fi
-
-          # Seal before publishing: a legacy record is not tamper-evident, and the
-          # anchor is what makes truncation detectable by a later run.
-          node scripts/private-ci-ledger-seal-cli.mjs seal \
-            --in "$WOLF_CI_RETIREMENT_LEDGER_FILE" \
-            --anchor-out "$WOLF_CI_RETIREMENT_ANCHOR_FILE"
-          test -s "$WOLF_CI_RETIREMENT_LEDGER_FILE" || { echo RETIREMENT_LEDGER_WRITE=NONE; exit 0; }
-
-          # Publish the anchor alongside the ledger. A ledger without its anchor has
-          # no completeness evidence, so the two are written in the same step.
-          if test -s "$WOLF_CI_RETIREMENT_ANCHOR_FILE"; then
-            anchor_encoded=$(base64 -w0 "$WOLF_CI_RETIREMENT_ANCHOR_FILE")
-            anchor_existing=$(gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json?ref=wolf-ci-retirement" --jq .sha 2>/dev/null || true)
-            if test -n "$anchor_existing"; then
-              gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json" \
-                -f message="chore(ci): advance the retirement head anchor" \
-                -f content="$anchor_encoded" -f sha="$anchor_existing" -f branch=wolf-ci-retirement >/dev/null \
-                && echo RETIREMENT_ANCHOR_WRITE=UPDATED || echo RETIREMENT_ANCHOR_WRITE=FAILED
-            else
-              gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-head.json" \
-                -f message="chore(ci): publish the retirement head anchor" \
-                -f content="$anchor_encoded" -f branch=wolf-ci-retirement >/dev/null \
-                && echo RETIREMENT_ANCHOR_WRITE=CREATED || echo RETIREMENT_ANCHOR_WRITE=FAILED
-            fi
-          fi
-
-          # The contents API writes files into an existing branch; it cannot create
-          # one. An earlier revision assumed otherwise and failed with a 404 that
-          # the step's continue-on-error hid, so the ledger silently never existed.
-          # The branch is created explicitly from the current commit first.
-          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/wolf-ci-retirement" >/dev/null 2>&1; then
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref=refs/heads/wolf-ci-retirement -f sha="$GITHUB_SHA" >/dev/null \
-              && echo RETIREMENT_LEDGER_BRANCH=CREATED || { echo RETIREMENT_LEDGER_BRANCH=FAILED; exit 0; }
-          else
-            echo RETIREMENT_LEDGER_BRANCH=EXISTS
-          fi
-
-          encoded=$(base64 -w0 "$WOLF_CI_RETIREMENT_LEDGER_FILE")
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl?ref=wolf-ci-retirement" --jq .sha 2>/dev/null || true)
-          if test -n "$existing"; then
-            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl" \
-              -f message="chore(ci): record fallback retirement at ${GITHUB_SHA}" \
-              -f content="$encoded" -f sha="$existing" -f branch=wolf-ci-retirement >/dev/null \
-              && echo RETIREMENT_LEDGER_WRITE=APPENDED || echo RETIREMENT_LEDGER_WRITE=FAILED
-          else
-            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/.wolf-ci/retirement-ledger.jsonl" \
-              -f message="chore(ci): record fallback retirement at ${GITHUB_SHA}" \
-              -f content="$encoded" -f branch=wolf-ci-retirement >/dev/null \
-              && echo RETIREMENT_LEDGER_WRITE=CREATED || echo RETIREMENT_LEDGER_WRITE=FAILED
-          fi
-      - name: Mint the publisher token for the private check
-        id: publisher_mint
-        if: always()
+          rm -f "$WOLF_CI_RETIREMENT_PERSIST_FILE.stdout"
+          echo "RETIREMENT_PERSISTENCE_EXIT=$code"
+      - name: Prove durable fallback denial without the per-run flag
+        id: retirement_ledger_proof
+        if: always() && steps.mission_admission.outcome == 'success'
+        continue-on-error: true
         shell: bash
-        # A step's `env:` is resolved before its own run block executes, so a token
-        # exported inside the publish step could never reach that step's process.
-        # Minting here and writing to GITHUB_ENV is what actually makes the token
-        # available to the step that needs it.
+        # This deliberately supplies a present PAT and unsets the per-run flag.
+        # It reads the remote evidence *after* persistence. A withheld fallback due
+        # to missing evidence is not relabelled as proof of observed retirement.
         env:
-          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
-          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
-          WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
-          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
-          WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
-          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-publisher-token.env
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WOLF_CI_RETIRE_PAT: ''
+          WOLF_CI_RETIREMENT_REQUIRE_ANCHOR: 'true'
+          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_LEDGER_PROOF_FILE: /tmp/wolf-ci-ledger-proof.json
         run: |
           set -euo pipefail
-          if node scripts/private-ci-app-auth-cli.mjs mint publisher --out "$WOLF_CI_TOKEN_FILE" && test -s "$WOLF_CI_TOKEN_FILE"; then
-            # GITHUB_ENV carries it to every later step, already masked.
-            cat "$WOLF_CI_TOKEN_FILE" >> "$GITHUB_ENV"
-            echo PUBLISHER_CREDENTIAL=app
-          elif test "${WOLF_CI_RETIRE_PAT:-}" = "true"; then
-            # Retired: no App token means no publication, never a quiet PAT fallback.
-            echo PUBLISHER_CREDENTIAL=retired-and-unavailable
-          else
-            echo PUBLISHER_CREDENTIAL=status-pat-fallback
-          fi
-          rm -f "$WOLF_CI_TOKEN_FILE"
+          : "${WOLF_CI_LEDGER_PROOF_FILE:?LEDGER_PROOF_FILE_REQUIRED}"
+          code=0
+          node scripts/probes/durable-ledger-proof.mjs > "$WOLF_CI_LEDGER_PROOF_FILE" || code=$?
+          test -s "$WOLF_CI_LEDGER_PROOF_FILE" || printf '%s\n' '{"patFallbackDenied":false,"enforcedByDurableRetirement":false,"credentialsPrinted":false}' > "$WOLF_CI_LEDGER_PROOF_FILE"
+          cat "$WOLF_CI_LEDGER_PROOF_FILE"
+          echo "RETIREMENT_LEDGER_PROOF_EXIT=$code"
+          echo RETIREMENT_PAT_FALLBACK_DENIED=$(node -e 'try{const d=require(process.argv[1]);process.stdout.write(String(d.patFallbackDenied))}catch{process.stdout.write("false")}' "$WOLF_CI_LEDGER_PROOF_FILE")
+          echo RETIREMENT_OBSERVED=$(node -e 'try{const d=require(process.argv[1]);process.stdout.write(String(d.enforcedByDurableRetirement))}catch{process.stdout.write("false")}' "$WOLF_CI_LEDGER_PROOF_FILE")
+      - name: Mint the least-privilege publisher token for the private check
+        id: publisher_mint
+        if: always() && steps.mission_admission.outcome == 'success' && vars.WOLF_FACTORY_APP_AUTH == 'enabled'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          app-id: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          private-key: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          owner: donraposo1-source
+          repositories: project-wolf
+          permission-checks: write
+          permission-metadata: read
       - name: Publish the authenticated check to the private commit
-        if: always()
+        if: always() && steps.mission_admission.outcome == 'success'
         continue-on-error: true
         shell: bash
         env:
-          WOLF_FACTORY_STATUS_TOKEN: ${{ secrets.WOLF_FACTORY_STATUS_TOKEN }}
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
-          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
-          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
-          WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
-          WOLF_CI_APP_PUBLISHER_TOKEN: ${{ env.WOLF_CI_APP_PUBLISHER_TOKEN }}
-          WOLF_CI_TOKEN_FILE: /tmp/wolf-ci-publisher-token.env
+          # Scope the write token to this single status-publication step.
+          WOLF_CI_APP_PUBLISHER_TOKEN: ${{ steps.publisher_mint.outputs.token }}
           WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
           WOLF_CI_PRIVATE_STATUS_FILE: /tmp/wolf-ci-private-status.json
         run: |
@@ -985,7 +957,7 @@ jobs:
           test -s "$WOLF_CI_PRIVATE_STATUS_FILE" || printf '%s\n' '{"state":"FAILED","reason":"PRIVATE_STATUS_NOT_REPORTED"}' > "$WOLF_CI_PRIVATE_STATUS_FILE"
           node -e 'const s=require(process.env.WOLF_CI_PRIVATE_STATUS_FILE); console.log("PRIVATE_STATUS=" + s.state + (s.reason ? " REASON=" + s.reason : ""))'
       - name: Publish the sanitized public receipt
-        if: always()
+        if: always() && steps.mission_admission.outcome == 'success'
         shell: bash
         env:
           WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
@@ -996,6 +968,8 @@ jobs:
           WOLF_CI_AUTH_RECOVERY_FILE: /tmp/wolf-ci-auth-recovery.json
           WOLF_CI_ACCEPTANCE_FILE: /tmp/wolf-ci-acceptance.json
           WOLF_CI_RETIREMENT_FILE: /tmp/wolf-ci-retirement.json
+          WOLF_CI_RETIREMENT_PERSIST_FILE: /tmp/wolf-ci-retirement-persist.json
+          WOLF_CI_LEDGER_PROOF_FILE: /tmp/wolf-ci-ledger-proof.json
           WOLF_CI_PR: '743'
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -1008,18 +982,6 @@ jobs:
             node scripts/private-ci-bridge.mjs publish-receipt
           else
             echo PRIVATE_CI_RECEIPT_ABSENT
-          fi
-      - name: Settle the durable request as completed or failed
-        if: always()
-        shell: bash
-        env:
-          WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
-        run: |
-          set -euo pipefail
-          if test -f "$WOLF_CI_RECEIPT" && grep -q '"state": "VERIFIED"' "$WOLF_CI_RECEIPT"; then
-            node scripts/private-ci-journal-cli.mjs settle --state completed
-          else
-            node scripts/private-ci-journal-cli.mjs settle --state failed
           fi
       - name: Destroy private source, private logs, DBOS donor and key material
         if: always()

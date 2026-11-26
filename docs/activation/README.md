@@ -1,17 +1,24 @@
-# Activation Package — Minimal Trusted Mission Listener
+# Activation Package — Historical Mission Listener Snapshot
 
-**Not activated.** This package is prepared for founder review. Nothing here has
-been applied to `main`, and no default branch has been changed.
+**Superseded and NOT activation-ready as of 2026-11-24.** This package records an
+earlier P144 design. Its patch, pins, line/test counts, and copy/paste instructions
+do not match the current implementation. The listener is only in the engineering
+PR worktree. A read-only GitHub API check confirmed that `main` (the default
+branch) has neither the listener nor the bridge workflow. The attempted current
+pin `9679aa76397c7b248c3708be2c063e75a7058ae5` does not resolve; no replacement
+is authorized or guessed. Do not apply this package verbatim.
 
-Produced on `arena/38f3a7f7-wolf-factory-home` @ `0225e82`.
+Historical preparation reference: `arena/38f3a7f7-wolf-factory-home` @ `0225e82`.
 
 ---
 
 ## 1. Why this exists
 
-A cross-repository mission cannot start the bridge, because GitHub starts
-`repository_dispatch` workflows **only from the default branch**, and `main` does
-not carry the bridge. Measured:
+A cross-repository mission cannot start the listener from this PR branch:
+GitHub starts `repository_dispatch` workflows from the repository's default
+branch, and `main` does not carry either workflow. A read-only API check on
+2026-11-24 returned 404 for both workflow paths on `main`. The POST/403/PATCH
+results below are historical and were not repeated in this review:
 
 ```
 POST …/dispatches                                    -> 2xx, zero runs created
@@ -37,13 +44,9 @@ Exactly four files, 682 lines, no modification of anything already on `main`:
 | `scripts/private-ci-listener-cli.mjs` | The `admit` command surface the workflow calls. |
 | `scripts/private-ci-mission.mjs` | The strict mission contract, reused rather than reimplemented. |
 
-`docs/activation/mission-listener.patch` is the same change as a patch. Verified
-against a clean export of `main`:
-
-```
-git archive origin/main | tar -x -C <tmp>
-git apply --check docs/activation/mission-listener.patch   # APPLIES CLEANLY
-```
+`docs/activation/mission-listener.patch` and its digests are preserved as a
+historical artifact only. Its old apply-cleanly result does not apply to the
+current implementation and is not authorization to apply it.
 
 ## 3. Security evidence
 
@@ -70,7 +73,9 @@ decision with positive evidence, and every refusal is recorded with a reason:
 | Mission contract | Strict schema reused from the bridge; workflow/ref/token/paid rejected. | 6 |
 | Second gate | Privileged job re-verifies the admission and refuses a tampered output. | 4 |
 
-**23 adversarial tests** plus **11 CLI entry-point tests**. Full suite: **382 passing, 0 failing**.
+Historical snapshot only: the original package reported **23 adversarial tests**
+plus **11 CLI entry-point tests** and **382 passing, 0 failing** at that time.
+These counts do not describe the current worktree or its regression suite.
 
 ### 3.3 The delivery-identity defect found while testing
 
@@ -105,7 +110,7 @@ visible, not silent.
 | Dependency | Version | Why |
 | --- | --- | --- |
 | `actions/checkout` | `11d5960a…` (pinned) | Reads the admission logic at the pinned executor. `persist-credentials: false`. |
-| Executor workflow | `private-ci-bridge.yml@96cab355878d6ca37dcd6d40ab79b7ac595d1c22` | Immutable SHA. Must be on the approved list. |
+| Historical executor workflow | `private-ci-bridge.yml@96cab355878d6ca37dcd6d40ab79b7ac595d1c22` | Superseded snapshot; predates `workflow_call` and must not be used. |
 | Node | runner default (22) | The CLI is dependency-free ESM. |
 
 No new secret, App, PAT or billing configuration is introduced by this package.

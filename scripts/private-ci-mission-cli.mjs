@@ -1,4 +1,8 @@
-// Mission intake CLI. Runs inside the bridge when a `repository_dispatch` arrives.
+// Legacy local mission-validator CLI used by unit tests and fixtures only.
+//
+// Production `repository_dispatch` admission is performed by the authenticated
+// mission-listener workflow and its durable store. This local file-backed helper
+// is not a production entrypoint and does not provide cross-run replay protection.
 //
 //   node scripts/private-ci-mission-cli.mjs --payload /tmp/payload.json --out /tmp/mission.json
 //

@@ -1,45 +1,69 @@
-// Live proof that durable retirement is enforced, not merely recorded.
+// Live proof that durable retirement evidence (ledger + anchor) is enforced
+// without a per-run flag.
 //
-// Run inside a workflow that has NO per-run retirement flag of its own. It fetches
-// the ledger branch from the real API, runs the credential selector with an empty
-// environment (so no per-run flag is set), and reports what the selector decides.
-//
-// The point is the counterfactual: this run never computed a retirement decision,
-// so anything that closes the fallback here can only have come from the ledger.
+// The selector is given the same bytes the runtime hydrated. Missing or unreadable
+// storage is not relabelled as an observed retirement: it still withholds PAT
+// fallback because this proof requires an anchor, and reports that distinction.
 import {execFileSync} from 'node:child_process';
 import {selectCredential} from '../private-ci-app-auth.mjs';
 import {readLedgerVerdict} from '../private-ci-retirement-ledger.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY;
 const branch = 'wolf-ci-retirement';
-const path = '.wolf-ci/retirement-ledger.jsonl';
-
-let ledgerText = null;
-try {
+const readContents = path => {
   const encoded = execFileSync('gh', ['api', `repos/${repository}/contents/${path}?ref=${branch}`, '--jq', '.content'], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
   }).trim();
-  ledgerText = Buffer.from(encoded, 'base64').toString('utf8');
+  return Buffer.from(encoded, 'base64').toString('utf8');
+};
+
+let ledgerText = null;
+let anchorText = null;
+try { ledgerText = readContents('.wolf-ci/retirement-ledger.jsonl'); } catch {}
+try { anchorText = readContents('.wolf-ci/retirement-head.json'); } catch {}
+
+const ledger = readLedgerVerdict(ledgerText);
+let anchorState = 'UNAVAILABLE';
+try {
+  const anchor = JSON.parse(anchorText ?? '');
+  anchorState = anchor && typeof anchor === 'object' ? 'READ' : 'UNREADABLE';
 } catch {
-  ledgerText = null;
+  anchorState = 'UNREADABLE';
 }
 
-const verdict = readLedgerVerdict(ledgerText);
-
-// A PAT is present in the environment, because that is what makes the test
-// meaningful: the selector must refuse a credential that exists.
-const env = {WOLF_FACTORY_REPO_TOKEN: process.env.WOLF_FACTORY_REPO_TOKEN ?? 'present-but-unusable'};
-const selection = selectCredential('reader', {env, ledgerText});
+// The PAT is present to make this adversarial: a missing token cannot prove the
+// selector enforced retirement. The per-run flag is explicitly unset.
+const env = {
+  WOLF_FACTORY_REPO_TOKEN: process.env.WOLF_FACTORY_REPO_TOKEN ?? 'present-but-unusable',
+  WOLF_CI_RETIREMENT_REQUIRE_ANCHOR: 'true',
+};
+const selection = selectCredential('reader', {env, ledgerText, anchorText});
+const patFallbackDenied = selection.source === 'none';
+const enforcedByDurableRetirement = ledger.retired === true
+  && selection.source === 'none'
+  && selection.reason === 'PAT_FALLBACK_RETIRED';
 
 const output = {
-  ledger: {state: verdict.state, retired: verdict.retired, since: verdict.since, sinceCommit: verdict.sinceCommit, evidenceCount: verdict.evidenceCount},
+  ledger: {
+    state: ledger.state,
+    retired: ledger.retired,
+    since: ledger.since,
+    sinceCommit: ledger.sinceCommit,
+    evidenceCount: ledger.evidenceCount,
+  },
+  anchor: {state: anchorState},
   perRunFlagPresent: false,
-  selector: {source: selection.source, reason: selection.reason ?? null, retirementSource: selection.retirementSource ?? null, withheldCredential: selection.withheldCredential ?? null},
-  // The claim under test. A retired ledger with a present PAT must yield 'none'.
-  enforcedByLedgerAlone: verdict.retired === true && selection.source === 'none' && selection.reason === 'PAT_FALLBACK_RETIRED',
+  selector: {
+    source: selection.source,
+    reason: selection.reason ?? null,
+    retirementSource: selection.retirementSource ?? null,
+    withheldCredential: selection.withheldCredential ?? null,
+  },
+  patFallbackDenied,
+  enforcedByDurableRetirement,
   credentialsPrinted: false,
 };
 
 process.stdout.write(JSON.stringify(output) + '\n');
-process.exit(output.enforcedByLedgerAlone ? 0 : 1);
+process.exit(patFallbackDenied ? 0 : 1);

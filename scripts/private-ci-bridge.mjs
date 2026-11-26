@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {decideFallbackRetirement} from './private-ci-app-auth.mjs';
+import {credentialForRole, decideFallbackRetirement} from './private-ci-app-auth.mjs';
 
 export const BRIDGE_REPOSITORIES = Object.freeze(['donraposo1-source/project-wolf']);
 // The runner that hosts this bridge. It is only ever touched to publish the
@@ -82,6 +82,95 @@ export function readRetirementDecision({acceptance, authentication, renewal}) {
  * Prefers the enforcement step's own verdict. Falls back to recomputing only when
  * that artefact is absent, and reports which source was used.
  */
+export function readRetirementPersistence(file) {
+  const parsed = readJsonArtefact(file);
+  if (parsed === null) return {state: 'NOT_REPORTED'};
+  if (parsed === 'UNREADABLE') return {state: 'UNREADABLE'};
+  return {
+    state: parsed.state ?? 'UNKNOWN',
+    reason: parsed.reason ?? null,
+    branch: parsed.branch ?? null,
+    ledgerPath: parsed.ledgerPath ?? null,
+    anchorPath: parsed.anchorPath ?? null,
+    appended: parsed.appended === true,
+    alreadyRecordedForRun: parsed.alreadyRecordedForRun === true,
+    ledgerStored: parsed.ledgerStored === true,
+    anchorStored: parsed.anchorStored === true,
+    anchorConsistent: parsed.anchorConsistent === true,
+    integrity: parsed.integrity ?? null,
+    head: parsed.head ?? null,
+    sequence: Number.isSafeInteger(parsed.sequence) ? parsed.sequence : null,
+    recordCount: Number.isSafeInteger(parsed.recordCount) ? parsed.recordCount : null,
+    trustModel: parsed.trustModel ?? null,
+    independentVerifierRequired: parsed.independentVerifierRequired === true,
+    credentialsPrinted: false,
+  };
+}
+
+export function readDurableLedgerProof(file) {
+  const parsed = readJsonArtefact(file);
+  if (parsed === null) return {state: 'NOT_REPORTED'};
+  if (parsed === 'UNREADABLE') return {state: 'UNREADABLE'};
+  const observed = parsed.enforcedByDurableRetirement === true;
+  const fallbackWithheld = parsed.patFallbackDenied === true;
+  return {
+    state: observed ? 'OBSERVED_RETIRED'
+      : fallbackWithheld ? 'FALLBACK_WITHHELD_NOT_PROVEN_RETIRED'
+        : 'NOT_PROVEN',
+    ledgerState: parsed.ledger?.state ?? null,
+    retired: parsed.ledger?.retired === true,
+    anchorState: parsed.anchor?.state ?? null,
+    perRunFlagPresent: parsed.perRunFlagPresent === true,
+    patFallbackDenied: fallbackWithheld,
+    enforcedByDurableRetirement: observed,
+    selectorSource: parsed.selector?.source ?? null,
+    selectorReason: parsed.selector?.reason ?? null,
+    credentialsPrinted: false,
+  };
+}
+
+const SAFE_MISSION_ADMISSION_REASONS = new Set([
+  'GITHUB_TOKEN_REQUIRED',
+  'CONTROLLER_REPOSITORY_REQUIRED',
+  'MISSION_ID_INVALID',
+  'MISSION_SHA_INVALID',
+  'EXECUTOR_SHA_INVALID',
+  'DELIVERY_ID_INVALID',
+  'GITHUB_RUN_ID_REQUIRED',
+  'ADMISSION_BRANCH_UNAVAILABLE',
+  'ADMISSION_EVIDENCE_UNAVAILABLE',
+  'ADMISSION_LEDGER_NOT_INTACT',
+  'ADMISSION_ANCHOR_MISMATCH',
+  'ADMISSION_ANCHOR_STALE',
+  'ADMISSION_RECORD_NOT_FOUND',
+  'ADMISSION_VERIFICATION_FAILED',
+]);
+
+/** Whitelist the read-only admission-gate verdict into the public receipt. */
+export function readMissionAdmission(file) {
+  const parsed = readJsonArtefact(file);
+  if (parsed === null) return {state: 'NOT_REPORTED', admitted: false, credentialsPrinted: false};
+  if (parsed === 'UNREADABLE') return {state: 'UNREADABLE', admitted: false, credentialsPrinted: false};
+  const state = parsed.state === 'VERIFIED' ? 'VERIFIED' : parsed.state === 'BLOCKED' ? 'BLOCKED' : 'UNKNOWN';
+  return {
+    state,
+    admitted: state === 'VERIFIED' && parsed.admitted === true,
+    reason: state === 'BLOCKED' && SAFE_MISSION_ADMISSION_REASONS.has(parsed.reason) ? parsed.reason : null,
+    missionKey: /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}@[a-f0-9]{40}$/.test(String(parsed.missionKey ?? '')) ? parsed.missionKey : null,
+    targetRepository: /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(String(parsed.targetRepository ?? '')) ? parsed.targetRepository : null,
+    targetSha: SHA_PATTERN.test(String(parsed.targetSha ?? '')) ? parsed.targetSha : null,
+    deliveryId: /^[A-Za-z0-9-]{8,128}$/.test(String(parsed.deliveryId ?? '')) ? parsed.deliveryId : null,
+    executorSha: SHA_PATTERN.test(String(parsed.executorSha ?? '')) ? parsed.executorSha : null,
+    runId: /^\d{1,20}$/.test(String(parsed.runId ?? '')) ? String(parsed.runId) : null,
+    sequence: Number.isSafeInteger(parsed.sequence) ? parsed.sequence : null,
+    ledgerHead: /^[a-f0-9]{64}$/.test(String(parsed.ledgerHead ?? '')) ? parsed.ledgerHead : null,
+    anchorConsistent: parsed.anchorConsistent === true,
+    trustModel: parsed.trustModel === 'SAME_WRITER_ANCHORED_LEDGER' ? parsed.trustModel : null,
+    independentVerifierRequired: parsed.independentVerifierRequired === true,
+    credentialsPrinted: false,
+  };
+}
+
 export function readRetirementArtefact(file, evidence = {}) {
   const parsed = readJsonArtefact(file);
   if (parsed && parsed !== 'UNREADABLE' && typeof parsed === 'object' && 'retire' in parsed) {
@@ -648,13 +737,15 @@ async function publishProbeCheckRun(result) {
 async function main(argv) {
   const [command] = argv;
   if (command === 'probe') {
-    const token = process.env.WOLF_FACTORY_REPO_TOKEN;
+    const credential = credentialForRole('reader');
     const result = await probePrivateRepository({
-      token,
+      token: credential.token,
       repository: process.env.WOLF_CI_REPOSITORY,
       sha: process.env.WOLF_CI_SHA,
       pr: process.env.WOLF_CI_PR,
     });
+    result.credentialSource = credential.source;
+    if (credential.reason) result.credentialReason = credential.reason;
     writeProbeOutput(result);
     try {
       result.checkRun = await publishProbeCheckRun(result);
@@ -671,51 +762,41 @@ async function main(argv) {
       return BRIDGE_EXIT.OK;
     }
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
-    const appPublisherToken = process.env.WOLF_CI_APP_PUBLISHER_TOKEN;
-    // Once the fallback is retired, a missing App token is a hard stop. Falling
-    // through to the PAT here would leave the receipt claiming retirement while the
-    // PAT quietly did the work.
-    const retired = String(process.env.WOLF_CI_RETIRE_PAT ?? '').toLowerCase() === 'true';
-    if (retired && !appPublisherToken) {
-      const blocked = {
-        state: 'BLOCKED',
-        reason: 'PAT_FALLBACK_RETIRED',
-        requiredPermission: 'WOLF_CI_APP_PUBLISHER_TOKEN (checks:write)',
-        identitySeparation: 'source-read and status-write are distinct credentials',
-        retired: true,
-        credentialsPrinted: false,
-      };
-      process.stdout.write(JSON.stringify(blocked) + '\n');
-      return BRIDGE_EXIT.OK;
-    }
+    const publisher = credentialForRole('publisher');
+    const reader = credentialForRole('reader');
     const result = await publishPrivateStatusChecks({
-      // The App-issued publisher token is preferred; the status PAT remains a
-      // fallback until the App can publish. Never both.
-      statusToken: appPublisherToken || process.env.WOLF_FACTORY_STATUS_TOKEN,
-      statusIdentity: appPublisherToken ? 'app-installation' : process.env.WOLF_FACTORY_STATUS_TOKEN ? 'status-pat' : 'none',
-      sourceToken: process.env.WOLF_FACTORY_REPO_TOKEN,
+      statusToken: publisher.token,
+      statusIdentity: publisher.source === 'github-app' ? 'app-installation' : publisher.source === 'pat-fallback' ? 'status-pat' : 'none',
+      sourceToken: reader.token,
       repository: process.env.WOLF_CI_REPOSITORY,
       sha: receipt.sha,
       names: [`wolf-private-ci-${process.env.WOLF_CI_PR ?? 'head'}`],
       conclusion: receipt.state === 'VERIFIED' ? 'success' : 'failure',
       summary: 'SHA-bound private CI receipt: ' + receipt.state + ' (' + (receipt.receiptHash ?? '').slice(0, 16) + ')',
     });
+    // Only role/source labels are serialized. Tokens remain in memory and are
+    // never included in the status result.
+    result.publisherCredentialSource = publisher.source;
+    result.readerCredentialSource = reader.source;
     process.stdout.write(JSON.stringify(result) + '\n');
     return BRIDGE_EXIT.OK;
   }
   if (command === 'diagnose-dispatch') {
+    const dispatcher = credentialForRole('dispatcher');
     const result = await diagnoseDispatch({
-      token: process.env.WOLF_FACTORY_REPO_TOKEN,
+      token: dispatcher.token,
       repository: process.env.WOLF_CI_REPOSITORY,
       workflowId: Number(process.env.WOLF_CI_WORKFLOW_ID) || 0,
     });
+    result.credentialSource = dispatcher.source;
     if (process.env.WOLF_CI_PROBE_OUTPUT) writeProbeOutput(result);
     process.stdout.write(JSON.stringify(result) + '\n');
     return BRIDGE_EXIT.OK;
   }
   if (command === 'dispatch') {
+    const dispatcher = credentialForRole('dispatcher');
     const result = await dispatchPrivateCi({
-      token: process.env.WOLF_FACTORY_REPO_TOKEN,
+      token: dispatcher.token,
       repository: process.env.WOLF_CI_REPOSITORY,
       workflowId: Number(process.env.WOLF_CI_WORKFLOW_ID),
       ref: process.env.WOLF_CI_REF,
@@ -725,6 +806,7 @@ async function main(argv) {
       checks: process.env.WOLF_CI_CHECKS,
       mode: process.env.WOLF_CI_MODE,
     });
+    result.credentialSource = dispatcher.source;
     process.stdout.write(JSON.stringify(result) + '\n');
     return BRIDGE_EXIT.OK;
   }
@@ -844,6 +926,12 @@ async function main(argv) {
         authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
         renewal: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
       }),
+      // Persistence and adversarial proof are reported separately: a per-run
+      // decision, a stored record, and an observed durable denial are not the same
+      // claim. The same-writer anchor is explicitly not treated as independent.
+      retirementPersistence: readRetirementPersistence(process.env.WOLF_CI_RETIREMENT_PERSIST_FILE),
+      durableLedgerProof: readDurableLedgerProof(process.env.WOLF_CI_LEDGER_PROOF_FILE),
+      missionAdmission: readMissionAdmission(process.env.WOLF_CI_MISSION_ADMISSION_FILE),
       // The acceptance target this run resolved, and whether the pin was still the
       // PR head when it ran. Published so a stale acceptance cannot pass as current:
       // a reader sees `acceptanceValid: false` on the receipt itself rather than

@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   BRIDGE_REPOSITORIES,
   DEFAULT_REQUIRED_CHECKS,
@@ -11,6 +14,9 @@ import {
   normalizeRepository,
   normalizeSha,
   probePrivateRepository,
+  readDurableLedgerProof,
+  readMissionAdmission,
+  readRetirementPersistence,
   redact,
   verifyReceiptBinding,
 } from '../scripts/private-ci-bridge.mjs';
@@ -34,6 +40,69 @@ function serve(values) {
     },
   };
 }
+
+test('public receipt keeps retirement decision, persistence and durable proof distinct', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-retirement-receipt-'));
+  const persistenceFile = path.join(root, 'persist.json');
+  const proofFile = path.join(root, 'proof.json');
+  fs.writeFileSync(persistenceFile, JSON.stringify({
+    state: 'PERSISTED', branch: 'wolf-ci-retirement', ledgerStored: true,
+    anchorStored: true, anchorConsistent: true, sequence: 2, recordCount: 2,
+    integrity: 'INTACT', head: 'a'.repeat(64), trustModel: 'SAME_WRITER_ANCHOR',
+    independentVerifierRequired: true, token: 'ghp_must_not_appear',
+  }));
+  fs.writeFileSync(proofFile, JSON.stringify({
+    ledger: {state: 'UNKNOWN', retired: false}, anchor: {state: 'UNAVAILABLE'},
+    selector: {source: 'none', reason: 'RETIREMENT_ANCHOR_UNAVAILABLE'},
+    perRunFlagPresent: false, patFallbackDenied: true,
+    enforcedByDurableRetirement: false, token: 'ghp_must_not_appear',
+  }));
+
+  const persistence = readRetirementPersistence(persistenceFile);
+  const proof = readDurableLedgerProof(proofFile);
+  assert.equal(persistence.state, 'PERSISTED');
+  assert.equal(persistence.ledgerStored, true);
+  assert.equal(persistence.trustModel, 'SAME_WRITER_ANCHOR');
+  assert.equal(persistence.independentVerifierRequired, true);
+  assert.equal(proof.state, 'FALLBACK_WITHHELD_NOT_PROVEN_RETIRED');
+  assert.equal(proof.patFallbackDenied, true);
+  assert.equal(proof.enforcedByDurableRetirement, false);
+  assert.equal(JSON.stringify([persistence, proof]).includes('ghp_must_not_appear'), false);
+  fs.rmSync(root, {recursive: true, force: true});
+});
+
+test('public receipt whitelist preserves the durable mission gate without credentials', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-mission-admission-receipt-'));
+  const verdictFile = path.join(root, 'admission.json');
+  fs.writeFileSync(verdictFile, JSON.stringify({
+    state: 'VERIFIED', admitted: true, reason: null,
+    missionKey: 'mission-0001@' + sha,
+    targetRepository: repository, targetSha: sha,
+    deliveryId: 'run-1001', executorSha: 'f'.repeat(40), runId: '1001',
+    sequence: 2, ledgerHead: 'd'.repeat(64), anchorConsistent: true,
+    trustModel: 'SAME_WRITER_ANCHORED_LEDGER', independentVerifierRequired: true,
+    credentialsPrinted: false, token: 'ghp_must_not_appear',
+  }));
+  const receiptField = readMissionAdmission(verdictFile);
+  assert.equal(receiptField.state, 'VERIFIED');
+  assert.equal(receiptField.admitted, true);
+  assert.equal(receiptField.missionKey, 'mission-0001@' + sha);
+  assert.equal(receiptField.runId, '1001');
+  assert.equal(receiptField.anchorConsistent, true);
+  assert.equal(receiptField.independentVerifierRequired, true);
+  assert.equal(JSON.stringify(receiptField).includes('ghp_must_not_appear'), false);
+
+  fs.writeFileSync(verdictFile, JSON.stringify({state: 'BLOCKED', admitted: false, reason: 'ADMISSION_ANCHOR_STALE', token: 'ghp_hidden'}));
+  const blockedReceipt = readMissionAdmission(verdictFile);
+  assert.equal(blockedReceipt.reason, 'ADMISSION_ANCHOR_STALE');
+  fs.writeFileSync(verdictFile, JSON.stringify({state: 'BLOCKED', admitted: false, reason: 'ghp_secret_replaced_by_arbitrary_input', token: 'ghp_hidden'}));
+  const maliciousReceipt = readMissionAdmission(verdictFile);
+  assert.equal(maliciousReceipt.reason, null, 'unrecognized input is not published as a decision reason');
+  assert.equal(JSON.stringify(maliciousReceipt).includes('ghp_secret'), false);
+  assert.deepEqual(readMissionAdmission('/nonexistent/admission.json'), {state: 'NOT_REPORTED', admitted: false, credentialsPrinted: false});
+  assert.match(fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8'), /missionAdmission: readMissionAdmission\(process\.env\.WOLF_CI_MISSION_ADMISSION_FILE\)/);
+  fs.rmSync(root, {recursive: true, force: true});
+});
 
 test('repository, SHA, PR, checks and mode fail closed on malformed input', () => {
   assert.equal(normalizeRepository(repository), repository);

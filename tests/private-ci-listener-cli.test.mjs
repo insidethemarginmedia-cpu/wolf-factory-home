@@ -12,6 +12,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {test} from 'node:test';
 
+import {deliveryIdentity, eventFromGitHubEvent} from '../scripts/private-ci-listener-cli.mjs';
+
 const CLI = 'scripts/private-ci-listener-cli.mjs';
 const EXECUTOR = '96cab355878d6ca37dcd6d40ab79b7ac595d1c22';
 const TARGET = '8d319fc50be4e4d225e3bb80de963583899c25ec';
@@ -20,9 +22,11 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-listener-'));
 
 const baseEnv = {
   WOLF_LISTENER_AUTHORIZED_SENDERS: 'donraposo1-source',
-  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: EXECUTOR,
   WOLF_LISTENER_EXECUTOR_SHA: EXECUTOR,
+  WOLF_LISTENER_STORE_REQUIRED: 'true',
+  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: EXECUTOR,
   WOLF_LISTENER_REPOSITORY_ALLOWLIST: 'donraposo1-source/project-wolf',
+  GITHUB_REPOSITORY: 'insidethemarginmedia-cpu/wolf-factory-home',
   GITHUB_RUN_ID: '99001',
 };
 
@@ -30,7 +34,9 @@ const run = (args, env = {}, extra = {}) => {
   try {
     const stdout = execFileSync(process.execPath, [CLI, ...args], {
       encoding: 'utf8',
-      env: {...process.env, ...env},
+      // Never inherit a sandbox token into a subprocess test: these cases must not
+      // make an authenticated request or mutate a remote Contents API branch.
+      env: {...process.env, GITHUB_TOKEN: '', ...env},
       stdio: ['ignore', 'pipe', 'pipe'],
       ...extra,
     });
@@ -63,24 +69,34 @@ const freshMission = (overrides = {}) => ({
 
 const decision = result => JSON.parse(result.stdout.trim().split('\n')[0]);
 
-test('a valid event is admitted and the decision is parseable', () => {
+test('a valid event fails closed when durable storage credentials are unavailable', () => {
   const file = writeEvent(freshMission());
   const result = run(['admit', '--event', file], baseEnv);
-  assert.equal(result.code, 0);
+  assert.equal(result.code, 78);
   const d = decision(result);
-  assert.equal(d.admitted, true);
-  assert.equal(d.executorSha, EXECUTOR);
+  assert.equal(d.admitted, false);
+  assert.equal(d.reason, 'LISTENER_DURABLE_STORE_BLOCKED');
+  assert.equal(d.detail.storeReason, 'GITHUB_TOKEN_REQUIRED');
   assert.equal(d.credentialsRequired, false);
 });
 
-test('the CLI emits an admission record alongside the decision', () => {
+test('the CLI emits a blocked admission record alongside the decision', () => {
   const file = writeEvent(freshMission());
   const result = run(['admit', '--event', file], baseEnv);
   const lines = result.stdout.trim().split('\n');
   assert.equal(lines.length, 2, 'decision and record must both be emitted');
   const record = JSON.parse(lines[1]).admissionRecord;
-  assert.equal(record.state, 'ADMITTED');
+  assert.equal(record.state, 'REFUSED');
   assert.equal(record.credentialsRequired, false);
+});
+
+test('the CLI cannot fall back to empty in-memory replay history', () => {
+  const file = writeEvent(freshMission());
+  const result = run(['admit', '--event', file], {...baseEnv, WOLF_LISTENER_STORE_REQUIRED: 'false'});
+  assert.equal(result.code, 78);
+  const d = decision(result);
+  assert.equal(d.admitted, false);
+  assert.equal(d.reason, 'LISTENER_DURABLE_STORE_REQUIRED');
 });
 
 test('an unauthorized sender is refused with a machine-readable reason', () => {
@@ -110,15 +126,18 @@ test('the event cannot override the executor SHA pinned by the workflow', () => 
 });
 
 test('the sender is taken from the authenticated account, not the payload', () => {
-  // A payload claiming a different sender must not help: the sender field is read
-  // from the event envelope that GitHub attributes.
-  const file = writeEvent(freshMission({sender: 'donraposo1-source'}));
-  const result = run(['admit', '--event', file], {...baseEnv});
-  assert.equal(decision(result).admitted, true, 'the envelope sender is authorized');
+  const authorized = eventFromGitHubEvent({
+    sender: {login: 'donraposo1-source'},
+    client_payload: freshMission(),
+  }, {pinnedExecutorSha: EXECUTOR});
+  assert.equal(authorized.sender, 'donraposo1-source');
+  assert.equal(authorized.executorSha, EXECUTOR);
 
-  const forged = writeEvent(freshMission(), {sender: {login: 'attacker'}});
-  const forgedResult = run(['admit', '--event', forged], baseEnv);
-  assert.equal(decision(forgedResult).admitted, false, 'a forged envelope sender is refused');
+  const forged = eventFromGitHubEvent({
+    sender: {login: 'attacker'},
+    client_payload: {...freshMission(), sender: 'donraposo1-source'},
+  }, {pinnedExecutorSha: EXECUTOR});
+  assert.equal(forged.sender, 'attacker');
 });
 
 test('an event with no sender is refused', () => {
@@ -127,13 +146,10 @@ test('an event with no sender is refused', () => {
   assert.equal(decision(result).admitted, false);
 });
 
-test('the delivery identity comes from the run id and the caller cannot choose it', () => {
-  const file = writeEvent(freshMission());
-  const result = run(['admit', '--event', file], {...baseEnv, GITHUB_RUN_ID: '44556677'});
-  const [dec] = result.stdout.trim().split('\n');
-  const record = JSON.parse(result.stdout.trim().split('\n')[1]).admissionRecord;
-  assert.equal(JSON.parse(dec).admitted, true);
-  assert.equal(record.deliveryId, 'run-44556677');
+test('the delivery identity comes from the GitHub run id, not caller data', () => {
+  const githubEvent = {deliveryId: null, client_payload: {deliveryId: 'caller-chosen'}};
+  assert.equal(deliveryIdentity(githubEvent, {runId: '44556677'}), 'run-44556677');
+  assert.equal(deliveryIdentity(githubEvent, {runId: null}), null);
 });
 
 test('a branch name as the private target SHA is refused', () => {

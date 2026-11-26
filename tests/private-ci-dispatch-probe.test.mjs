@@ -102,7 +102,7 @@ test('the CLI writes the outcome and exits 78 only for a blocked capability', as
 
   const green = await dispatchProbeCli(['--out=' + out], {WOLF_CI_REPOSITORY: 'r/r', WOLF_CI_WORKFLOW_ID: '1', WOLF_CI_SHA: 'd'.repeat(40), WOLF_CI_APP_DISPATCHER_TOKEN: 'x'}, {fetchImpl: harness().fetchImpl});
   assert.equal(green, DISPATCH_PROBE_EXIT.OK);
-  assert.equal(JSON.parse(readFileSync(out, 'utf8')).credentialSource, 'app');
+  assert.equal(JSON.parse(readFileSync(out, 'utf8')).credentialSource, 'github-app');
 });
 
 test('the token never appears in the probe output', async () => {

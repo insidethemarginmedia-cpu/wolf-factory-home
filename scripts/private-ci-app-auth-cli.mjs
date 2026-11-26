@@ -273,6 +273,7 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
     // file is created parentally so the workflow can commit it to the ledger
     // branch, and never contains a credential.
     const {retirementRecord} = await import('./private-ci-retirement-ledger.mjs');
+    const {appendRecord, LEDGER_INTEGRITY_VERSION, migrateLegacyLedger, verifyLedger} = await import('./private-ci-retirement-integrity.mjs');
     const source = flag('--from') ?? env.WOLF_CI_RETIREMENT_FILE;
     let decision = null;
     if (source) {
@@ -303,29 +304,94 @@ export async function runAppAuthCli(argv, {env = process.env, fetchImpl = global
       source: 'retirement-record',
     });
     const existing = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
-    const separator = existing && !existing.endsWith('\n') ? '\n' : '';
+    let base = existing;
+    if (existing.trim()) {
+      const verification = verifyLedger(existing);
+      if (verification.state !== 'INTACT') {
+        // Never re-seal content whose integrity is already in question: that would
+        // turn tampering into a fresh, apparently valid chain.
+        stdout(JSON.stringify({state: 'BLOCKED', appended: false, reason: 'LEDGER_NOT_INTACT', integrity: verification.state, credentialsPrinted: false}) + '\n');
+        return APP_AUTH_EXIT.BLOCKED;
+      }
+      const hasSealedRecords = verification.records.some(record => record.integrityVersion === LEDGER_INTEGRITY_VERSION);
+      const hasLegacyRecords = verification.records.some(record => record.integrityVersion !== LEDGER_INTEGRITY_VERSION);
+      if (hasLegacyRecords && hasSealedRecords) {
+        stdout(JSON.stringify({state: 'BLOCKED', appended: false, reason: 'LEDGER_MIXED_INTEGRITY', integrity: verification.state, credentialsPrinted: false}) + '\n');
+        return APP_AUTH_EXIT.BLOCKED;
+      }
+      if (hasLegacyRecords) {
+        // Only a wholly legacy, internally well-formed history can be sealed once.
+        // A mixed or already-sealed chain is never rewritten to hide an error.
+        const migration = migrateLegacyLedger(existing);
+        const migrated = verifyLedger(migration.text);
+        if (!migration.migrated || migrated.state !== 'INTACT' || migrated.records.some(record => record.integrityVersion !== LEDGER_INTEGRITY_VERSION)) {
+          stdout(JSON.stringify({state: 'BLOCKED', appended: false, reason: 'LEGACY_MIGRATION_FAILED', integrity: migrated.state, credentialsPrinted: false}) + '\n');
+          return APP_AUTH_EXIT.BLOCKED;
+        }
+        base = migration.text;
+      }
+    }
+    const appended = appendRecord(base, record);
+    const finalVerification = verifyLedger(appended.text);
+    if (finalVerification.state !== 'INTACT') {
+      stdout(JSON.stringify({state: 'BLOCKED', appended: false, reason: 'LEDGER_APPEND_INVALID', integrity: finalVerification.state, credentialsPrinted: false}) + '\n');
+      return APP_AUTH_EXIT.BLOCKED;
+    }
     fs.mkdirSync(path.dirname(target), {recursive: true});
-    fs.appendFileSync(target, separator + JSON.stringify(record) + '\n', {mode: 0o600});
-    stdout(JSON.stringify({state: 'RETIRED', appended: true, ledger: target, credentialsPrinted: false}) + '\n');
+    const temporary = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, appended.text, {mode: 0o600});
+    fs.renameSync(temporary, target);
+    stdout(JSON.stringify({state: 'RETIRED', appended: true, ledger: target, seq: appended.record.seq, hash: appended.record.hash, integrity: 'INTACT', credentialsPrinted: false}) + '\n');
     return APP_AUTH_EXIT.OK;
   }
 
   if (command === 'retirement-check') {
-    // Answers the only question the credential selector asks, from the ledger
-    // alone. Used to prove, in a run that has no per-run flag, that retirement
-    // still holds.
+    // This is the same hardened verdict the credential selector uses, with the
+    // durable anchor loaded explicitly. A valid RETIRE record is a successful
+    // blocked state; missing, malformed, tampered, truncated, or rolled-back
+    // evidence is a non-zero refusal when the workflow requires the anchor.
+    const {hardenedRetirementVerdict} = await import('./private-ci-retirement-integrity.mjs');
     const {readLedgerVerdict} = await import('./private-ci-retirement-ledger.mjs');
-    const file = flag('--ledger') ?? env.WOLF_CI_RETIREMENT_LEDGER_FILE;
+    const ledgerFile = flag('--ledger') ?? env.WOLF_CI_RETIREMENT_LEDGER_FILE;
+    const anchorFile = flag('--anchor') ?? env.WOLF_CI_RETIREMENT_ANCHOR_FILE;
+    const requireAnchor = argv.includes('--require-anchor')
+      || ['true', '1', 'yes'].includes(String(env.WOLF_CI_RETIREMENT_REQUIRE_ANCHOR ?? '').toLowerCase());
     let text = null;
-    if (file) {
-      try {
-        text = fs.readFileSync(file, 'utf8');
-      } catch {
-        text = null;
-      }
+    let anchor = null;
+    if (ledgerFile) {
+      try { text = fs.readFileSync(ledgerFile, 'utf8'); } catch { text = null; }
     }
-    stdout(JSON.stringify(readLedgerVerdict(text)) + '\n');
-    return APP_AUTH_EXIT.OK;
+    if (anchorFile) {
+      try { anchor = JSON.parse(fs.readFileSync(anchorFile, 'utf8')); } catch { anchor = {invalidAnchor: true}; }
+    }
+    const hardened = hardenedRetirementVerdict(text, {
+      expectedHead: env.WOLF_CI_RETIREMENT_EXPECTED_HEAD || null,
+      expectedSequence: env.WOLF_CI_RETIREMENT_EXPECTED_SEQUENCE || null,
+      anchor,
+      requireAnchor,
+    });
+    const raw = readLedgerVerdict(text);
+    const state = hardened.retired
+      ? 'RETIRED'
+      : ['UNREADABLE', 'SUSPECT_EMPTY'].includes(hardened.integrity)
+        ? 'UNKNOWN'
+        : hardened.safeToFallBack ? 'ACTIVE' : 'BLOCKED';
+    const verdict = {
+      state,
+      retired: hardened.retired,
+      since: raw.since ?? null,
+      safeToFallBack: hardened.safeToFallBack,
+      reason: hardened.reason,
+      integrity: hardened.integrity,
+      integrityReason: hardened.integrityReason,
+      head: hardened.head,
+      sequence: hardened.sequence,
+      recordCount: hardened.recordCount,
+      anchor: hardened.anchor,
+      credentialsPrinted: false,
+    };
+    stdout(JSON.stringify(verdict) + '\n');
+    return !hardened.safeToFallBack && !hardened.retired ? APP_AUTH_EXIT.BLOCKED : APP_AUTH_EXIT.OK;
   }
 
   if (command === 'state') {

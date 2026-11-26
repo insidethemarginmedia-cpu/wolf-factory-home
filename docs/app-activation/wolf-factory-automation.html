@@ -1,64 +1,30 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Create Wolf Factory Automation</title></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub App setup withdrawn — Wolf Factory Home</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1.25rem; }
+  h1 { font-size: 1.7rem; }
+  .blocked { border-left: 4px solid #d29922; padding: 1rem 1.25rem; background: #d2992214; }
+</style>
+</head>
 <body>
-<h1>Create Wolf Factory Automation</h1>
-<p>This form creates one GitHub App with the minimum permissions the bridge needs,
-on the two repositories the bridge uses. Nothing is sent anywhere until you press
-the button.</p>
-<form method="post" action="https://github.com/settings/apps/new">
-  <input type="hidden" name="manifest" value="{
-  &quot;name&quot;: &quot;Wolf Factory Automation&quot;,
-  &quot;description&quot;: &quot;Least-privilege CI authentication for the Wolf Factory bridge.&quot;,
-  &quot;url&quot;: &quot;https://github.com/insidethemarginmedia-cpu/wolf-factory-home&quot;,
-  &quot;hook_attributes&quot;: {
-    &quot;active&quot;: false
-  },
-  &quot;redirect_url&quot;: &quot;https://github.com/insidethemarginmedia-cpu&quot;,
-  &quot;public&quot;: true,
-  &quot;default_permissions&quot;: {
-    &quot;contents&quot;: &quot;read&quot;,
-    &quot;metadata&quot;: &quot;read&quot;,
-    &quot;checks&quot;: &quot;write&quot;,
-    &quot;actions&quot;: &quot;write&quot;
-  },
-  &quot;default_events&quot;: [],
-  &quot;request_oauth_on_install&quot;: false,
-  &quot;setup_on_update&quot;: false,
-  &quot;repositories_hint&quot;: [
-    &quot;project-wolf&quot;,
-    &quot;wolf-factory-home&quot;
-  ],
-  &quot;owner&quot;: &quot;insidethemarginmedia-cpu&quot;,
-  &quot;accountType&quot;: &quot;user&quot;
-}">
-  <button type="submit">Create the App on GitHub</button>
-</form>
-<h2>The manifest, in full</h2>
-<pre>{
-  &quot;name&quot;: &quot;Wolf Factory Automation&quot;,
-  &quot;description&quot;: &quot;Least-privilege CI authentication for the Wolf Factory bridge.&quot;,
-  &quot;url&quot;: &quot;https://github.com/insidethemarginmedia-cpu/wolf-factory-home&quot;,
-  &quot;hook_attributes&quot;: {
-    &quot;active&quot;: false
-  },
-  &quot;redirect_url&quot;: &quot;https://github.com/insidethemarginmedia-cpu&quot;,
-  &quot;public&quot;: true,
-  &quot;default_permissions&quot;: {
-    &quot;contents&quot;: &quot;read&quot;,
-    &quot;metadata&quot;: &quot;read&quot;,
-    &quot;checks&quot;: &quot;write&quot;,
-    &quot;actions&quot;: &quot;write&quot;
-  },
-  &quot;default_events&quot;: [],
-  &quot;request_oauth_on_install&quot;: false,
-  &quot;setup_on_update&quot;: false,
-  &quot;repositories_hint&quot;: [
-    &quot;project-wolf&quot;,
-    &quot;wolf-factory-home&quot;
-  ],
-  &quot;owner&quot;: &quot;insidethemarginmedia-cpu&quot;,
-  &quot;accountType&quot;: &quot;user&quot;
-}</pre>
+<h1>GitHub App manifest withdrawn</h1>
+<div class="blocked">
+  <strong>Status: BLOCKED / NOT AUTHORIZED.</strong>
+  This page formerly contained a form that could create a new GitHub App. The form
+  and manifest have been removed. Do not create or install duplicate infrastructure
+  or change repository secrets based on the old proposal.
+</div>
+<p>The listener/bridge are not active on the default branch; the configured
+executor pin is unresolved; the authoritative Factory/Compute callback contract,
+durable recovery ownership, and required approvals remain outstanding. No mission
+is authorized. Do not submit or send credentials.</p>
+<p>No private-worker acceptance is claimed. <strong>EUR_SPEND=0.</strong> Read the
+<a href="../integration-contract.md">current blocked integration contract</a>
+for verified state and remaining prerequisites.</p>
 </body>
 </html>

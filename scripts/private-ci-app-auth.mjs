@@ -5,7 +5,7 @@
 // roles are kept apart so no single credential can read source AND publish
 // status AND dispatch:
 //
-//   reader      contents:read     -> clone the private commit at its SHA
+//   reader      contents:read + pull_requests:read -> resolve exact PR state and SHA
 //   publisher   checks:write      -> publish the authenticated receipt check
 //   dispatcher  actions:write     -> dispatch the private workflow
 //
@@ -18,10 +18,24 @@ import {hardenedRetirementVerdict} from './private-ci-retirement-integrity.mjs';
 
 export const APP_ROLES = Object.freeze(['reader', 'publisher', 'dispatcher']);
 
+export const APP_ROLE_TOKEN_ENV = Object.freeze({
+  reader: 'WOLF_CI_APP_READER_TOKEN',
+  publisher: 'WOLF_CI_APP_PUBLISHER_TOKEN',
+  dispatcher: 'WOLF_CI_APP_DISPATCHER_TOKEN',
+});
+
+export const PAT_ROLE_TOKEN_ENV = Object.freeze({
+  reader: 'WOLF_FACTORY_REPO_TOKEN',
+  publisher: 'WOLF_FACTORY_STATUS_TOKEN',
+  dispatcher: 'WOLF_FACTORY_REPO_TOKEN',
+});
+
 // The minimum each role needs. Anything wider is refused before a token is
 // requested, so a misconfigured secret cannot silently escalate.
 export const ROLE_PERMISSIONS = Object.freeze({
-  reader: Object.freeze({contents: 'read', metadata: 'read'}),
+  // Pull-request read is the minimum additional read scope required to verify
+  // `state=open` and `merged=false`; the git-ref read alone cannot prove either.
+  reader: Object.freeze({contents: 'read', metadata: 'read', pull_requests: 'read'}),
   publisher: Object.freeze({checks: 'write', metadata: 'read'}),
   dispatcher: Object.freeze({actions: 'write', metadata: 'read'}),
 });
@@ -250,9 +264,41 @@ export function needsRenewal(expiresAt, now = Date.now()) {
   return expires - now <= RENEWAL_MARGIN_MS;
 }
 
+// Reads only explicit evidence values. In particular, a *_FILE path is never
+// mistaken for ledger contents; Actions passes a base64 value through GITHUB_ENV so
+// later steps receive the exact bytes that were checked during hydration.
+function retirementText(env, directName, encodedName) {
+  const direct = env?.[directName];
+  if (typeof direct === 'string') return direct;
+  const encoded = env?.[encodedName];
+  if (typeof encoded !== 'string' || !encoded) return null;
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) return 'INVALID_BASE64_EVIDENCE';
+  try {
+    return Buffer.from(encoded, 'base64').toString('utf8');
+  } catch {
+    return 'INVALID_BASE64_EVIDENCE';
+  }
+}
+
+function retirementAnchor(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    // Keep invalid evidence distinct from absent evidence so requireAnchor fails
+    // closed instead of interpreting parse failure as a never-created anchor.
+    return {invalidAnchor: true};
+  }
+}
+
 // Chooses the credential for a role at run time. App first, PAT fallback second,
 // and never a silent degradation: the caller gets the decision it made.
-export function selectCredential(role, {env = process.env, ledgerText = null} = {}) {
+export function selectCredential(role, {
+  env = process.env,
+  ledgerText = null,
+  anchorText = null,
+} = {}) {
   const normalizedRole = normalizeRole(role);
   const inventory = inventoryAppSecrets(env);
   const installationSecret = APP_SECRET_NAMES[normalizedRole];
@@ -264,45 +310,26 @@ export function selectCredential(role, {env = process.env, ledgerText = null} = 
     publisher: env.WOLF_FACTORY_STATUS_TOKEN,
     dispatcher: env.WOLF_FACTORY_REPO_TOKEN,
   };
-  // Retirement is enforced here, at the single place a credential is chosen.
-  //
-  // It consults two independent sources, and either one is sufficient:
-  //
-  //   1. the run's own flag (`WOLF_CI_RETIRE_PAT`), set by the retirement step
-  //      once this run decides RETIRE_FALLBACK, and
-  //   2. the durable ledger on the retirement branch, which records decisions
-  //      made by *earlier* runs.
-  //
-  // The ledger is what makes the retirement a property of the repository rather
-  // than of one workflow run. Without it, any fresh run — a retry, a manual
-  // dispatch, a different workflow — would silently regain the fallback, and
-  // "retired" would mean only "retired during that run". A per-run flag is
-  // evidence; the ledger is enforcement.
-  const retirement = isRetiredDurably({
-    env,
-    ledgerText: ledgerText ?? env.WOLF_CI_RETIREMENT_LEDGER_TEXT ?? null,
-  });
-  // Hardened verdict, so a *lost or deleted* ledger cannot re-enable the fallback.
-  //
-  // This is the case the durable ledger alone could not cover: it made retirement
-  // survive a run, but a run that could not read the ledger simply saw "no
-  // evidence" and fell back. Storage loss is not retirement ending. When the
-  // verdict says the evidence is unverifiable, the fallback stays closed.
+  // Retirement is enforced here, at the single place a PAT fallback is chosen.
+  // Actions supplies the exact checked ledger and anchor via base64 GITHUB_ENV
+  // values; a file path is deliberately never treated as file contents.
+  const resolvedLedgerText = ledgerText ?? retirementText(env, 'WOLF_CI_RETIREMENT_LEDGER_TEXT', 'WOLF_CI_RETIREMENT_LEDGER_B64');
+  const anchorSource = anchorText ?? retirementText(env, 'WOLF_CI_RETIREMENT_ANCHOR_TEXT', 'WOLF_CI_RETIREMENT_ANCHOR_B64');
+  const anchor = retirementAnchor(anchorSource);
+  const requireAnchor = ['true', '1', 'yes'].includes(String(env.WOLF_CI_RETIREMENT_REQUIRE_ANCHOR ?? '').trim().toLowerCase());
+  const retirement = isRetiredDurably({env, ledgerText: resolvedLedgerText});
   let hardened = null;
   if (!retirement.retired) {
     try {
-      // The expected head comes from the run's own configuration, not from the
-      // ledger - a ledger cannot vouch for its own completeness. When the workflow
-      // knows a retirement existed (WOLF_CI_RETIREMENT_EXPECTED_HEAD), a missing or
-      // empty ledger is treated as deletion.
-      hardened = hardenedRetirementVerdict(
-        ledgerText ?? env.WOLF_CI_RETIREMENT_LEDGER_TEXT ?? null,
-        {expectedHead: env.WOLF_CI_RETIREMENT_EXPECTED_HEAD || null},
-      );
+      hardened = hardenedRetirementVerdict(resolvedLedgerText, {
+        expectedHead: env.WOLF_CI_RETIREMENT_EXPECTED_HEAD || null,
+        anchor,
+        requireAnchor,
+      });
     } catch {
       hardened = null;
     }
-    if (hardened && hardened.safeToFallBack === false && report(patByRole[normalizedRole]) === 'present') {
+    if (hardened?.safeToFallBack === false && report(patByRole[normalizedRole]) === 'present') {
       return {
         role: normalizedRole,
         source: 'none',
@@ -311,7 +338,9 @@ export function selectCredential(role, {env = process.env, ledgerText = null} = 
         retired: false,
         unverifiable: true,
         retirementSource: 'hardened-ledger',
-        withheldCredential: patByRole[normalizedRole] ? 'pat' : null,
+        withheldCredential: 'pat',
+        integrity: hardened.integrity,
+        anchor: hardened.anchor,
       };
     }
   }
@@ -333,6 +362,31 @@ export function selectCredential(role, {env = process.env, ledgerText = null} = 
     return {role: normalizedRole, source: 'pat-fallback', fallback: true, reason: 'APP_AUTH_INCOMPLETE'};
   }
   return {role: normalizedRole, source: 'none', fallback: false, reason: 'NO_CREDENTIAL_FOR_ROLE'};
+}
+
+// Returns the token selected by the single credential policy boundary. Callers may
+// use the token in memory, but must serialize/log only `source`, `reason`, or the
+// non-secret selection metadata. An App-configured role with no minted token never
+// degrades to PAT, and a PAT cannot bypass durable retirement evidence.
+export function credentialForRole(role, options = {}) {
+  const env = options.env ?? process.env;
+  const normalizedRole = normalizeRole(role);
+  const preissuedAppToken = env[APP_ROLE_TOKEN_ENV[normalizedRole]];
+  const selection = typeof preissuedAppToken === 'string' && preissuedAppToken.trim()
+    ? {role: normalizedRole, source: 'github-app', fallback: false, preissued: true}
+    : selectCredential(normalizedRole, options);
+  const tokenName = selection.source === 'github-app'
+    ? APP_ROLE_TOKEN_ENV[normalizedRole]
+    : selection.source === 'pat-fallback' ? PAT_ROLE_TOKEN_ENV[normalizedRole] : null;
+  const token = tokenName ? env[tokenName] : null;
+  const usable = typeof token === 'string' && token.trim() !== '';
+  return {
+    role: normalizedRole,
+    source: selection.source,
+    reason: selection.reason ?? (selection.source === 'github-app' && !usable ? 'APP_TOKEN_NOT_MINTED' : null),
+    token: usable ? token : null,
+    selection,
+  };
 }
 
 // The environment flag that makes retirement operational rather than advisory.

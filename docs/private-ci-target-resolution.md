@@ -1,8 +1,12 @@
-# PR #743 Target Resolution — Live Evidence
+# PR #743 Target Resolution — Historical Record (Not Live Evidence)
 
-**Status: the pinned SHA is STALE. Acceptance against it is invalid.**
+**Status as of 2026-11-24: NOT REVALIDATED. This record is not a current target
+resolution or mission acceptance.** The original text is dated 2026-11-25, which is
+later than the review date in this worktree; that timestamp is inconsistent and
+must not be treated as contemporaneous evidence. No private PR lookup or execution
+was performed in this review.
 
-Recorded 2026-11-25 from run `45635798669` (`bb99420`).
+The quoted values below are preserved as historical claims from the old record.
 
 ## 1. The result
 
@@ -19,15 +23,16 @@ Recorded 2026-11-25 from run `45635798669` (`bb99420`).
 }
 ```
 
-The workflow is pinned at `8d319fc`. The current PR #743 head is `4fd43ff`. They
-are different commits with different trees, so every `VERIFIED` receipt produced
-so far is **acceptance of a historical commit, not of the PR**. That has been true
-since the pin was set and was invisible until the target was resolved.
+The old record reported a workflow pin of `8d319fc` and PR #743 head
+`4fd43ff`. It stated that they differed in both commit and tree identity. These
+values have not been refreshed; no statement here identifies the current PR head
+or current workflow pin.
 
-This is reported rather than repaired internally: changing the pin would silently
-convert historical receipts into claims about a commit that was never executed.
+The historical note correctly warned against silently converting old receipts
+into claims about a commit that was never executed. Keep that caution; do not use
+the old values as a current target or acceptance result.
 
-## 2. Independent corroboration
+## 2. Historical corroboration claim (not revalidated)
 
 | Source | Value |
 | --- | --- |
@@ -37,7 +42,7 @@ convert historical receipts into claims about a commit that was never executed.
 Two independent paths agree, and the full SHA is now on record rather than the
 abbreviation.
 
-## 3. Confirmed private
+## 3. Historical visibility observation (not revalidated)
 
 ```
 GET /repos/insidethemarginmedia-cpu/wolf-factory-home/commits/4fd43ff…/check-runs

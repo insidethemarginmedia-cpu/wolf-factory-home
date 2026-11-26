@@ -16,6 +16,12 @@ on:
         required: true
       BOXXKITE_API_KEY:
         required: true
+      WOLF_FACTORY_APP_ID:
+        required: false
+      WOLF_FACTORY_APP_PRIVATE_KEY:
+        required: false
+      WOLF_FACTORY_READER_INSTALLATION_ID:
+        required: false
   workflow_dispatch:
     inputs:
       night_shift:
@@ -1250,9 +1256,21 @@ jobs:
           set -euo pipefail
           node --test tests/private-ci-bridge.test.mjs
           echo PUBLIC_BRIDGE_CONTRACT=PASS
+      - name: Mint the least-privilege reader token for private CI metadata
+        id: probe_app_reader
+        if: vars.WOLF_FACTORY_APP_AUTH == 'enabled'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          app-id: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          private-key: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          owner: donraposo1-source
+          repositories: project-wolf
+          permission-contents: read
+          permission-metadata: read
+          permission-pull-requests: read
       - name: Probe private CI metadata without fetching source
         env:
-          WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}
+          WOLF_CI_APP_READER_TOKEN: ${{ steps.probe_app_reader.outputs.token }}
           WOLF_CI_REPOSITORY: ${{ inputs.private_ci_repository }}
           WOLF_CI_SHA: ${{ inputs.private_ci_sha }}
           WOLF_CI_PR: ${{ inputs.private_ci_pr }}

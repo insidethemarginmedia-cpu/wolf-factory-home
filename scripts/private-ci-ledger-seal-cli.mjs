@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {verifyLedger, migrateLegacyLedger, buildHeadAnchor, compareToAnchor, hardenedRetirementVerdict} from './private-ci-retirement-integrity.mjs';
+import {LEDGER_INTEGRITY_VERSION, verifyLedger, migrateLegacyLedger, buildHeadAnchor, compareToAnchor, hardenedRetirementVerdict} from './private-ci-retirement-integrity.mjs';
 
 export const SEAL_EXIT = Object.freeze({OK: 0, USAGE: 2, FAILED: 1});
 
@@ -31,7 +31,8 @@ export function sealCli(argv = [], {env = process.env, stdout = text => process.
   const input = flag('--in') ?? env.WOLF_CI_RETIREMENT_LEDGER_FILE;
   const anchorOut = flag('--anchor-out') ?? env.WOLF_CI_RETIREMENT_ANCHOR_FILE;
   const sealedOut = flag('--out') ?? input;
-  const existingAnchorFile = flag('--anchor-in') ?? env.WOLF_CI_RETIREMENT_ANCHOR_IN;
+  const explicitAnchorFile = flag('--anchor-in') ?? env.WOLF_CI_RETIREMENT_ANCHOR_IN;
+  const existingAnchorFile = explicitAnchorFile ?? (anchorOut && fs.existsSync(anchorOut) ? anchorOut : undefined);
 
   let text = '';
   try {
@@ -40,11 +41,36 @@ export function sealCli(argv = [], {env = process.env, stdout = text => process.
     text = '';
   }
 
-  // Migrate first: a legacy ledger is not tamper-evident, and sealing it is what
-  // makes every later append verifiable. The retirement record itself is preserved.
+  // Read and validate the previous anchor before considering migration. If an
+  // anchored history is unavailable or the anchor is malformed, creating a fresh
+  // anchor would erase the only rollback evidence.
+  let previousAnchor = null;
+  if (existingAnchorFile) {
+    try {
+      previousAnchor = JSON.parse(fs.readFileSync(existingAnchorFile, 'utf8'));
+      if (!previousAnchor || typeof previousAnchor !== 'object' || Array.isArray(previousAnchor)) throw Error('ANCHOR_INVALID');
+    } catch {
+      stdout(JSON.stringify({state: 'BLOCKED', reason: 'PREVIOUS_ANCHOR_UNREADABLE', credentialsPrinted: false}) + '\n');
+      return SEAL_EXIT.FAILED;
+    }
+  }
+
+  const sourceVerification = verifyLedger(text);
+  const sourceHasLegacy = sourceVerification.records.some(record => record.integrityVersion !== LEDGER_INTEGRITY_VERSION);
+  const sourceHasSealed = sourceVerification.records.some(record => record.integrityVersion === LEDGER_INTEGRITY_VERSION);
+  if (sourceHasLegacy && sourceHasSealed) {
+    stdout(JSON.stringify({state: 'BLOCKED', reason: 'LEDGER_MIXED_INTEGRITY', integrity: sourceVerification.state, credentialsPrinted: false}) + '\n');
+    return SEAL_EXIT.FAILED;
+  }
+  if (previousAnchor && sourceHasLegacy) {
+    stdout(JSON.stringify({state: 'BLOCKED', reason: 'PREVIOUS_ANCHOR_CANNOT_VERIFY_LEGACY_HISTORY', integrity: sourceVerification.state, credentialsPrinted: false}) + '\n');
+    return SEAL_EXIT.FAILED;
+  }
+
+  // A first seal may migrate a wholly legacy history, but only when no previous
+  // anchor exists. Migration never repairs or re-signs an already-sealed chain.
   const migration = migrateLegacyLedger(text);
   const finalText = migration.migrated ? migration.text : text;
-
   const verification = verifyLedger(finalText);
   if (verification.state !== 'INTACT') {
     stdout(JSON.stringify({
@@ -57,16 +83,20 @@ export function sealCli(argv = [], {env = process.env, stdout = text => process.
     return SEAL_EXIT.FAILED;
   }
 
-  // Compare against the previously published anchor, if any, before overwriting it.
-  let previousAnchor = null;
-  if (existingAnchorFile) {
-    try {
-      previousAnchor = JSON.parse(fs.readFileSync(existingAnchorFile, 'utf8'));
-    } catch {
-      previousAnchor = null;
-    }
-  }
   const anchorCheck = compareToAnchor(verification, previousAnchor);
+  if (previousAnchor && (anchorCheck.checked !== true || anchorCheck.consistent !== true)) {
+    const reason = anchorCheck.reason === 'ANCHOR_UNREADABLE'
+      ? 'PREVIOUS_ANCHOR_UNREADABLE'
+      : 'PREVIOUS_ANCHOR_MISMATCH';
+    stdout(JSON.stringify({
+      state: 'BLOCKED',
+      reason,
+      anchorReason: anchorCheck.reason,
+      integrity: verification.state,
+      credentialsPrinted: false,
+    }) + '\n');
+    return SEAL_EXIT.FAILED;
+  }
 
   const anchor = buildHeadAnchor(verification, {commit: env.GITHUB_SHA ?? null, now});
   fs.writeFileSync(sealedOut, finalText, {mode: 0o600});

@@ -1,4 +1,10 @@
-# Activation Manifest — Cryptographic Digest and Exact Instructions
+# Activation Manifest — Historical Cryptographic Digest (Superseded)
+
+**This manifest is not an activation instruction.** It describes the earlier
+P144 patch and pins, not the current durable-store/reusable-workflow implementation.
+Do not apply the patch or follow any old branch/merge command. Current status is
+BLOCKED; only `arena/38f3a7f7-wolf-factory-home` is authorized, and no default-
+branch change or mission dispatch is approved by this document.
 
 Reviewed against `main` = `3742bcc76ee2a5a8ff09897dda6611d50a4ef053`.
 Prepared on `arena/38f3a7f7-wolf-factory-home` @ `0cc694f`.
@@ -42,36 +48,28 @@ both are worth recording because each was invisible without a specific check.
 | `96cab35` | Predates `workflow_call`. `grep -c workflow_call` at that commit returns **0**, so a job-level `uses:` against it fails with "workflow is not reusable". Immutable and approved, and still unusable. |
 | `aefeb45` | Correct interface, but referenced an intermediate commit rather than the reviewed one. |
 
-Current pin: **`6c2848d1849d85e70ff3a9590a42b3df0465c487`**, which carries the
-`workflow_call` interface and the tests that validate it.
+At this historical snapshot (`0cc694f`), the listener was configured to use
+**`6c2848d1849d85e70ff3a9590a42b3df0465c487`**. That object exists and contains
+`workflow_call`, but its tree predates the current durable admission gate,
+`executorSha` input, and explicit secret contract; it is not a valid activation pin
+for the current implementation.
 
-Pinning an immutable commit is necessary but not sufficient. The commit must also
-expose the interface the caller uses, and nothing verified that until
-`tests/private-ci-listener-pin.test.mjs` existed.
+The later worktree value `9679aa76397c7b248c3708be2c063e75a7058ae5` was checked
+against both the local Git object database and GitHub's commit API and does not
+resolve. No replacement was guessed. A usable pin must resolve to a real remote
+commit whose workflow tree passes `tests/private-ci-listener-pin.test.mjs` and
+`tests/workflow-pins-resolve.test.mjs`; a 40-hex string alone is insufficient.
 
-## 4. Exact activation instructions
+## 4. Activation instructions — withdrawn
 
-Do **not** apply until founder approval and independent security acceptance (§6).
+The earlier branch-creation and patch-application procedure is withdrawn and
+must not be run. It conflicts with the current branch restriction,
+and its patch predates durable admission, gate checks, explicit secret passing,
+and the current no-recovery status.
 
-```bash
-# 1. Verify the base is still the reviewed commit.
-git fetch origin main
-test "$(git rev-parse origin/main)" = "3742bcc76ee2a5a8ff09897dda6611d50a4ef053" \
-  || { echo "MAIN MOVED - re-review required"; exit 1; }
-
-# 2. Verify the patch digest.
-sha256sum docs/activation/mission-listener.patch
-# expect d4aabd7ae16f79107c2c24cecafd4b6c1aa0feaafe4a4248809ec245faa14d51
-
-# 3. Apply on a branch off main.
-git switch -c activation/mission-listener-20261125 origin/main
-git apply docs/activation/mission-listener.patch
-
-# 4. Verify the four digests from §2, then commit and open a PR to main.
-```
-
-After merge, the first mission is a separate, bounded decision — see
-`docs/activation/FIRST-MISSION.md`.
+There is no activation command in this manifest. Any default-branch landing,
+permission change, or first mission requires explicit Founder approval and an
+independent review after the current contract and pin have been verified.
 
 ## 5. Rollback
 
@@ -79,13 +77,17 @@ Delete `.github/workflows/mission-listener.yml`. The three scripts are inert
 without it; nothing else invokes them, and no file already on `main` is modified by
 this patch. Rollback restores the exact prior state.
 
-## 6. Outstanding before activation
+## 6. Historical outstanding items; current blockers remain open
 
 | Requirement | Status |
 | --- | --- |
 | Founder approval | **NOT GIVEN** — and deliberately not assumed |
 | Independent security acceptance | **NOT AVAILABLE** — `arena/156d9fee-wolf-factor*` absent from all remote heads |
 | Correlated listener run | **CANNOT BE SHOWN** until the listener exists on the default branch |
-| PR #743 pin decision | **OPEN** — pin is `8d319fc`, PR head is `4fd43ff`, `acceptanceValid: false` |
+| PR #743 pin decision | **OPEN** — historical P145 recorded pin `8d319fc` vs head `4fd43ff`; refresh through authorized private reader before any mission |
+| Factory P1.59 / Factory 2 P1.47+ envelope and callback schema | **NOT RECONCILED** |
+| Durable execution queue, lease/fence, schedule recovery | **NOT IMPLEMENTED / DISABLED** |
+| Real worker + authenticated callback + independent verification | **NOT OBSERVED** |
 
-The patch is ready. The gate is not the engineering.
+This historical patch is not ready for activation. The current implementation,
+executor pin, upstream contract, and required approvals must be reviewed together.

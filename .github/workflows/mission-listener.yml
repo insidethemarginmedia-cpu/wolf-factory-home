@@ -12,10 +12,11 @@
 # after the admission decision has been recorded.
 #
 # Being credential-free is not the security property. The security property is that
-# every request is an explicit allow decision with positive evidence, and every
-# refusal is recorded - see scripts/private-ci-listener.mjs and its adversarial
-# tests. The gate below is the second line of defence: the privileged job re-checks
-# the admission before it starts, so a tampered output cannot start work.
+# every request is an explicit allow decision with positive evidence. Refusals are
+# reported in the Actions run log; only admitted missions are persisted in the
+# durable ledger. See scripts/private-ci-listener.mjs and its adversarial tests.
+# The gate below is the second line of defence: the privileged job re-checks the
+# admission before it starts, so a tampered output cannot start work.
 
 name: Wolf Mission Listener
 
@@ -38,8 +39,8 @@ env:
   # The only commit this listener may start. Must be an approved, reviewed SHA and
   # must be listed in LISTENER_APPROVED_EXECUTOR_SHAS below. Full 40 hex only: a
   # branch would move, and "the SHA I meant" is not auditable.
-  WOLF_LISTENER_EXECUTOR_SHA: 6c2848d1849d85e70ff3a9590a42b3df0465c487
-  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: 6c2848d1849d85e70ff3a9590a42b3df0465c487
+  WOLF_LISTENER_EXECUTOR_SHA: 9679aa76397c7b248c3708be2c063e75a7058ae5
+  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: 9679aa76397c7b248c3708be2c063e75a7058ae5
   # Senders permitted to submit a mission. Empty means refuse everything.
   WOLF_LISTENER_AUTHORIZED_SENDERS: insidethemarginmedia-cpu,donraposo1-source
   WOLF_LISTENER_REPOSITORY_ALLOWLIST: donraposo1-source/project-wolf
@@ -53,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read
+      contents: write
     outputs:
       admitted: ${{ steps.admit.outputs.admitted }}
       executor_sha: ${{ steps.admit.outputs.executor_sha }}
@@ -77,6 +78,11 @@ jobs:
           # can never be interpreted as shell, and the decision is made in Node.
           EVENT_JSON: ${{ toJSON(github.event) }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          WOLF_LISTENER_STORE_REQUIRED: 'true'
           WOLF_LISTENER_POLICY_FILE: /tmp/wolf-listener-event.json
           WOLF_LISTENER_OUTPUT: /tmp/wolf-listener-admission.json
         run: |
@@ -90,7 +96,10 @@ jobs:
           node -e '
             const fs = require("fs");
             let d = {};
-            try { d = JSON.parse(fs.readFileSync(process.env.WOLF_LISTENER_OUTPUT, "utf8")); } catch { d = {admitted: false, reason: "LISTENER_OUTPUT_UNREADABLE"}; }
+            try {
+              const firstLine = fs.readFileSync(process.env.WOLF_LISTENER_OUTPUT, "utf8").split(/\r?\n/, 1)[0];
+              d = JSON.parse(firstLine);
+            } catch { d = {admitted: false, reason: "LISTENER_OUTPUT_UNREADABLE"}; }
             fs.appendFileSync(process.env.GITHUB_OUTPUT, "admitted=" + (d.admitted === true) + "\n");
             fs.appendFileSync(process.env.GITHUB_OUTPUT, "executor_sha=" + (d.executorSha ?? "") + "\n");
             fs.appendFileSync(process.env.GITHUB_OUTPUT, "reason=" + (d.reason ?? d.detail?.missionReason ?? "UNKNOWN") + "\n");
@@ -101,8 +110,8 @@ jobs:
       - name: Record the admission decision
         if: always()
         shell: bash
-        # Evidence of refusal matters as much as evidence of admission: a request
-        # that was correctly refused is the proof that the gate works.
+        # Keep both outcomes visible in this Actions run log. Refusals are not
+        # appended to the durable admission ledger; only admitted missions are.
         env:
           WOLF_LISTENER_OUTPUT: /tmp/wolf-listener-admission.json
         run: |
@@ -120,6 +129,10 @@ jobs:
       always() &&
       needs.admit.outputs.admitted == 'true' &&
       github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
+    permissions:
+      actions: write
+      checks: write
+      contents: write
     # A job-level `uses:` is the credential-free handoff. GitHub resolves the
     # workflow reference itself, so the listener needs no dispatch token, no PAT and
     # no App installation to start the privileged pipeline. The reference is an
@@ -129,11 +142,19 @@ jobs:
     # Note there is no `runs-on` and no `steps` here by design: a job that calls a
     # reusable workflow cannot also run arbitrary shell, so the listener is
     # structurally incapable of doing privileged work itself.
-    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-ci-bridge.yml@6c2848d1849d85e70ff3a9590a42b3df0465c487
+    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-ci-bridge.yml@9679aa76397c7b248c3708be2c063e75a7058ae5
     with:
       # The mission's target SHA, taken from the admitted payload. The admission
       # job already validated it as a full 40-hex commit.
       sha: ${{ github.event.client_payload.sha }}
       missionId: ${{ github.event.client_payload.missionId }}
       deliveryId: ${{ needs.admit.outputs.delivery_id }}
-    secrets: inherit
+      executorSha: ${{ needs.admit.outputs.executor_sha }}
+    secrets:
+      WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+      WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+      WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
+      WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+      WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
+      WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+      WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}

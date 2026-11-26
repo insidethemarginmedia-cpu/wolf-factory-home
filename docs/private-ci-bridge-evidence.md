@@ -1,10 +1,16 @@
-# Wolf Private CI Bridge — Acceptance Evidence
+# Wolf Private CI Bridge — Historical CI and Credential Notes
 
-Status: **OPERATIONAL — thirteen checks execute at an immutable SHA and publish authenticated, SHA-bound receipts.**
+Status as of 2026-11-24: **HISTORICAL ONLY — no current mission or private-worker
+acceptance is claimed.** The run IDs, receipts, API responses, and test counts
+below have not been re-fetched or independently revalidated in this review. The
+code now under review has a different execution path. In particular, the old
+local-journal recovery claim is withdrawn in §4 and the old “live acceptance”
+wording is withdrawn in §10.
 
 This document records public, non-sensitive facts only: workflow names, commit
 SHAs, check names, exit codes, durations and timestamps. No private Wolf source,
-log, credential or configuration value is reproduced here.
+log, credential or configuration value is reproduced here. Historical run results
+remain as recorded; they do not prove the current branch or worker acceptance.
 
 ## 1. Identity and access
 
@@ -50,10 +56,12 @@ permission (`actions: write`) without broadening anything. The bridge does not
 need dispatch: execution is driven by the runner's own triggers, and the
 deploy-key path is what reads private source.
 
-## 2. Checks executed at the immutable SHA
+## 2. Historical check report — not revalidated
 
-All thirteen run against a checkout asserted equal to the requested SHA. Every
-check is **blocking** — there is no advisory tier.
+The previous report claimed that thirteen checks ran against a checkout asserted
+equal to the requested SHA and were all **blocking**. The run and receipt were
+not re-fetched in this review; this is not evidence of the current workflow or of
+private-worker acceptance.
 
 | Check | Source | Result |
 | --- | --- | --- |
@@ -100,9 +108,9 @@ The concurrency workflow runs completely unmodified — it builds its own
 canonical fixture and then measures it, so any bootstrap would change what it
 measures.
 
-## 3. Published artefacts
+## 3. Historically reported artefacts — not revalidated
 
-| Artefact | State |
+| Artefact | State at the time of the old report |
 | --- | --- |
 | Sanitized public receipt (commit comment) | published, SHA-bound, with `receiptHash` |
 | Public check runs `execute` / `inventory` / `probe` | success |
@@ -120,20 +128,28 @@ uses its own credential. Supplying the same credential for reading and writing
 is refused (`STATUS_TOKEN_MUST_DIFFER_FROM_SOURCE_TOKEN`), so the reader can
 never be widened by accident.
 
-## 4. Durable operation
+## 4. Durable operation — previous claim withdrawn
 
-`scripts/private-ci-journal.mjs` keeps an append-only journal keyed by
-repository + SHA:
+The earlier statement that `scripts/private-ci-journal.mjs` provided a durable
+production queue and that an hourly sweep reclaimed expired leases was incorrect.
+That module and its CLI use a runner-local JSON file; a new GitHub-hosted runner
+cannot read the previous run's file. The bridge also had no schedule-matched
+recovery job. Unit tests of `claimNext` prove only the in-process helper, not
+cross-run persistence, lease renewal, fencing, or automatic recovery.
 
-- repeated triggers for one SHA collapse onto a single request;
-- cancellation is terminal, and a completed request is never re-armed;
-- leases expire after 20 minutes and are reclaimed by an hourly sweep, recording
-  `recoveredFrom` in the receipt, so a crashed runner cannot stall the queue;
-- triggers: `push`, `workflow_dispatch`, `repository_dispatch`, `schedule`.
+The current bridge therefore no longer declares a raw `repository_dispatch` or
+`schedule` trigger, and it no longer invokes the local mission/journal CLIs. The
+only privileged mission path is the typed reusable-workflow call from the
+separate authenticated listener. A `contents: read` admission job verifies the
+ledger before the privileged `execute` job (and its service containers) can
+start; `execute` re-checks the exact admission before private checkout or App
+credential mint. That ledger records admitted missions and replay identity; it
+is **not** an execution queue or lease/fence store.
 
-Verified across three real runs (`b56c795`, `2b9811e`, `3628709`), each
-producing exactly one `wolf-private-ci-743` check run — duplicate suppression
-holding in practice, not only in tests.
+Status: **NO PRODUCTION RECOVERY SWEEP.** Do not infer recovery from the older
+three-run journal observation (`b56c795`, `2b9811e`, `3628709`) or from its unit
+tests. A durable execution queue, lease/fence transitions, terminal settlement,
+recovery caller, and correlated terminal receipt remain open prerequisites.
 
 ## 5. Cost and platform
 
@@ -178,18 +194,14 @@ registry.
 | PaddleOCR install failed on the runner interpreter | `actions/setup-python@6d4fd22…` pinned to 3.11 |
 | Step failures were unattributable | Receipts name the workflow step, error class and SQLSTATE |
 
-## 8. Local verification
+## 8. Historical local verification count — not current
 
-`node --test tests/*.test.mjs` → **299 passing, 0 failing**, covering the bridge,
-probe, dispatch diagnosis, inventory, executor, workflow reader, schema
-provisioning, receipt publication, private status checks, durable journal,
-workflow pin resolution, workflow environment declaration, GitHub App
-authentication, the App manifest flow, installation mapping across two personal accounts, the activation wizard, the
-recovery ladder, the dispatch probe, live App acceptance, credential-exposure
-auditing, the diagnosis publisher, the fallback-retirement gate, the mission contract
-and the mission intake CLI.
+An earlier snapshot reported `node --test tests/*.test.mjs` as **299 passing,
+0 failing**. That count predates the current worktree and is not evidence for the
+current branch. See the current test run recorded in this document's revision
+notes or CI; do not reuse the historical count as a release gate.
 
-## 9. Zero-touch authentication
+## 9. Historical credential-design notes — not activated
 
 The recurring PAT is being replaced by GitHub App installation tokens. The App
 path is implemented, wired into the run and green; the PAT and the deploy key
@@ -256,7 +268,7 @@ does not depend on an operator setting. It dispatches once and compares the run
 count before and after: a dispatch that creates no new run is reported as
 suppressed, not trusted. Duplicates are reported, never retried.
 
-### 9.6 Live state at the time of writing
+### 9.6 Historical state snapshot — not current or reverified
 
 Accepting run: `45492528355` on `5a55a7e` — `state: VERIFIED`, 13/13 checks,
 private receipt `PUBLISHED`, every privacy flag `false`.
@@ -282,181 +294,95 @@ The recovery ladder distinguishes `FRESH` / `RENEW` / `EXPIRED` / `REVOKED` /
 `FALLBACK` / `NONE`, re-mints only when the state demands it, heals a `401`
 exactly once, and never treats a `403` as something a new token can fix.
 
-### 9.7 Exactly what the Founder must supply
+### 9.7 Former setup request — withdrawn
 
-1. A Wolf-owned GitHub App, installed on **both** accounts and granted access to
-   `donraposo1-source/project-wolf`, with these secrets:
-   `WOLF_FACTORY_APP_ID`, `WOLF_FACTORY_APP_PRIVATE_KEY`,
-   `WOLF_FACTORY_{READER,PUBLISHER,DISPATCHER}_INSTALLATION_ID`.
-2. For private check publication: a `WOLF_FACTORY_STATUS_TOKEN` with
-   `checks: write` on `donraposo1-source/project-wolf`.
+The earlier request to create/install an App or supply named secrets is not a
+current instruction. Do not create or store credentials based on this historical
+section. Current activation prerequisites are listed in §11.3 and require
+explicit approval and contract review first.
 
-Neither is needed for the thirteen checks, which continue to pass on the PAT and
-deploy-key path.
+## 10. Historical App and CI claims — not current acceptance
 
-## 10. Zero Touch Activation — live acceptance
+The older text in this section described App-token experiments and workflow
+receipts, then labelled them **“ACCEPTED”** and “live acceptance.” That wording is
+withdrawn as current status. Referenced run IDs, App metadata, API responses, and
+receipts were not re-fetched or independently verified in this review.
 
-Status: **ACCEPTED.** The App authenticates, renews, publishes the private check
-and dispatches, all against the real API, and the PAT fallback has been retired by
-the run's own evidence rather than by assumption.
+Those historical claims, even if accurate when written, describe GitHub API,
+credential, and Home CI behavior only. They do **not** establish a current
+admitted mission, real private-worker execution, authenticated callback,
+correlated terminal settlement, or independent worker acceptance. The terms
+`ACCEPTED`, `VERIFIED`, `PUBLISHED`, and `7/7 PASS` in older revisions of this
+file must not be read as worker acceptance or authorization to dispatch.
 
-### 10.1 The App
+No mission dispatch, private worker run, callback, or production write occurred
+in this session. A public canary, fixture, unit test, green push run, or old
+receipt is not a substitute for private-worker acceptance.
 
-| Fact | Value |
-| --- | --- |
-| App | `Wolf Factory Automation`, `app_id 5913418` |
-| Owner | `insidethemarginmedia-cpu` (personal account; `type=User`) |
-| Permissions | `contents:read`, `metadata:read`, `checks:write`, `actions:write` |
-| Events | none |
+## 11. Current mission interface — code under review, not activated
 
-Both accounts are personal, so the App is installed **once per account**: two
-installations, two repositories. Three roles share one installation ID by design.
+The local listener accepts a GitHub `repository_dispatch` event only on the
+listener workflow, validates the mission, and durably appends **admitted**
+records to a hash-chained ledger plus a same-writer head anchor. Refused events
+are reported in their Actions run log; they are not persisted to that ledger.
+The bridge re-reads and verifies the exact admission before private checkout.
+This code has only fake-GitHub/unit-test evidence so far; no production admission
+or mission run occurred.
 
-### 10.2 Acceptance checks — 7/7 PASS
+The listener and bridge are absent from the default branch `main` (read-only
+GitHub API lookups returned 404 for both workflow files on 2026-11-24). The
+configured worktree executor value
+`9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve locally or through
+GitHub's commit API. Older existing pins do not contain the current `executorSha`
+input and durable gate; do not substitute one. No dispatch command is provided.
 
-| Check | Result | What proved it |
-| --- | --- | --- |
-| installation-mapping | PASS | App JWT listed both installations; each maps to its repository |
-| independent-tokens | PASS | three distinct tokens, each carrying exactly its own permissions |
-| exact-sha-read | PASS | reader read commit `8d319fc…`; returned SHA matched exactly |
-| private-check | PASS | publisher created a check run on that SHA via the App |
-| dispatch | PASS | dispatcher returned `204` and the run count changed |
-| renewal-restart | PASS | two distinct tokens per role, both `FRESH`, from a cold start |
-| expiry-denial | PASS | reader refused (`403`) at a write endpoint; expiry state machine correct |
+### 11.1 Non-executable schema sketch
 
-### 10.3 Defects the live run found that tests could not
+The current local validator expects the following shape. This is pseudocode, not
+a payload to submit; it intentionally contains no runnable SHA or timestamp:
 
-| Defect | Why the green suite missed it | Repair |
-| --- | --- | --- |
-| Renewal check could never pass | It judged the second token against a simulated hour-ahead clock while GitHub issues expiry from the real clock, so the token always landed exactly on its expiry. Only a real `expires_at` exposes that. | Restart modelled one second later; renewal proven by token identity |
-| Dispatcher installation did not cover the repository | A fixture keyed by role hid the fact that IDs are per *account* | Installation resolved by coverage; permission set still fixed per role |
-| Acceptance minted outside the resolver | It graded a path the workflow never runs | Acceptance mints through the same resolver |
-| Workflow target guessed | The workflows API does not report triggers | Trigger read from the workflow file with the reader credential |
-| Contents read with the dispatcher token | Looked like a bug; was least privilege working | Reader credential used for contents, dispatcher for dispatch |
-| Publisher mint belonged to the wrong job | A step `env:` cannot see its own run block's exports | Mint in a preceding step, handed over through `GITHUB_ENV` |
-
-Every one of these was invisible to the unit suite and obvious to the real API.
-That is the argument for live acceptance, stated as evidence rather than as a
-principle.
-
-### 10.4 Fallback retirement
-
-`fallbackRetirement: {state: RETIRE_FALLBACK, retire: true, reasons: [], evaluated: true}`
-
-The gate requires all of: an ACCEPTED report, every check PASS, `github-app` mode,
-and every role renewed from the App. Any missing or unreadable artefact returns
-`KEEP_FALLBACK` — ambiguity never withdraws a working credential.
-
-### 10.5 What the run reports
-
-| Field | Value |
-| --- | --- |
-| `authentication.mode` | `github-app` |
-| `authRecovery.state` | `VERIFIED` |
-| `appAcceptance` | `ACCEPTED`, 7 PASS / 0 BLOCKED / 0 FAIL |
-| `fallbackRetirement.state` | `RETIRE_FALLBACK` |
-| `privateStatusCheck.state` | `PUBLISHED` — via App `checks:write`, no status PAT |
-| `dispatchVerification.state` | `VERIFIED` |
-| `privateReceipt.state` | `PUBLISHED` |
-| `credentialsPrinted` | `false` |
-| `privateLogsPublished` / `privateSourcePublished` | `false` / `false` |
-| `inferencePerformed` / `refUpdated` | `false` / `false` |
-
-`EUR_SPEND=0`. No paid endpoint, no billing change, no artefact upload, no fork
-trigger. A test audits the workflow for all four exposure vectors on every run.
-
-## 11. Cross-repository mission contract
-
-The bridge accepts work from other repositories, but only as a *data payload that
-names an immutable commit*. It cannot name a workflow, a ref, a token or a price.
-
-### 11.1 Payload and invariants
-
-```json
-{
-  "schemaVersion": 1,
-  "missionId": "factory-nightly-0001",
-  "repository": "donraposo1-source/project-wolf",
-  "sha": "8d319fc50be4e4d225e3bb80de963583899c25ec",
-  "issuedAt": "2026-11-24T09:00:00.000Z"
-}
+```text
+schemaVersion: 1
+missionId: <8–128 characters matching the local schema>
+repository: donraposo1-source/project-wolf
+sha: <full lowercase 40-hex commit SHA>
+issuedAt: <positive Unix epoch milliseconds, numeric; create at send time>
 ```
 
-| Invariant | Behaviour |
-| --- | --- |
-| Identity key | `missionId@sha` — excludes `issuedAt` and `attempt`, so a retry is not new work |
-| SHA | Full 40-hex only. Abbreviations, refs and branch names are rejected |
-| Repository | Must be in `ALLOWED_REPOSITORIES` |
-| Forbidden keys | Any of `workflow`, `workflowFile`, `token`, `permissions`, `credentials`, `ref`, `paid` (present at all, even `false`) → REJECTED |
-| Age | Maximum 1 hour between `issuedAt` and now |
-| Rate | 12 missions per sender per hour |
-| Retries | Bounded at 3; never retried on `PAT_FALLBACK_RETIRED`, `PERMISSION_OR_RATE_LIMIT` or `NOT_FOUND_OR_NO_ACCESS` |
-| Refusal | A rejected mission is still journaled with its reason — refusals are evidence, not gaps |
-| Exit codes | `0` ACCEPTED, `3` DUPLICATE (success, not new work), `2` REJECTED |
+`issuedAt` is not ISO 8601. Optional `checks`, `attempt`, and `requestedBy` are
+metadata only. The sender is taken from GitHub's event envelope; delivery
+identity is derived from the GitHub run id; executor SHA is fixed by listener
+policy. A mission may not choose a workflow, token, permissions, ref, or paid
+execution.
 
-A duplicate returns `3` and the workflow treats it as success: re-delivery of the
-same `missionId@sha` must be free, not an error.
+The local key `missionId@sha` and run correlation protect **admission replay**.
+They do not establish external-effect idempotency. This schema has no separate
+nonce, signed callback, lease/fence state, or authenticated terminal receipt.
+No compatibility claim is made for Factory P1.59 / Factory 2 P1.47+ until their
+authoritative contracts are reviewed against it.
 
-### 11.2 Proven blocker: the trigger is not on the default branch
+### 11.2 Recovery and acceptance limits
 
-The mission intake is complete and tested, but a **real** cross-repository
-dispatch cannot start it from this branch. This is measured, not inferred:
+There is no production durable execution queue, lease/fence settlement, or
+scheduled recovery sweep. `scripts/private-ci-journal.mjs` and its CLI are
+runner-local helpers/fixtures, not cross-run recovery. The admission ledger is
+not an execution queue. A same-run rerun is not automatic recovery and must not
+be used to replay unknown external effects.
 
-| Probe | Result |
-| --- | --- |
-| `gh api -X POST …/dispatches -f event_type=wolf-private-ci` | 2xx accepted, **zero runs created** |
-| `/contents/.github/workflows/private-ci-bridge.yml?ref=main` | **404 — the file does not exist on `main`** |
-| `repository_dispatch` listeners on `main` | **none** — `main` holds only `night-shift-wakeup.yml` (`schedule`, `workflow_dispatch`) and `ollama-public-synthetic-qualification.yml` (`workflow_dispatch`) |
-| `POST …/actions/workflows/429186774/dispatches -f ref=<branch>` | **403 Resource not accessible by integration** |
-| Same call against a default-branch workflow | **403** — so the 403 is token capability, not a branch problem |
+A local `VERIFIED` receipt, if one is produced later, would only report the
+bridge's exact-SHA checks. Worker acceptance additionally requires a real private
+worker result, authenticated callback, run-to-terminal correlation,
+independently verified evidence, and zero-cost confirmation. No fixture, canary,
+credential probe, or public workflow run supplies that evidence.
 
-**Correction (2026-11-25): the orphan-history conclusion in the previous
-revision was wrong.** The sandbox clone was shallow — `git rev-parse
---is-shallow-repository` → `true`, with `.git/shallow` cutting at both `20f1872`
-and `3742bcc`. `git merge-base` therefore could not see the common ancestor and
-reported unrelated histories. After `git fetch --unshallow`:
+### 11.3 Activation blockers
 
-```
-git merge-base origin/main HEAD                        -> da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd
-git rev-list --left-right --count origin/main...HEAD   -> 2   251
-```
+- Founder approval to place the listener on `main` and confirm its sender allowlist.
+- A verified immutable remote executor pin whose workflow tree matches the inputs,
+  durable admission gate, named secrets, and tests.
+- Authoritative Factory / Factory 2 envelope and callback-contract reconciliation.
+- The existing owner-approved durable recovery/queue path and terminal correlation.
+- Independent security review and one explicitly authorized zero-cost validation.
 
-`main` shares history with this branch; an ordinary merge is available. The
-orphan-root claim is retracted. The lesson is recorded rather than hidden: a
-shallow clone turns "I cannot see the ancestor" into "there is no ancestor", and
-the tool reports the second with no warning.
-
-The dispatch blocker itself stands, re-measured:
-
-```
-POST …/dispatches                                 -> 2xx, zero runs created
-GET  …/contents/.../private-ci-bridge.yml?ref=main -> 404
-repository_dispatch listeners on main             -> none
-POST …/workflows/429186774/dispatches (branch)    -> 403
-POST …/workflows/<default-branch wf>/dispatches   -> 403   (token, not branch)
-PATCH …/repos/… -f default_branch=…               -> 403
-```
-
-GitHub starts `repository_dispatch` workflows only from the default branch, and
-`main` carries only `night-shift-wakeup.yml` (`schedule`, `workflow_dispatch`) and
-`ollama-public-synthetic-qualification.yml` (`workflow_dispatch`).
-
-**The remaining Founder action is a normal merge to `main`**, resolving the two
-workflow files in favour of *inert on the default branch* — `main` currently
-holds registration-only versions of both, and that inertness is a safety posture
-the merge must preserve. Merging PR #2 as-is would not achieve this: PR #2
-targets `feat/public-runtime-probe-20261022`, not `main`.
-
-Once the trigger is on `main`, a mission is:
-
-```bash
-gh api -X POST repos/insidethemarginmedia-cpu/wolf-factory-home/dispatches \
-  -f event_type=wolf-private-ci \
-  -f 'client_payload[schemaVersion]=1' \
-  -f 'client_payload[missionId]=factory-nightly-0001' \
-  -f 'client_payload[repository]=donraposo1-source/project-wolf' \
-  -f 'client_payload[sha]=8d319fc50be4e4d225e3bb80de963583899c25ec' \
-  -f "client_payload[issuedAt]=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-```
-
-No mission has been simulated to claim otherwise. `EUR_SPEND=0` throughout.
+Until these are resolved, do not dispatch a mission, create a second queue, or
+call any old run a current acceptance result.

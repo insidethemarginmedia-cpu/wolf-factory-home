@@ -75,7 +75,9 @@ export function appendRecord(existingText, record) {
   const seq = records.length ? (records[records.length - 1].seq ?? 0) + 1 : 1;
   const sealed = {...record, seq, prev, integrityVersion: LEDGER_INTEGRITY_VERSION};
   sealed.hash = chainHash(sealed);
-  return {text: (existingText ?? '') + JSON.stringify(sealed) + '\n', record: sealed};
+  const prefix = String(existingText ?? '');
+  const separator = prefix && !prefix.endsWith('\n') ? '\n' : '';
+  return {text: prefix + separator + JSON.stringify(sealed) + '\n', record: sealed};
 }
 
 function parseLedgerRecords(text) {
@@ -123,6 +125,13 @@ export function verifyLedger(text, {expectedHead = null, expectedSequence = null
     return {state: INTEGRITY_STATES.SUSPECT_EMPTY, intact: false, records: [], reason: 'NO_RECORDS'};
   }
 
+  const attestation = records.length === 1 ? records[0] : null;
+  if (attestation?.state === 'ATTESTED_EMPTY'
+      && attestation.integrityVersion === LEDGER_INTEGRITY_VERSION
+      && attestation.seq === 0 && attestation.prev === null && attestation.retire === false) {
+    return {state: INTEGRITY_STATES.ATTESTED_EMPTY, intact: true, records, head: null, sequence: 0, reason: null};
+  }
+
   let previous = null;
   for (const [index, record] of records.entries()) {
     if (record.integrityVersion !== LEDGER_INTEGRITY_VERSION) continue; // legacy record
@@ -162,59 +171,58 @@ export function verifyLedger(text, {expectedHead = null, expectedSequence = null
  * is false whenever the ledger is UNREADABLE or SUSPECT_EMPTY, so lost storage
  * cannot silently re-enable the fallback.
  */
-export function hardenedRetirementVerdict(text, {expectedHead = null, expectedSequence = null, anchor = null} = {}) {
+export function hardenedRetirementVerdict(text, {
+  expectedHead = null,
+  expectedSequence = null,
+  anchor = null,
+  requireAnchor = false,
+} = {}) {
   const integrity = verifyLedger(text, {expectedHead, expectedSequence});
-  // The anchor is a second, independent completeness check. `expectedHead` above is
-  // a caller-supplied value; the anchor is a stored one, so a caller that forgets to
-  // pass an expectation still cannot be fooled by a truncated ledger.
   const anchorCheck = compareToAnchor(integrity, anchor);
   const retireRecords = integrity.records.filter(record => record?.state === 'RETIRED');
   const retired = retireRecords.length > 0;
 
-  // The distinction that matters is not "is there a ledger" but "was there ever
-  // evidence, and is it still here".
-  //
-  //   absent, nothing expected   -> retirement never happened. The fallback was
-  //                                 never withdrawn, so allowing it removes nothing.
-  //   absent, head expected      -> a retirement was recorded somewhere that knows
-  //                                 the head, and the ledger holding it is gone.
-  //                                 That is deletion, and it must not reopen the
-  //                                 fallback.
-  //
-  // Conflating the two would withdraw the fallback on a repository that never
-  // retired it, which is removing a credential by omission - the same class of
-  // error as reporting a check that never ran.
-  // `Number(null)` is 0 and `Number.isFinite(0)` is true, so a bare
-  // Number.isFinite check treats "no expectation supplied" as "expecting sequence
-  // 0" and reports every absent ledger as deleted evidence. Guard the null case
-  // explicitly.
+  // A visible RETIRE is honoured even if the surrounding chain is damaged. In
+  // every other case, only a verified clean ledger plus the configured trust
+  // evidence can authorize fallback; malformed, rolled-back, or missing evidence
+  // is not a reason to reactivate a credential.
   const sequenceExpected = expectedSequence !== null && expectedSequence !== undefined && expectedSequence !== ''
     && Number.isFinite(Number(expectedSequence));
-  const evidenceWasExpected = Boolean(expectedHead) || sequenceExpected;
+  const evidenceWasExpected = Boolean(expectedHead) || sequenceExpected || Boolean(anchor);
+  let safeToFallBack = false;
+  let reason = null;
 
-  let safeToFallBack;
-  let reason;
   if (retired) {
-    safeToFallBack = false;
-    reason = null;
+    reason = 'PAT_FALLBACK_RETIRED';
+  } else if (integrity.state === INTEGRITY_STATES.TAMPERED) {
+    reason = 'RETIREMENT_LEDGER_TAMPERED';
+  } else if (integrity.state === INTEGRITY_STATES.ROLLED_BACK) {
+    reason = 'RETIREMENT_LEDGER_ROLLED_BACK';
   } else if (integrity.state === INTEGRITY_STATES.UNREADABLE) {
-    // No ledger at all. Only suspicious if a retirement was known to exist.
-    safeToFallBack = !evidenceWasExpected;
-    reason = evidenceWasExpected ? 'RETIREMENT_LEDGER_UNAVAILABLE' : null;
+    reason = evidenceWasExpected
+      ? 'RETIREMENT_LEDGER_UNAVAILABLE'
+      : requireAnchor ? 'RETIREMENT_ANCHOR_UNAVAILABLE' : null;
+    safeToFallBack = !evidenceWasExpected && !requireAnchor;
   } else if (integrity.state === INTEGRITY_STATES.SUSPECT_EMPTY) {
-    // An empty ledger where records were expected is deletion.
-    safeToFallBack = !evidenceWasExpected;
-    reason = evidenceWasExpected ? 'RETIREMENT_EVIDENCE_UNVERIFIABLE' : null;
+    reason = evidenceWasExpected
+      ? 'RETIREMENT_EVIDENCE_UNVERIFIABLE'
+      : requireAnchor ? 'RETIREMENT_ANCHOR_UNAVAILABLE' : null;
+    safeToFallBack = !evidenceWasExpected && !requireAnchor;
+  } else if (integrity.state === INTEGRITY_STATES.ATTESTED_EMPTY) {
+    // A local attestation cannot override the standing prohibition on reviving a
+    // retired PAT. Reactivation requires a separately authorized process that is
+    // intentionally not implemented by this runtime selector.
+    reason = 'RETIRED_CREDENTIAL_REACTIVATION_DENIED';
   } else if (anchorCheck.consistent === false) {
-    // The ledger is intact internally but shorter than the anchor says it should be.
-    // A truncated ledger is internally consistent, so only the anchor can catch it -
-    // and the dropped records may include the RETIRE that is being looked for.
-    safeToFallBack = false;
-    reason = 'RETIREMENT_LEDGER_TRUNCATED';
+    reason = anchorCheck.reason === 'LEDGER_SHORTER_THAN_ANCHOR'
+      ? 'RETIREMENT_LEDGER_TRUNCATED'
+      : 'RETIREMENT_ANCHOR_MISMATCH';
+  } else if (requireAnchor && anchorCheck.checked !== true) {
+    reason = 'RETIREMENT_ANCHOR_UNAVAILABLE';
+  } else if (integrity.state !== INTEGRITY_STATES.INTACT) {
+    reason = 'RETIREMENT_EVIDENCE_UNVERIFIABLE';
   } else {
-    // Intact and contains no RETIRE record: the fallback was never withdrawn.
     safeToFallBack = true;
-    reason = null;
   }
 
   return {
@@ -355,35 +363,83 @@ export function buildHeadAnchor(verification, {commit = null, now = Date.now()} 
  * a rollback: another run appended between this run's read and its write.
  */
 export function compareToAnchor(verification, anchor) {
-  if (!anchor || typeof anchor !== 'object') {
-    // No anchor: verification of completeness is impossible, and that is stated
-    // rather than treated as a pass.
+  if (anchor === null || anchor === undefined) {
     return {checked: false, consistent: null, reason: 'NO_ANCHOR'};
   }
-  const actualSequence = Number(verification?.sequence ?? 0);
-  const expectedSequence = Number(anchor.sequence ?? 0);
-  if (!Number.isFinite(actualSequence) || !Number.isFinite(expectedSequence)) {
-    return {checked: false, consistent: null, reason: 'ANCHOR_UNREADABLE'};
+  if (!anchor || typeof anchor !== 'object' || Array.isArray(anchor)) {
+    return {checked: true, consistent: false, reason: 'ANCHOR_UNREADABLE'};
   }
-  if (actualSequence < expectedSequence) {
+
+  const expectedSequence = anchor.sequence;
+  const expectedCount = anchor.recordCount;
+  const validAnchor = anchor.schemaVersion === LEDGER_INTEGRITY_VERSION
+    && Number.isSafeInteger(expectedSequence) && expectedSequence >= 0
+    && Number.isSafeInteger(expectedCount) && expectedCount >= 1
+    && expectedCount >= expectedSequence
+    && (expectedSequence === 0
+      ? anchor.head === null
+      : typeof anchor.head === 'string' && /^[0-9a-f]{64}$/.test(anchor.head));
+  if (!validAnchor) {
+    return {checked: true, consistent: false, reason: 'ANCHOR_UNREADABLE'};
+  }
+
+  const records = Array.isArray(verification?.records) ? verification.records : [];
+  const actualSequence = Number(verification?.sequence ?? 0);
+  if (!Number.isSafeInteger(actualSequence) || actualSequence < 0) {
+    return {checked: true, consistent: false, reason: 'LEDGER_UNREADABLE'};
+  }
+  if (actualSequence < expectedSequence || records.length < expectedCount) {
     return {
       checked: true,
       consistent: false,
       reason: 'LEDGER_SHORTER_THAN_ANCHOR',
       actualSequence,
       expectedSequence,
-      // The distinction that matters for the verdict: a truncated ledger may have
-      // dropped the RETIRE record, so it cannot be trusted to say "not retired".
+      actualRecordCount: records.length,
+      expectedRecordCount: expectedCount,
       retirementMayHaveBeenDropped: true,
     };
   }
+
+  if (expectedSequence > 0) {
+    const anchorRecord = records.find((record, index) => Number(record?.seq ?? index + 1) === expectedSequence);
+    if (!anchorRecord || anchorRecord.hash !== anchor.head) {
+      return {
+        checked: true,
+        consistent: false,
+        reason: 'ANCHOR_HEAD_MISMATCH',
+        actualSequence,
+        expectedSequence,
+        expectedHead: anchor.head,
+        actualHeadAtExpectedSequence: anchorRecord?.hash ?? null,
+        retirementMayHaveBeenDropped: true,
+      };
+    }
+  }
+
+  const headMatches = actualSequence > expectedSequence
+    || (verification?.head ?? null) === anchor.head;
+  if (!headMatches) {
+    return {
+      checked: true,
+      consistent: false,
+      reason: 'ANCHOR_HEAD_MISMATCH',
+      actualSequence,
+      expectedSequence,
+      expectedHead: anchor.head,
+      actualHead: verification?.head ?? null,
+      retirementMayHaveBeenDropped: true,
+    };
+  }
+
   return {
     checked: true,
     consistent: true,
     reason: actualSequence > expectedSequence ? 'LEDGER_AHEAD_OF_ANCHOR' : null,
     actualSequence,
     expectedSequence,
-    // A longer ledger means a concurrent append, which is benign.
+    actualRecordCount: records.length,
+    expectedRecordCount: expectedCount,
     retirementMayHaveBeenDropped: false,
   };
 }

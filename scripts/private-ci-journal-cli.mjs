@@ -1,9 +1,9 @@
-// Command surface for the durable private CI journal.
+// Test/fixture command surface for the runner-local private CI journal.
 //
-// Used by the bridge workflow to enqueue a request for an immutable commit,
-// claim it (with lease recovery), cancel it, settle it, and report status.
-// The journal file is the only storage and it only ever contains SHAs, states
-// and timestamps - never source, logs or credentials.
+// It exercises enqueue/claim/settle behavior in one filesystem for unit tests;
+// it is not called by a production workflow and cannot provide cross-run
+// durability, recovery, or fencing on ephemeral GitHub-hosted runners. Production
+// mission admission uses private-ci-listener-store.mjs.
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';

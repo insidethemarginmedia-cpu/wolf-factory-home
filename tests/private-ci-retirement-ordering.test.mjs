@@ -29,7 +29,7 @@ test('the execute job exists and carries the retirement steps', () => {
 });
 
 test('durable retirement is hydrated before the first PAT-consuming step', () => {
-  const hydrate = indexOfStep(step => step.name === 'Hydrate durable retirement before any credential is selected');
+  const hydrate = indexOfStep(step => step.name === 'Hydrate and verify durable retirement evidence before credential selection');
   assert.ok(hydrate >= 0, 'the hydration step must exist');
 
   const firstPat = indexOfStep(consumesPat);
@@ -42,24 +42,31 @@ test('durable retirement is hydrated before the first PAT-consuming step', () =>
   );
 });
 
-test('hydration runs immediately after checkout, before any credential work', () => {
-  const hydrate = indexOfStep(step => step.name === 'Hydrate durable retirement before any credential is selected');
+test('retirement hydration runs immediately after the in-job admission re-check, before credential work', () => {
+  const hydrate = indexOfStep(step => step.name === 'Hydrate and verify durable retirement evidence before credential selection');
   const names = execute.steps.slice(0, hydrate).map(step => step.name);
-  // Only the checkout may precede it. Anything else is an ungated step.
-  assert.equal(names.length, 1, 'only checkout may run before hydration, saw: ' + JSON.stringify(names));
-  assert.match(names[0], /Checkout/);
+  // The exact ledger re-check must be the only step between checkout and retirement
+  // hydration. No credential selector, service probe or private-source access may
+  // precede either gate.
+  assert.deepEqual(names, [
+    'Checkout the public controller without persisted credentials',
+    'Re-verify durable mission admission before private access',
+  ]);
+  const admissionGate = indexOfStep(step => step.name === 'Re-verify durable mission admission before private access');
+  assert.ok(admissionGate >= 0 && admissionGate < hydrate);
 });
 
 test('the retirement decision is persisted so later runs inherit it', () => {
-  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision so later runs inherit it');
+  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision without rewriting remote history');
   assert.ok(persist, 'a persistence step must exist');
   // `continue-on-error` is not among the keys the step parser surfaces, so the
-  // raw block is checked. Persistence failing must not turn a green run red.
-  const block = text.slice(text.indexOf('Persist the retirement decision'));
-  const head = block.slice(0, block.indexOf('- name:', 10) === -1 ? 1200 : block.indexOf('- name:', 10));
-  assert.match(head, /continue-on-error:\s*true/, 'persistence failure must not turn a green run red');
-  // It must target the dedicated ledger branch, never the default branch.
-  assert.match(String(persist.run), /wolf-ci-retirement/);
+  // raw block is checked. Persistence failure is separately saved to a receipt.
+  const start = text.indexOf('Persist the retirement decision without rewriting remote history');
+  const end = text.indexOf('- name:', start + 10);
+  const block = text.slice(start, end === -1 ? start + 2500 : end);
+  assert.match(block, /continue-on-error:\s*true/);
+  assert.match(String(persist.run), /private-ci-retirement-persist\.mjs/);
+  assert.match(block, /RETIREMENT_PERSISTENCE_EXIT=/);
   assert.doesNotMatch(String(persist.run), /branch=main\b/);
 });
 
@@ -71,41 +78,41 @@ test('no step writes retirement evidence to the default branch', () => {
   assert.deepEqual(offenders.map(s => s.name), []);
 });
 
-test('the persistence step creates its branch before writing to it', () => {
-  // The contents API writes into an existing branch and cannot create one. A write
-  // attempted first returns 404, and with continue-on-error the run stays green
-  // while the ledger silently never exists.
-  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision so later runs inherit it');
-  const body = String(persist.run);
-  const createsRef = body.indexOf('git/refs');
-  const writesContent = body.indexOf('contents/.wolf-ci/retirement-ledger.jsonl');
-  assert.ok(createsRef >= 0, 'the step must create the ledger branch explicitly');
-  assert.ok(writesContent >= 0, 'the step must write the ledger file');
-  assert.ok(createsRef < writesContent, 'the branch must be created before the first write');
-  // The existence probe reads the file; only the writes must come after the
-  // branch exists, and the ref creation is what guarantees that.
-  assert.ok(/git\/ref\/heads\/wolf-ci-retirement/.test(body), 'the step must probe for the branch before creating it');
+test('the persistence step delegates branch creation and remote fetch to the tested CLI', () => {
+  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision without rewriting remote history');
+  assert.ok(persist, 'the persistence step must exist');
+  assert.match(String(persist.run), /private-ci-retirement-persist\.mjs persist/);
+  assert.match(JSON.stringify(persist.env), /WOLF_CI_RETIREMENT_PERSIST_FILE/);
+
+  const source = fs.readFileSync('scripts/private-ci-retirement-persist.mjs', 'utf8');
+  const createBranch = source.indexOf('/git/refs');
+  const fetchFiles = source.indexOf('const [ledgerFile, anchorFile]');
+  const writeLedger = source.indexOf('/contents/${RETIREMENT_LEDGER_PATH}');
+  const writeAnchor = source.indexOf('/contents/${RETIREMENT_ANCHOR_PATH}');
+  assert.ok(createBranch >= 0 && fetchFiles > createBranch, 'the ref is resolved before remote contents are read');
+  assert.ok(writeLedger > fetchFiles && writeAnchor > writeLedger, 'the remote ledger is written before its anchor');
 });
 
-test('the hydration step does not fail the run when no ledger exists', () => {
-  // Absence of retirement evidence must never be an outage: the App path does not
-  // depend on the PAT, and a missing ledger is not evidence of retirement.
-  const hydrate = execute.steps.find(step => step.name === 'Hydrate durable retirement before any credential is selected');
-  const block = text.slice(text.indexOf('Hydrate durable retirement'));
-  const head = block.slice(0, block.indexOf('- name:', 10) === -1 ? 1500 : block.indexOf('- name:', 10));
-  assert.match(head, /continue-on-error:\s*true/, 'a missing ledger must not fail the run');
-  assert.match(String(hydrate.run), /RETIREMENT_LEDGER=ABSENT/);
+test('unavailable retirement evidence withholds PAT but does not block the App path', () => {
+  const hydrate = execute.steps.find(step => step.name === 'Hydrate and verify durable retirement evidence before credential selection');
+  const start = text.indexOf('Hydrate and verify durable retirement evidence');
+  const end = text.indexOf('- name:', start + 10);
+  const block = text.slice(start, end === -1 ? start + 6000 : end);
+  assert.doesNotMatch(block, /continue-on-error:\s*true/, 'an error cannot be hidden as successful hydration');
+  assert.match(String(hydrate.run), /WOLF_CI_RETIREMENT_REQUIRE_ANCHOR=true/);
+  assert.match(String(hydrate.run), /RETIREMENT_FALLBACK=WITHHELD_EVIDENCE_UNVERIFIABLE/);
+  assert.match(String(hydrate.run), /RETIREMENT_LEDGER=UNAVAILABLE/);
 });
 
-test('the target resolver runs after the reader credential is established', () => {
-  // The resolver needs a reader token. Declared before the authentication step it
-  // can only ever report NO_READER_CREDENTIAL, and the receipt then publishes
-  // NOT_REPORTED - a resolution step that resolves nothing, on a green run.
-  const auth = execute.steps.findIndex(step => /Authenticate to the private Factory/.test(step.name ?? ''));
+test('the resolver receives a step-scoped App reader token before private source access', () => {
+  const reader = execute.steps.findIndex(step => /Mint the reader installation token with the official action/.test(step.name ?? ''));
   const resolve = execute.steps.findIndex(step => /Resolve the authoritative PR head/.test(step.name ?? ''));
-  assert.ok(auth >= 0, 'the authentication step must exist');
-  assert.ok(resolve >= 0, 'the resolver step must exist');
-  assert.ok(resolve > auth, `resolver is step ${resolve + 1} but authentication is step ${auth + 1}`);
+  const clone = execute.steps.findIndex(step => /Clone the private commit/.test(step.name ?? ''));
+  assert.ok(reader >= 0, 'the official reader token action must exist');
+  assert.ok(resolve > reader, `resolver is step ${resolve + 1} but reader token action is step ${reader + 1}`);
+  assert.ok(clone > resolve, 'target resolution must precede the private clone');
+  assert.match(JSON.stringify(execute.steps[resolve].env), /steps\.app_reader\.outputs\.token/);
+  assert.doesNotMatch(JSON.stringify(execute.steps[resolve].env), /\$\{\{\s*env\.WOLF_CI_APP_READER_TOKEN/);
 });
 
 test('the resolver publishes its verdict onto the receipt', () => {
@@ -132,26 +139,21 @@ test('the target output path is job-level, so the receipt builder can read it', 
   assert.match(envBlock, /^      WOLF_CI_TARGET_OUTPUT:/m, 'the path must be job-level, not step-level');
 });
 
-test('the ledger is sealed and anchored in the same step that publishes it', () => {
-  // A published ledger without its anchor has no completeness evidence - a later run
-  // could truncate it and the truncation would be invisible.
-  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision so later runs inherit it');
-  const body = String(persist.run);
-  const seal = body.indexOf('private-ci-ledger-seal-cli.mjs');
-  const writeLedger = body.indexOf('contents/.wolf-ci/retirement-ledger.jsonl');
-  const writeAnchor = body.indexOf('contents/.wolf-ci/retirement-head.json');
-  assert.ok(seal >= 0, 'the ledger must be sealed before publication');
-  assert.ok(writeLedger >= 0 && writeAnchor >= 0, 'both the ledger and its anchor must be published');
-  assert.ok(seal < writeLedger, 'sealing must happen before the ledger is written to the branch');
+test('the persistence CLI verifies and anchors the exact remote ledger bytes', () => {
+  const source = fs.readFileSync('scripts/private-ci-retirement-persist.mjs', 'utf8');
+  assert.match(source, /verifyLedger\(ledgerText\)/);
+  assert.match(source, /compareToAnchor\(verification, previousAnchor\)/);
+  assert.match(source, /buildHeadAnchor\(finalVerification/);
+  assert.match(source, /RETIREMENT_LEDGER_ANCHOR_PAIR_INCOMPLETE/);
+  assert.match(source, /LEDGER_SHORTER_THAN_ANCHOR/);
+  assert.ok(source.indexOf('/contents/${RETIREMENT_LEDGER_PATH}') < source.indexOf('/contents/${RETIREMENT_ANCHOR_PATH}'));
 });
 
-test('the previous anchor is fetched before being overwritten', () => {
-  // Overwriting the anchor without reading it discards the only evidence a truncation
-  // could be compared against.
-  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision so later runs inherit it');
-  const body = String(persist.run);
-  const fetchPrev = body.indexOf('retirement-head.json?ref=wolf-ci-retirement');
-  const writeAnchor = body.indexOf('-X PUT');
-  assert.ok(fetchPrev >= 0, 'the previous anchor must be fetched');
-  assert.ok(fetchPrev < writeAnchor, 'it must be fetched before the first write');
+test('the prior anchor is parsed and compared before it can be overwritten', () => {
+  const source = fs.readFileSync('scripts/private-ci-retirement-persist.mjs', 'utf8');
+  const fetchAnchor = source.indexOf('getContents({repository, file: RETIREMENT_ANCHOR_PATH');
+  const compare = source.indexOf('compareToAnchor(verification, previousAnchor)');
+  const writeAnchor = source.indexOf('/contents/${RETIREMENT_ANCHOR_PATH}');
+  assert.ok(fetchAnchor >= 0 && compare > fetchAnchor, 'remote anchor is read and verified first');
+  assert.ok(writeAnchor > compare, 'anchor write follows the successful comparison');
 });

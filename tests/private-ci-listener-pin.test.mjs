@@ -41,9 +41,37 @@ test('the pinned commit actually declares workflow_call, or it cannot be reused'
 test('the pinned commit accepts the inputs the listener passes', () => {
   const bridgeAtPin = execFileSync('git', ['show', `${pinned}:${BRIDGE}`], {encoding: 'utf8'});
   const block = bridgeAtPin.slice(bridgeAtPin.indexOf('  workflow_call:'), bridgeAtPin.indexOf('  workflow_dispatch:'));
-  for (const input of ['sha:', 'missionId:', 'deliveryId:']) {
+  for (const input of ['sha:', 'missionId:', 'deliveryId:', 'executorSha:']) {
     assert.ok(block.includes(input), `the pinned bridge must declare input ${input}`);
   }
+});
+
+test('the pinned executor commit contains durable admission and execution-gate code', () => {
+  const bridgeAtPin = execFileSync('git', ['show', `${pinned}:${BRIDGE}`], {encoding: 'utf8'});
+  const listenerCliAtPin = execFileSync('git', ['show', `${pinned}:scripts/private-ci-listener-cli.mjs`], {encoding: 'utf8'});
+  const storeAtPin = execFileSync('git', ['show', `${pinned}:scripts/private-ci-listener-store.mjs`], {encoding: 'utf8'});
+  const gateAtPin = execFileSync('git', ['show', `${pinned}:scripts/private-ci-listener-gate-cli.mjs`], {encoding: 'utf8'});
+  const bridgeScriptAtPin = execFileSync('git', ['show', `${pinned}:scripts/private-ci-bridge.mjs`], {encoding: 'utf8'});
+  assert.match(listenerCliAtPin, /admitMissionDurably/);
+  assert.match(storeAtPin, /verifyAdmissionLedger/);
+  assert.match(gateAtPin, /verifyStoredMissionAdmission/);
+  assert.match(bridgeScriptAtPin, /SAFE_MISSION_ADMISSION_REASONS/);
+  assert.match(bridgeScriptAtPin, /missionAdmission: readMissionAdmission\(process\.env\.WOLF_CI_MISSION_ADMISSION_FILE\)/);
+  assert.match(bridgeAtPin, /Re-verify durable mission admission before private access/);
+  for (const input of ['sha', 'missionId', 'deliveryId', 'executorSha']) {
+    assert.match(bridgeAtPin, new RegExp(`inputs\\.${input} != ''`), `the pinned executor must require ${input}`);
+  }
+  assert.doesNotMatch(bridgeAtPin, /github\.event_name == 'workflow_call'/,
+    'the reusable workflow must not assume github.event_name differs from its caller event');
+});
+
+test('the runtime listener requires the durable store and the only approved executor pin', () => {
+  assert.match(text, /WOLF_LISTENER_STORE_REQUIRED:\s*'true'/);
+  assert.match(text, /executorSha:\s*\$\{\{ needs\.admit\.outputs\.executor_sha \}\}/);
+  const source = fs.readFileSync('scripts/private-ci-listener-cli.mjs', 'utf8');
+  assert.match(source, /admitMissionDurably/);
+  assert.match(source, /configuredExecutorShas\.includes\(pinnedExecutorSha\)/);
+  assert.doesNotMatch(source, /deliveries:\s*\[\]/);
 });
 
 test('every executor reference agrees, and action pins are separately allowed', () => {

@@ -1,138 +1,46 @@
-// Generates the GitHub App Manifest that creates "Wolf Factory Automation".
+// Former GitHub App manifest/creation flow.
 //
-// The manifest is the only supported way to create an App *with a private key*:
-// GitHub returns the key exactly once, at conversion time, to the browser session
-// that submitted the manifest. No API in this environment can do it, which is why
-// the Founder's click is unavoidable and why this file exists: the click carries
-// the entire, already-minimal configuration.
-//
-// The permissions here are the union of the three roles, because one App holds one
-// permission set. Least privilege is enforced per *token* at mint time instead:
-// the reader token asks for contents:read only, the publisher for checks:write
-// only, the dispatcher for actions:write only. See ROLE_PERMISSIONS.
+// Creating or installing a new App is not authorized: the request is to recover
+// existing infrastructure, and the bridge is not activated. Manifest and form
+// generation therefore fail closed. The read-only permission audit and conversion
+// summary remain available for a future owner-approved review of an existing App;
+// they never print private-key material.
+import {pathToFileURL} from 'node:url';
 
-const PERMISSIONS = Object.freeze({
-  contents: 'read',
-  metadata: 'read',
-  checks: 'write',
-  actions: 'write',
-});
+export const APP_NAME = 'Wolf Factory Automation (historical proposal)';
+export const APP_SETUP_STATUS = 'WITHDRAWN';
+// Kept as an empty compatibility export for callers; no setup endpoint is exposed.
+export const MANIFEST_ENDPOINTS = Object.freeze({});
 
-// The exact repositories the App may reach. Nothing else is requested, so a
-// compromise of the App cannot touch an unrelated repository.
-const REPOSITORIES = Object.freeze(['project-wolf', 'wolf-factory-home']);
-
-export const APP_NAME = 'Wolf Factory Automation';
-export const MANIFEST_ENDPOINTS = Object.freeze({
-  personal: 'https://github.com/settings/apps/new',
-  organization: 'https://github.com/organizations/{org}/settings/apps/new',
-});
-
-/**
- * Builds the manifest. `publicBase` is the public repository's raw URL: the App
- * posts its setup callback there, and a public URL is the only one GitHub can
- * reach without exposing private infrastructure.
- */
-export function buildAppManifest({
-  name = APP_NAME,
-  owner = 'insidethemarginmedia-cpu',
-  accountType = 'user',
-  publicBase = 'https://github.com/insidethemarginmedia-cpu/wolf-factory-home',
-  redirectUrl,
-  webhookUrl,
-  repositories = REPOSITORIES,
-} = {}) {
-  if (!name || typeof name !== 'string') throw Error('MANIFEST_NAME_REQUIRED');
-  if (!['user', 'organization'].includes(accountType)) throw Error('MANIFEST_ACCOUNT_TYPE_INVALID');
-  // GitHub requires an absolute https callback. It only displays the one-time
-  // conversion code there, so it must be a real page, not a guess.
-  const callback = redirectUrl ?? `https://github.com/${owner}`;
-  const manifest = {
-    name,
-    description: 'Least-privilege CI authentication for the Wolf Factory bridge.',
-    url: publicBase,
-    // No webhook is registered: the bridge is pull-based, and an unverified
-    // endpoint would be an attack surface with no benefit.
-    hook_attributes: hookUrl(webhookUrl),
-    redirect_url: callback,
-    // Public is mandatory, not cosmetic: GitHub only allows a private App to be
-    // installed on the account that owns it, and this App must be installed on
-    // two personal accounts. Anything else silently yields one installation.
-    public: true,
-    default_permissions: {...PERMISSIONS},
-    default_events: [],
-    request_oauth_on_install: false,
-    setup_on_update: false,
-  };
-  // `repository_selection` is set by the installer, not the manifest; the two
-  // repositories are named in the installation instructions instead.
-  manifest.repositories_hint = [...repositories];
-  manifest.owner = owner;
-  manifest.accountType = accountType;
-  return manifest;
+export function buildAppManifest() {
+  throw Error('APP_SETUP_NOT_AUTHORIZED');
 }
 
-const hookUrl = value => (value ? {url: value, active: false} : {active: false});
-
-/**
- * A single self-contained HTML page that submits the manifest. It is inert until
- * the Founder opens it in a browser: the form posts to GitHub, GitHub redirects
- * back with a code, and the conversion is what yields the App ID and the key.
- */
-export function buildManifestForm({manifest, organization = null, accountType = null, action = null} = {}) {
-  // Both Wolf accounts are personal (`type=User`), so the organization endpoint
-  // would be wrong twice over. It is only used when explicitly asked for.
-  const type = accountType ?? (organization ? 'organization' : 'user');
-  if (type === 'organization' && !organization) throw Error('MANIFEST_ORGANIZATION_REQUIRED');
-  const target = action ?? (type === 'organization'
-    ? MANIFEST_ENDPOINTS.organization.replace('{org}', organization)
-    : MANIFEST_ENDPOINTS.personal);
-  const payload = JSON.stringify(manifest, null, 2);
-  const escaped = payload.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  return `<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Create Wolf Factory Automation</title></head>
-<body>
-<h1>Create Wolf Factory Automation</h1>
-<p>This form creates one GitHub App with the minimum permissions the bridge needs,
-on the two repositories the bridge uses. Nothing is sent anywhere until you press
-the button.</p>
-<form method="post" action="${target}">
-  <input type="hidden" name="manifest" value="${escaped}">
-  <button type="submit">Create the App on GitHub</button>
-</form>
-<h2>The manifest, in full</h2>
-<pre>${escaped}</pre>
-</body>
-</html>
-`;
+export function buildManifestForm() {
+  throw Error('APP_SETUP_NOT_AUTHORIZED');
 }
 
-if (import.meta.url === 'file://' + process.argv[1]) {
-  const org = process.argv.includes('--org')
-    ? process.argv[process.argv.indexOf('--org') + 1]
-    : null;
-  const manifest = buildAppManifest({accountType: org ? 'organization' : 'user'});
-  // Without --org the form targets the personal-account endpoint, which is the
-  // only correct target for donraposo1-source and insidethemarginmedia-cpu.
-  process.stdout.write(buildManifestForm({manifest, organization: org, accountType: org ? 'organization' : 'user'}));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.stdout.write(JSON.stringify({
+    state: 'BLOCKED',
+    reason: 'APP_SETUP_NOT_AUTHORIZED',
+    authorizedActions: [],
+    credentialsPrinted: false,
+    dispatchAuthorized: false,
+  }) + '\n');
+  process.exitCode = 78;
 }
 
 // ---------------------------------------------------------------------------
-// Pre-flight for a real installation.
-//
-// Run after the App exists and before the secrets are stored: it reads what the
-// App actually was granted and refuses to proceed if it exceeds the minimum. A
-// silently over-privileged App is the failure mode this exists to catch.
+// Read-only audit for a future, explicitly owner-approved review of an existing
+// installation. No network access, secret storage, or setup step occurs here.
 // ---------------------------------------------------------------------------
 
-// The ceiling. Anything a real App grants outside this map is excess authority.
 export const PERMISSION_CEILING = Object.freeze({
   contents: 'read',
   metadata: 'read',
   checks: 'write',
   actions: 'write',
-  // Implied by installation tokens and unavoidable; not extra authority.
   administration: 'none',
   members: 'none',
 });
@@ -140,7 +48,7 @@ export const PERMISSION_CEILING = Object.freeze({
 const RANK = Object.freeze({none: 0, read: 1, write: 2});
 
 /**
- * Compares granted permissions with the ceiling.
+ * Compares granted permissions with the reviewed ceiling.
  * Returns `{state: 'WITHIN_MINIMUM' | 'EXCESS' | 'INSUFFICIENT', excess, missing}`.
  */
 export function auditGrantedPermissions(granted = {}, ceiling = PERMISSION_CEILING) {
@@ -159,8 +67,8 @@ export function auditGrantedPermissions(granted = {}, ceiling = PERMISSION_CEILI
 }
 
 /**
- * Extracts the facts the bridge needs from a converted manifest.
- * The private key is returned separately and never placed in the summary.
+ * Extracts non-secret facts from an existing conversion response. The PEM is
+ * returned separately to the local caller and is never placed in the summary.
  */
 export function readConversion(payload = {}) {
   const {pem, id, slug, owner, permissions, events, html_url: htmlUrl} = payload;

@@ -5,6 +5,7 @@
 //
 // Only repository, workflow id, SHA and HTTP metadata appear in the result. No
 // token, response body or private content is ever returned or printed.
+import {credentialForRole} from './private-ci-app-auth.mjs';
 
 const API = 'https://api.github.com';
 
@@ -147,9 +148,8 @@ export async function dispatchProbeCli(argv = [], env = process.env, {
   writeError = () => {},
 } = {}) {
   const outPath = argv.find(arg => arg.startsWith('--out='))?.slice('--out='.length) ?? env.WOLF_CI_DISPATCH_FILE;
-  const appToken = env.WOLF_CI_APP_DISPATCHER_TOKEN;
-  const patToken = env.WOLF_FACTORY_REPO_TOKEN;
-  const token = appToken ? {value: appToken, source: 'app'} : patToken ? {value: patToken, source: 'pat'} : null;
+  const selected = credentialForRole('dispatcher', {env});
+  const token = selected.token ? {value: selected.token, source: selected.source} : null;
   const result = await probeDispatch({
     token,
     repository: env.WOLF_CI_REPOSITORY,

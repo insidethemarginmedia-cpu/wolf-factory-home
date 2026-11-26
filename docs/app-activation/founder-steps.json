@@ -1,45 +1,15 @@
 {
-  "state": "FOUNDER_ACTION_REQUIRED",
-  "title": "Create Wolf Factory Automation",
-  "why": "A GitHub App private key is returned exactly once, to the browser session that converts the manifest. No API, token or MCP available here can create an App or mint a key.",
-  "steps": [
-    {
-      "step": 1,
-      "action": "Open the manifest form and submit it",
-      "link": "https://github.com/organizations/insidethemarginmedia-cpu/settings/apps/new",
-      "note": "The form carries the full, already-minimal manifest: contents:read, metadata:read, checks:write, actions:write. No webhook."
-    },
-    {
-      "step": 2,
-      "action": "Install the App on both accounts, selecting only these repositories",
-      "repositories": [
-        "project-wolf",
-        "wolf-factory-home"
-      ],
-      "note": "Repository selection must be \"Only select repositories\". Do not grant \"All repositories\"."
-    },
-    {
-      "step": 3,
-      "action": "Copy the three installation IDs, one per account/repository pairing",
-      "note": "Each installation ID is visible in the installation URL: /settings/installations/<id>."
-    },
-    {
-      "step": 4,
-      "action": "Store these repository secrets, never in a file",
-      "secrets": [
-        "WOLF_FACTORY_APP_ID",
-        "WOLF_FACTORY_APP_PRIVATE_KEY",
-        "WOLF_FACTORY_READER_INSTALLATION_ID",
-        "WOLF_FACTORY_PUBLISHER_INSTALLATION_ID",
-        "WOLF_FACTORY_DISPATCHER_INSTALLATION_ID"
-      ],
-      "note": "Settings > Secrets and variables > Actions > New repository secret."
-    },
-    {
-      "step": 5,
-      "action": "Tell the agent the App is installed",
-      "note": "The next run mints App tokens automatically and reports authentication.mode = github-app. The PAT fallback stays until that run is green."
-    }
-  ],
-  "credentialsPrinted": false
+  "state": "WITHDRAWN",
+  "status": "BLOCKED / NOT AUTHORIZED",
+  "title": "Former GitHub App setup instructions",
+  "reason": "The prior setup flow proposed a new GitHub App without verifying that no approved existing App already serves this role, and requested repository-secret changes before the listener, executor pin, upstream contract, recovery owner, and required approvals were resolved. It was withdrawn to avoid duplicate infrastructure and unauthorized credential changes.",
+  "authorizedActions": [],
+  "dispatchAuthorized": false,
+  "appCreationAuthorized": false,
+  "secretChangesAuthorized": false,
+  "steps": [],
+  "credentialsPrinted": false,
+  "privateWorkerAcceptance": false,
+  "eurSpend": 0,
+  "contract": "../integration-contract.md"
 }

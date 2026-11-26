@@ -1,9 +1,10 @@
-// Durable request journal, cancellation and recovery for the private CI bridge.
+// Local file-backed journal primitives used by unit tests and fixtures only.
 //
-// Requests live in an append-only JSON file so a trigger that arrives while an
-// execution is in flight is not lost. Everything is keyed by repository + SHA:
-// a journal entry can only ever describe the immutable commit it was created
-// for, and a cancelled request can never start a later run.
+// This file does not provide cross-run durability on GitHub-hosted runners: the
+// JSON file lives on one ephemeral runner. It is not the production mission
+// queue, recovery service, or admission source. Production mission admission uses
+// the hash-chained listener store; no scheduled recovery is enabled until a
+// durable execution queue and fence/settlement path are implemented.
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';

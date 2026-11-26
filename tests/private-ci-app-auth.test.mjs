@@ -13,6 +13,7 @@ import {
   normalizeRole,
   selectCredential,
 } from '../scripts/private-ci-app-auth.mjs';
+import {appendRecord, buildHeadAnchor, verifyLedger} from '../scripts/private-ci-retirement-integrity.mjs';
 
 const {privateKey: rsaPrivate} = generateKeyPairSync('rsa', {modulusLength: 2048});
 const rsaPem = rsaPrivate.export({type: 'pkcs1', format: 'pem'});
@@ -31,7 +32,7 @@ function decodeJwt(token) {
 
 test('roles map to the minimum permission set and cannot be widened', () => {
   assert.deepEqual([...APP_ROLES], ['reader', 'publisher', 'dispatcher']);
-  assert.deepEqual(ROLE_PERMISSIONS.reader, {contents: 'read', metadata: 'read'});
+  assert.deepEqual(ROLE_PERMISSIONS.reader, {contents: 'read', metadata: 'read', pull_requests: 'read'});
   assert.deepEqual(ROLE_PERMISSIONS.publisher, {checks: 'write', metadata: 'read'});
   assert.deepEqual(ROLE_PERMISSIONS.dispatcher, {actions: 'write', metadata: 'read'});
 
@@ -107,6 +108,33 @@ test('minting requests a repository-scoped, least-privilege token', async () => 
   assert.equal(JSON.stringify(result).includes(request.auth.split(' ')[1]), false);
 });
 
+test('the reader scope includes only the read permission needed to verify PR state', async () => {
+  let body;
+  const result = await mintInstallationToken({
+    role: 'reader',
+    appId: '4187077',
+    privateKey: rsaPem,
+    installationId: '176017917',
+    repository,
+    fetchImpl: async (_url, options) => {
+      body = JSON.parse(options.body);
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({
+          token: 'ghs_fixture_reader_token',
+          expires_at: '2026-11-24T13:00:00Z',
+          permissions: {contents: 'read', metadata: 'read', pull_requests: 'read'},
+          repositories: [{full_name: repository}],
+        }),
+      };
+    },
+  });
+  assert.equal(result.state, 'MINTED');
+  assert.deepEqual(body.permissions, {contents: 'read', metadata: 'read', pull_requests: 'read'});
+  assert.equal(result.token, 'ghs_fixture_reader_token', 'the caller receives the token in memory for step-scoped use');
+});
+
 test('a token that arrives with different permissions is refused', async () => {
   const result = await mintInstallationToken({
     role: 'reader',
@@ -180,6 +208,67 @@ test('credential selection prefers the App and falls back to the PAT explicitly'
   assert.equal(selectCredential('publisher', {env: patOnly}).source, 'pat-fallback');
   assert.equal(selectCredential('dispatcher', {env: patOnly}).source, 'pat-fallback');
   assert.equal(selectCredential('publisher', {env: {}}).source, 'none');
+});
+
+test('credential selection checks the exact hydrated anchor before PAT fallback', () => {
+  const first = appendRecord('', {state: 'ACTIVE', retire: false, recordedAt: '2026-11-25T00:00:00Z'});
+  const full = appendRecord(first.text, {state: 'RETIRED', retire: true, recordedAt: '2026-11-25T01:00:00Z'});
+  const anchor = JSON.stringify(buildHeadAnchor(verifyLedger(full.text)));
+  const fallbackEnv = {
+    WOLF_FACTORY_REPO_TOKEN: 'ghp_must_never_escape',
+    WOLF_CI_RETIREMENT_REQUIRE_ANCHOR: 'true',
+  };
+  const encoded = value => Buffer.from(value).toString('base64');
+
+  const intact = selectCredential('reader', {
+    env: {
+      ...fallbackEnv,
+      WOLF_CI_RETIREMENT_LEDGER_B64: encoded(first.text),
+      WOLF_CI_RETIREMENT_ANCHOR_B64: encoded(JSON.stringify(buildHeadAnchor(verifyLedger(first.text)))),
+    },
+  });
+  assert.equal(intact.source, 'pat-fallback', 'an intact, anchored non-retirement history permits the explicit legacy fallback');
+
+  const truncated = selectCredential('reader', {
+    env: {
+      ...fallbackEnv,
+      WOLF_CI_RETIREMENT_LEDGER_B64: encoded(first.text),
+      WOLF_CI_RETIREMENT_ANCHOR_B64: encoded(anchor),
+    },
+  });
+  assert.equal(truncated.source, 'none');
+  assert.equal(truncated.reason, 'RETIREMENT_LEDGER_TRUNCATED');
+  assert.equal(truncated.withheldCredential, 'pat');
+
+  const missingAnchor = selectCredential('reader', {
+    env: {...fallbackEnv, WOLF_CI_RETIREMENT_LEDGER_B64: encoded(first.text)},
+  });
+  assert.equal(missingAnchor.source, 'none');
+  assert.equal(missingAnchor.reason, 'RETIREMENT_ANCHOR_UNAVAILABLE');
+
+  const retired = selectCredential('reader', {
+    env: {
+      ...fallbackEnv,
+      WOLF_CI_RETIREMENT_LEDGER_B64: encoded(full.text),
+      WOLF_CI_RETIREMENT_ANCHOR_B64: encoded(anchor),
+    },
+  });
+  assert.equal(retired.source, 'none');
+  assert.equal(retired.reason, 'PAT_FALLBACK_RETIRED');
+  assert.equal(JSON.stringify([intact, truncated, missingAnchor, retired]).includes('ghp_must_never_escape'), false);
+});
+
+test('a retirement file path cannot be mistaken for readable ledger contents', () => {
+  const selected = selectCredential('reader', {
+    env: {
+      WOLF_FACTORY_REPO_TOKEN: 'ghp_must_not_be_selected',
+      WOLF_CI_RETIREMENT_REQUIRE_ANCHOR: 'true',
+      WOLF_CI_RETIREMENT_LEDGER_TEXT: '/tmp/retirement-ledger.jsonl',
+      WOLF_CI_RETIREMENT_ANCHOR_TEXT: '/tmp/retirement-head.json',
+    },
+  });
+  assert.equal(selected.source, 'none');
+  assert.equal(selected.reason, 'RETIREMENT_LEDGER_TAMPERED');
 });
 
 test('the secret inventory reports presence only', () => {

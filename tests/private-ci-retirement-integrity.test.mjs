@@ -35,6 +35,15 @@ test('a well-formed chain verifies and reports its head', () => {
   assert.equal(result.records.length, 2);
 });
 
+test('appendRecord separates a valid final JSONL record without a trailing newline', () => {
+  const first = appendRecord('', retire());
+  const source = first.text.trimEnd();
+  const next = appendRecord(source, keep());
+  assert.equal(verifyLedger(next.text).state, INTEGRITY_STATES.INTACT);
+  assert.equal(verifyLedger(next.text).records.length, 2);
+  assert.equal(next.record.prev, first.record.hash);
+});
+
 test('editing a record after the fact is detected', () => {
   const text = build(retire());
   const tampered = text.replace('"RETIRED"', '"ACTIVE"');
@@ -132,12 +141,13 @@ test('an empty ledger is suspect, and blocks the fallback only when evidence was
   }
 });
 
-test('an explicitly attested empty ledger permits backoff, because it is a decision', () => {
+test('an explicit empty attestation cannot reactivate a retired PAT in runtime', () => {
   const attestation = emptyAttestation({by: 'founder', reason: 'reinstating fallback deliberately'});
   const result = hardenedRetirementVerdict(JSON.stringify(attestation) + '\n');
-  // The attestation is a record with no RETIRE, so it reads as intact and not retired.
+  assert.equal(result.integrity, INTEGRITY_STATES.ATTESTED_EMPTY);
   assert.equal(result.retired, false);
-  assert.equal(result.safeToFallBack, true);
+  assert.equal(result.safeToFallBack, false);
+  assert.equal(result.reason, 'RETIRED_CREDENTIAL_REACTIVATION_DENIED');
 });
 
 // --- the verdict ----------------------------------------------------------
@@ -163,6 +173,45 @@ test('a keep-only ledger permits fallback only when intact', () => {
   assert.equal(result.integrity, INTEGRITY_STATES.INTACT);
   assert.equal(result.retired, false);
   assert.equal(result.safeToFallBack, true);
+});
+
+test('a tampered non-retirement record cannot reopen the fallback', () => {
+  const clean = build(keep());
+  const tampered = clean.replace('2026-11-25T01:00:00Z', '2026-11-25T02:00:00Z');
+  const result = hardenedRetirementVerdict(tampered);
+  assert.equal(result.integrity, INTEGRITY_STATES.TAMPERED);
+  assert.equal(result.retired, false);
+  assert.equal(result.safeToFallBack, false, 'tampering is not evidence that fallback is safe');
+  assert.equal(result.reason, 'RETIREMENT_LEDGER_TAMPERED');
+});
+
+test('a rolled-back non-retirement ledger cannot reopen the fallback', () => {
+  const full = build(keep(), keep('2026-11-25T02:00:00Z'));
+  const prefix = full.trim().split('\n')[0] + '\n';
+  const expectedHead = verifyLedger(full).head;
+  const result = hardenedRetirementVerdict(prefix, {expectedHead});
+  assert.equal(result.integrity, INTEGRITY_STATES.ROLLED_BACK);
+  assert.equal(result.retired, false);
+  assert.equal(result.safeToFallBack, false);
+  assert.equal(result.reason, 'RETIREMENT_LEDGER_ROLLED_BACK');
+});
+
+test('an anchor with the right sequence but a forged head is rejected', () => {
+  const text = build(keep());
+  const verification = verifyLedger(text);
+  const anchor = buildHeadAnchor(verification);
+  const forged = {...anchor, head: 'f'.repeat(64)};
+  const result = hardenedRetirementVerdict(text, {anchor: forged});
+  assert.equal(result.safeToFallBack, false);
+  assert.equal(result.reason, 'RETIREMENT_ANCHOR_MISMATCH');
+  assert.equal(result.anchor.reason, 'ANCHOR_HEAD_MISMATCH');
+});
+
+test('a required but missing anchor blocks PAT fallback', () => {
+  const result = hardenedRetirementVerdict(build(keep()), {requireAnchor: true});
+  assert.equal(result.anchor.reason, 'NO_ANCHOR');
+  assert.equal(result.safeToFallBack, false);
+  assert.equal(result.reason, 'RETIREMENT_ANCHOR_UNAVAILABLE');
 });
 
 // --- concurrency ----------------------------------------------------------

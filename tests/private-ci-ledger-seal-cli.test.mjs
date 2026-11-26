@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {test} from 'node:test';
 
-import {appendRecord} from '../scripts/private-ci-retirement-integrity.mjs';
+import {appendRecord, buildHeadAnchor, verifyLedger} from '../scripts/private-ci-retirement-integrity.mjs';
 
 const CLI = 'scripts/private-ci-ledger-seal-cli.mjs';
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-seal-'));
@@ -89,6 +89,40 @@ test('a longer ledger remains anchor-consistent as a concurrent append', () => {
   const result = JSON.parse(run(['seal', '--in', ledger, '--anchor-out', path.join(dir, 'new.json'), '--anchor-in', anchorFile]).stdout.trim());
   // Same content, so no truncation yet.
   assert.equal(result.anchorConsistent, true);
+});
+
+test('sealing refuses a truncated ledger and preserves the prior anchor', () => {
+  const dir = tmp();
+  const ledger = path.join(dir, 'ledger.jsonl');
+  const anchorFile = path.join(dir, 'head.json');
+  const first = appendRecord('', {state: 'ACTIVE', retire: false, recordedAt: '2026-11-24T00:00:00.000Z'});
+  const full = appendRecord(first.text, {state: 'RETIRED', retire: true, recordedAt: '2026-11-24T01:00:00.000Z'});
+  const anchor = JSON.stringify(buildHeadAnchor(verifyLedger(full.text)));
+  fs.writeFileSync(ledger, first.text);
+  fs.writeFileSync(anchorFile, anchor);
+
+  const result = run(['seal', '--in', ledger, '--anchor-out', anchorFile, '--anchor-in', anchorFile]);
+  assert.notEqual(result.code, 0, 'a truncated local copy must not be sealed over known history');
+  const verdict = JSON.parse(result.stdout.trim());
+  assert.equal(verdict.state, 'BLOCKED');
+  assert.equal(verdict.reason, 'PREVIOUS_ANCHOR_MISMATCH');
+  assert.equal(fs.readFileSync(ledger, 'utf8'), first.text);
+  assert.equal(fs.readFileSync(anchorFile, 'utf8'), anchor);
+});
+
+test('an invalid previous anchor blocks sealing without overwriting it', () => {
+  const dir = tmp();
+  const ledger = path.join(dir, 'ledger.jsonl');
+  const anchorFile = path.join(dir, 'head.json');
+  const record = appendRecord('', {state: 'ACTIVE', retire: false, recordedAt: '2026-11-24T00:00:00.000Z'});
+  fs.writeFileSync(ledger, record.text);
+  fs.writeFileSync(anchorFile, '{broken');
+  const before = fs.readFileSync(anchorFile, 'utf8');
+
+  const result = run(['seal', '--in', ledger, '--anchor-out', anchorFile, '--anchor-in', anchorFile]);
+  assert.notEqual(result.code, 0);
+  assert.equal(JSON.parse(result.stdout.trim()).reason, 'PREVIOUS_ANCHOR_UNREADABLE');
+  assert.equal(fs.readFileSync(anchorFile, 'utf8'), before);
 });
 
 test('an absent ledger is not sealed, because sealing it would manufacture evidence', () => {

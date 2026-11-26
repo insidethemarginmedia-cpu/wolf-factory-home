@@ -23,7 +23,11 @@ const headersFor = token => ({
 });
 
 async function get(path, token, fetchImpl = globalThis.fetch) {
-  const response = await fetchImpl(API + path, {headers: headersFor(token)});
+  const response = await fetchImpl(API + path, {
+    headers: headersFor(token),
+    redirect: 'error',
+    signal: AbortSignal.timeout(20000),
+  });
   if (!response.ok) return {ok: false, httpStatus: response.status, body: null};
   let body = null;
   try {
@@ -67,34 +71,64 @@ export async function resolveTarget({
     return {...base, state: TARGET_STATES.BLOCKED, reason: 'REPOSITORY_INVALID'};
   }
 
-  // Two ways to read a PR head, tried in order of privilege:
-  //
-  //   1. `refs/pull/{n}/head` - a git ref, which needs only `contents: read`.
-  //   2. the pulls API - richer, but needs `pull_requests: read`.
-  //
-  // The reader role holds contents:read and metadata:read by design. Widening it to
-  // pull_requests:read to satisfy a convenience would trade a real permission for a
-  // nicer response, so the git ref is tried first and the API is only a fallback for
-  // the merge/state fields. Least privilege is preserved, not assumed.
-  const ref = await get(`/repos/${repository}/git/ref/pull/${pr}/head`, token, fetchImpl);
-  const pull = ref.ok ? {ok: true, httpStatus: 200, body: null} : await get(`/repos/${repository}/pulls/${pr}`, token, fetchImpl);
+  // The PR head ref is the narrow contents:read route. Verifying that the PR is
+  // still open and unmerged is a separate acceptance requirement and needs the
+  // read-only `pull_requests:read` scope. Both are queried: using only the ref
+  // would accept a closed or merged PR because git refs do not expose that state.
+  // This is the minimum scope expansion justified by the exact-target policy; no
+  // write permission is added to the reader role.
+  if (!/^[1-9][0-9]*$/.test(String(pr ?? ''))) {
+    return {...base, state: TARGET_STATES.BLOCKED, reason: 'PR_NUMBER_INVALID'};
+  }
+  const [ref, pull] = await Promise.all([
+    get(`/repos/${repository}/git/ref/pull/${pr}/head`, token, fetchImpl),
+    get(`/repos/${repository}/pulls/${pr}`, token, fetchImpl),
+  ]);
 
-  let prHead = null;
-  if (ref.ok && typeof ref.body?.object?.sha === 'string') {
-    prHead = ref.body.object.sha;
-  } else if (pull.ok && typeof pull.body?.head?.sha === 'string') {
-    prHead = pull.body.head.sha;
+  if (!pull.ok) {
+    return {
+      ...base,
+      state: TARGET_STATES.BLOCKED,
+      reason: ref.ok ? 'PR_STATE_UNVERIFIED' : 'PR_UNREADABLE',
+      httpStatus: pull.httpStatus,
+      refHttpStatus: ref.httpStatus,
+    };
   }
-  if (!pull.ok && !ref.ok) {
-    return {...base, state: TARGET_STATES.BLOCKED, reason: 'PR_UNREADABLE', httpStatus: pull.httpStatus, refHttpStatus: ref.httpStatus};
+  const pullNumber = Number(pull.body?.number);
+  const prState = typeof pull.body?.state === 'string' ? pull.body.state : null;
+  const mergedKnown = typeof pull.body?.merged === 'boolean';
+  const prMerged = mergedKnown ? pull.body.merged : null;
+  const pullHead = pull.body?.head?.sha;
+  if (pullNumber !== Number(pr) || !['open', 'closed'].includes(prState) || !mergedKnown
+      || !/^[0-9a-f]{40}$/.test(String(pullHead ?? ''))) {
+    return {
+      ...base,
+      state: TARGET_STATES.BLOCKED,
+      reason: 'PR_STATE_UNVERIFIED',
+      prState,
+      prMerged,
+      prHead: ref.body?.object?.sha ?? pullHead ?? null,
+    };
   }
+  const refHead = ref.ok ? ref.body?.object?.sha : null;
+  if (ref.ok && !/^[0-9a-f]{40}$/.test(String(refHead ?? ''))) {
+    return {...base, state: TARGET_STATES.BLOCKED, reason: 'PR_HEAD_UNRESOLVED', prState, prMerged};
+  }
+  if (refHead && refHead !== pullHead) {
+    return {
+      ...base,
+      state: TARGET_STATES.BLOCKED,
+      reason: 'PR_HEAD_CHANGED_DURING_RESOLUTION',
+      prState,
+      prMerged,
+      refHead,
+      pullHead,
+    };
+  }
+  const prHead = refHead ?? pullHead;
   if (!/^[0-9a-f]{40}$/.test(String(prHead ?? ''))) {
-    return {...base, state: TARGET_STATES.BLOCKED, reason: 'PR_HEAD_UNRESOLVED'};
+    return {...base, state: TARGET_STATES.BLOCKED, reason: 'PR_HEAD_UNRESOLVED', prState, prMerged};
   }
-  // State and merge flag come from the pulls API when it is readable; via the git
-  // ref they are simply unknown, which is reported rather than guessed.
-  const prState = pull.body?.state ?? null;
-  const prMerged = pull.body?.merged === true;
 
   const repo = await get(`/repos/${repository}`, token, fetchImpl);
   const defaultBranch = repo.ok && typeof repo.body?.default_branch === 'string' ? repo.body.default_branch : null;
@@ -166,15 +200,69 @@ export async function resolveTarget({
  */
 export function targetVerdict(target) {
   if (!target || target.state !== TARGET_STATES.RESOLVED) {
-    return {state: 'BLOCKED', acceptanceValid: false, reason: target?.reason ?? 'TARGET_UNRESOLVED'};
+    const unavailable = target?.reason === 'PR_UNREADABLE' || target?.reason === 'PR_HEAD_UNRESOLVED';
+    return {
+      state: unavailable ? 'UNKNOWN' : 'BLOCKED',
+      acceptanceValid: false,
+      reason: target?.reason ?? 'TARGET_UNRESOLVED',
+    };
   }
-  const current = target.relation === RELATION.CURRENT;
+
+  const sha = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
+  if (!sha(target.prHead) || !sha(target.pinnedSha)) {
+    return {state: 'BLOCKED', acceptanceValid: false, reason: 'TARGET_IDENTITY_UNESTABLISHED'};
+  }
+  if (target.pinnedSha !== target.prHead) {
+    return {
+      state: 'STALE',
+      acceptanceValid: false,
+      reason: 'PIN_NO_LONGER_PR_HEAD',
+      prHead: target.prHead,
+      pinnedSha: target.pinnedSha,
+      treeIdentical: target.treeIdentity?.identical === true,
+    };
+  }
+  if (target.relation !== RELATION.CURRENT) {
+    return {state: 'UNKNOWN', acceptanceValid: false, reason: 'PR_HEAD_RELATION_UNVERIFIED'};
+  }
+  if (target.prMerged === true || target.prState === 'closed') {
+    return {state: 'BLOCKED', acceptanceValid: false, reason: 'PR_NOT_OPEN'};
+  }
+  if (target.prState !== 'open' || target.prMerged !== false) {
+    return {state: 'BLOCKED', acceptanceValid: false, reason: 'PR_STATE_UNVERIFIED'};
+  }
+
+  const pinnedTree = target.treeIdentity?.pinnedTree;
+  const prHeadTree = target.treeIdentity?.prHeadTree;
+  if (!sha(pinnedTree) || !sha(prHeadTree)) {
+    return {
+      state: 'UNKNOWN',
+      acceptanceValid: false,
+      reason: 'TREE_IDENTITY_UNRESOLVED',
+      prHead: target.prHead,
+      pinnedSha: target.pinnedSha,
+      treeIdentical: false,
+    };
+  }
+  if (pinnedTree !== prHeadTree || target.treeIdentity?.identical !== true) {
+    return {
+      state: 'BLOCKED',
+      acceptanceValid: false,
+      reason: 'TREE_IDENTITY_MISMATCH',
+      prHead: target.prHead,
+      pinnedSha: target.pinnedSha,
+      treeIdentical: false,
+    };
+  }
+
+  // No tree-equivalence exception exists in this acceptance policy. The exact
+  // immutable commit must be both the resolved PR head and the tree whose tests ran.
   return {
-    state: current ? 'CURRENT' : 'STALE',
-    acceptanceValid: current,
-    reason: current ? null : 'PIN_NO_LONGER_PR_HEAD',
+    state: 'CURRENT',
+    acceptanceValid: true,
+    reason: null,
     prHead: target.prHead,
     pinnedSha: target.pinnedSha,
-    treeIdentical: target.treeIdentity?.identical === true,
+    treeIdentical: true,
   };
 }

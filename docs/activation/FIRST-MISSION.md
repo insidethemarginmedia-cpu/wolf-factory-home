@@ -1,87 +1,77 @@
-# First Live Mission — Bounded Plan (Not Executed)
+# First Mission Checklist — Historical and Blocked
 
-Prepared, not run. This describes the single bounded mission that would follow
-activation, with its exact identity and acceptance criteria stated in advance so the
-result cannot be reinterpreted afterwards.
+Status as of 2026-11-24: **NOT AUTHORIZED / NOT EXECUTED.** This file is a review
+checklist only, not a mission payload, dispatch runbook, or approval. No target
+SHA, executor pin, sender identity, timestamp, or earlier acceptance statement in
+this historical plan is current authorization. No mission, private worker run,
+authenticated callback, or spend occurred in this session.
 
-## 1. Mission identity
+## Contract shape (illustrative only; not a dispatch payload)
 
-```json
-{
-  "schemaVersion": 1,
-  "missionId": "wolf-first-live-20261125-01",
-  "repository": "donraposo1-source/project-wolf",
-  "sha": "4fd43ffebfb87a9fbb74b4de1ded3af9c8bb1ca2",
-  "issuedAt": "<within 1 hour of dispatch>"
-}
+The local validator expects `issuedAt` to be a positive Unix epoch timestamp in
+**milliseconds**, as a JSON number (numeric strings are also parsed). The old ISO
+8601 sample was invalid for this validator. A live timestamp must be created at
+submission time; never reuse a historical value.
+
+```text
+schemaVersion: 1
+missionId: <8–128 characters matching the local schema>
+repository: donraposo1-source/project-wolf
+sha: <full lowercase 40-hex commit SHA>
+issuedAt: <current Unix epoch milliseconds, numeric>
 ```
 
-| Field | Value | Why |
-| --- | --- | --- |
-| `missionId` | `wolf-first-live-20261125-01` | Unique, stable, dated; a retry reuses it so the key `missionId@sha` dedupes |
-| `repository` | `donraposo1-source/project-wolf` | The only allowlisted source |
-| `sha` | `4fd43ffe…` | The **current** PR #743 head, resolved live (see `docs/private-ci-target-resolution.md`) |
-| sender | `insidethemarginmedia-cpu` or `donraposo1-source` | On the listener's authorized list |
-| executor | `6c2848d1849d85e70ff3a9590a42b3df0465c487` | The approved pin |
-| `deliveryId` | assigned by GitHub from the run id | Not caller-chosen, so replay protection holds |
+This pseudocode intentionally contains no executable target SHA or dispatch
+command. The authoritative Factory/Factory 2 envelope, nonce/replay rules,
+callback authentication, and terminal receipt contract still need reconciliation.
 
-**This requires a pin change.** The workflow currently pins `8d319fc`, which the
-resolver reports as `STALE` against `4fd43ff`. A first mission must either:
+## Preconditions — every item must be independently resolved
 
-- target `4fd43ff` (requires moving the pin — a founder decision), or
-- explicitly accept `8d319fc` as a **historical baseline**, labelled as such, which
-  is a different claim and must be written that way on the receipt.
+1. Obtain approval for the actual default-branch listener and its exact sender
+   allowlist. The current listener is not on `main`; no default-branch change is
+   authorized here.
+2. Verify that the immutable executor pin resolves to a real remote commit and
+   that its tree contains the exact reusable workflow inputs, durable admission
+   gate, and tested implementation. A syntactically valid SHA is not sufficient.
+3. Reconcile the authoritative Factory P1.59 / Factory 2 P1.47+ contract,
+   including nonce/replay rules, callback signatures, lease/fence semantics,
+   idempotency, and terminal receipts. The local schema does not supply these.
+4. Verify the exact target SHA and its tree through the approved read path. A
+   missing SHA must remain empty and fail closed; do not substitute a branch,
+   tag, or baked-in value.
+5. Confirm the existing durable queue/recovery owner and run-to-callback
+   correlation. The admission ledger is not an execution queue; runner-local
+   journal fixtures do not prove recovery.
+6. Require exact-SHA private checks, real worker output, an authenticated
+   callback, zero-cost evidence, and independent verification before describing
+   anything as accepted.
 
-Running a mission against a stale pin and calling it PR acceptance is the exact
-failure this work exists to prevent.
+## Evidence that would be required
 
-## 2. Acceptance criteria — all must hold, none is sufficient alone
+- A durable admission record and anchor matching mission id, target repository and
+  SHA, sender-issued delivery identity, executor SHA, and GitHub run id.
+- A reusable-workflow run at the reviewed immutable executor commit, with the
+  durable admission gate successful before private checkout or any secret/write
+  step.
+- Exact target/tree identity and all required blocking private checks.
+- A real private-worker result and authenticated callback correlated to that run,
+  plus an independent verifier's result.
+- A durable terminal receipt and a cost record showing no paid fallback.
 
-| # | Criterion | How it is observed |
-| --- | --- | --- |
-| 1 | Admission recorded | A listener admission record with `admitted: true` and the correct `missionKey` |
-| 2 | Executor is the approved pin | The reusable-workflow call names `6c2848d…` |
-| 3 | Exact private SHA executed | Receipt `acceptanceTarget.pinnedSha` equals the mission `sha` |
-| 4 | Tree identity | Receipt `acceptanceTarget.treeIdentical` is `true` for that SHA |
-| 5 | All blocking checks pass | 13/13, no `BLOCKED`, no advisory downgrade for `postgres-concurrency` |
-| 6 | Independent test results | The private suite's own results, not inferred from exit codes |
-| 7 | Private check published | A check exists on `4fd43ff` from this pipeline |
-| 8 | Durable receipt | Receipt committed to the private publication branch, bound to the SHA |
-| 9 | Duplicate suppressed | Re-sending the identical payload yields `DUPLICATE`, no second execution |
-| 10 | Authenticated transport | `authentication.mode: github-app`, no PAT used |
-| 11 | Zero cost | `EUR_SPEND=0`, no paid endpoint in the run |
-| 12 | Correlated run | The listener event maps to exactly one executor run id |
+A fixture, unit test, local simulation, `workflow_dispatch` run, HTTP 2xx, green
+public canary, or `state: VERIFIED` check receipt is **not** private-worker
+acceptance. No one should dispatch until every prerequisite above is reviewed and
+explicitly approved.
 
-HTTP 2xx, a green push-triggered run, or a `VERIFIED` state on a different SHA
-satisfies **none** of these.
+## Adversarial checks to retain
 
-## 3. Adversarial cases to exercise around the first mission
-
-Each is a test the transport must survive, run deliberately and recorded:
-
-| Case | Expected |
+| Case | Expected result |
 | --- | --- |
-| Duplicate delivery (same payload twice) | `DUPLICATE`, one execution |
-| Expired mission (issuedAt > 1h ago) | `REJECTED / MISSION_EXPIRED`, no execution |
-| Unauthorized sender | `LISTENER_SENDER_UNAUTHORIZED`, no execution |
-| Invalid SHA (branch name, short SHA) | `REJECTED / MISSION_SHA_INVALID` |
-| Unapproved executor SHA | `LISTENER_EXECUTOR_SHA_NOT_APPROVED` |
-| Revoked credential mid-run | Fail closed; no fallback to a retired PAT |
-| Crash recovery | A restarted run re-mints and completes, or refuses cleanly |
-| Stale receipt | A receipt whose `acceptanceValid` is false is not counted as acceptance |
-
-## 4. What would make the mission void
-
-Any of these means the run is discarded rather than reinterpreted:
-
-- the pin moved during the run
-- the private SHA changed after admission
-- the receipt was produced by a push trigger rather than the listener
-- any check was downgraded rather than passed
-- the ledger anchor changed underneath the run in a way the run did not record
-
-## 5. Non-goals
-
-- Not the eight-hour shift. That requires its own acceptance and is not implied by
-  a green first mission.
-- Not autonomous operation. One mission, one SHA, observed end to end.
+| Duplicate delivery or repeated `missionId@sha` | Refuse without a second execution |
+| Expired or future-issued mission | Refuse before handoff |
+| Unauthorized sender or empty allowlist | Refuse before handoff |
+| Branch name, tag, short, missing, or malformed target SHA | Fail closed; no fallback |
+| Unapproved or unresolved executor SHA | Refuse before private access |
+| Missing/tampered admission ledger or anchor | Refuse before private checkout and credential mint |
+| Failed admission gate followed by `always()` steps | No secret-bearing or write step runs; cleanup may still run |
+| Crash, unknown external effect, or missing terminal receipt | State remains unknown; no automatic replay |

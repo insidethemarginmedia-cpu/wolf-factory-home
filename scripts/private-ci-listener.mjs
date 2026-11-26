@@ -170,7 +170,7 @@ export function admitMission(event, {
  * Written for the same append-only journal the bridge uses, so admission evidence
  * and execution evidence sit in one place. No credential and no private content.
  */
-export function admissionRecord(admission, {now = Date.now()} = {}) {
+export function admissionRecord(admission, {now = Date.now(), runId = null} = {}) {
   return {
     schemaVersion: LISTENER_SCHEMA_VERSION,
     ledger: 'listener-admissions',
@@ -179,8 +179,12 @@ export function admissionRecord(admission, {now = Date.now()} = {}) {
     reason: admission?.reason ?? null,
     deliveryId: admission?.deliveryId ?? null,
     missionKey: admission?.missionKey ?? null,
+    missionId: admission?.mission?.missionId ?? null,
+    targetRepository: admission?.mission?.repository ?? null,
+    targetSha: admission?.mission?.sha ?? null,
     sender: admission?.sender ?? null,
     executorSha: admission?.executorSha ?? null,
+    runId: runId === null || runId === undefined ? null : String(runId),
     recordedAt: new Date(now).toISOString(),
     credentialsRequired: false,
   };
