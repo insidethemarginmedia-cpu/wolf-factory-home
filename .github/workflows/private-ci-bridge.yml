@@ -140,6 +140,7 @@ on:
       - 'tests/private-controller-preflight.test.mjs'
       - 'tests/private-ci-journal.test.mjs'
       - 'docs/integration-contract.md'
+      - 'docs/executor-pin-recovery.md'
       - 'docs/activation-plan.md'
       - 'docs/activation/**'
       - 'docs/checkpoints/WOLF-P140-ZERO-TOUCH-MISSION-TRANSPORT.json'
