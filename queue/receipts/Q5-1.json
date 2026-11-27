@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q5",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:17:04.572Z",
+  "finishedAt": "2026-11-27T15:17:04.575Z",
+  "durationMs": 3,
+  "verify": "test -f research/README.md && test -f research/BASELINE.md && test -f research/LITERATURE.md && test -f research/SIMPLIFICATION-MATRIX.md && test -f research/JOURNAL.md && node -e \"const fs=require('fs'); for(const f of ['research/README.md','research/BASELINE.md','research/LITERATURE.md','research/SIMPLIFICATION-MATRIX.md','research/JOURNAL.md']){const s=fs.readFileSync(f,'utf8'); if(s.length<400) throw new Error(f+' too short'); if(!/VERIFIED FACT|SCIENTIFIC THEORY|HYPOTHESIS|ESTIMATE|BLOCKED_EXTERNAL/.test(s)) throw new Error(f+' lacks epistemic labels');} console.log('research docs ok');\"",
+  "ok": false,
+  "exitCode": 1,
+  "timedOut": false,
+  "head": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+  "outputTail": ""
+}

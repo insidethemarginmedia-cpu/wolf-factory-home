@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q2",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:16:46.790Z",
+  "finishedAt": "2026-11-27T15:16:49.693Z",
+  "durationMs": 2903,
+  "verify": "node --test tests/wolf-research-instrument.test.mjs",
+  "ok": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+  "outputTail": ""
+}

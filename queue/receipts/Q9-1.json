@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q9",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:24:54.537Z",
+  "finishedAt": "2026-11-27T15:24:54.579Z",
+  "durationMs": 42,
+  "verify": "node -e \"const r=require('./research/evidence/factory-home-baseline-20261127.json'); const t=r.measurement.commitTypes; const dc=(t.docs||0)+(t.checkpoint||0); console.log('baseline captured: docs+checkpoint='+dc+' ('+(dc/r.measurement.commitsUnique*100).toFixed(1)+'%)'); if(dc<100) throw new Error('expected measured docs+checkpoint>=100'); console.log('reduction target recorded for future baselines');\"",
+  "ok": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+  "outputTail": ""
+}

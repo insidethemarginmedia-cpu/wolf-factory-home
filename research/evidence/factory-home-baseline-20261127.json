@@ -1,0 +1,1000 @@
+{
+  "schemaVersion": 1,
+  "tool": "wolf-research-instrument",
+  "repository": "/home/user/wolf-factory-home",
+  "head": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+  "measurement": {
+    "commitsUnique": 402,
+    "dateRange": {
+      "first": "2026-10-16",
+      "last": "2026-11-27",
+      "activeDays": 20
+    },
+    "commitTypes": {
+      "fix": 129,
+      "docs": 75,
+      "checkpoint": 37,
+      "chore": 35,
+      "factory": 34,
+      "feat": 33,
+      "test": 28,
+      "ci": 17,
+      "other": 9,
+      "verify": 2,
+      "diagnostic": 1,
+      "review": 1,
+      "security": 1
+    },
+    "commitScopes": {
+      "ci": 99,
+      "runtime": 73,
+      "ollama": 52,
+      "factory": 15,
+      "auth": 8,
+      "acceptance": 7,
+      "wakeup": 6,
+      "loop1": 5,
+      "recovery": 5,
+      "checkpoint": 4,
+      "ruflo": 3,
+      "activation": 2,
+      "governance": 2,
+      "omega": 2,
+      "preflight": 2,
+      "actions": 1,
+      "admission": 1,
+      "artifacts": 1,
+      "economic": 1,
+      "economics": 1,
+      "evidence": 1,
+      "flint": 1,
+      "mission": 1,
+      "omega-p0": 1,
+      "p6": 1,
+      "publication": 1,
+      "test": 1,
+      "wolf": 1
+    },
+    "authors": {
+      "insidethemarginmedia-cpu": 194,
+      "donraposo1-source": 100,
+      "github-actions[bot]": 86,
+      "Wolf Factory Engineer": 15,
+      "Arena Agent": 4,
+      "ChatGPT Work": 1,
+      "Project Wolf Audit": 1,
+      "Wolf Test": 1
+    },
+    "commitsByDay": {
+      "2026-11-25": 79,
+      "2026-10-26": 62,
+      "2026-10-27": 41,
+      "2026-10-25": 34,
+      "2026-11-24": 30,
+      "2026-10-28": 26,
+      "2026-10-29": 25,
+      "2026-11-04": 23,
+      "2026-10-24": 20,
+      "2026-10-31": 18,
+      "2026-10-30": 11,
+      "2026-11-27": 9,
+      "2026-11-01": 7,
+      "2026-11-26": 5,
+      "2026-10-22": 3,
+      "2026-11-05": 3,
+      "2026-11-11": 3,
+      "2026-10-16": 1,
+      "2026-11-02": 1,
+      "2026-11-12": 1
+    },
+    "fileTouchEvents": 1002,
+    "uniqueFilesTouched": 390,
+    "topChurn": [
+      {
+        "path": ".github/workflows/private-controller-preflight.yml",
+        "touches": 112
+      },
+      {
+        "path": ".github/workflows/private-ci-bridge.yml",
+        "touches": 56
+      },
+      {
+        "path": ".wolf-ci/retirement-ledger.jsonl",
+        "touches": 19
+      },
+      {
+        "path": "scripts/private-ci-bridge.mjs",
+        "touches": 18
+      },
+      {
+        "path": "docs/private-ci-bridge-evidence.md",
+        "touches": 15
+      },
+      {
+        "path": "scripts/private-ci-execute.mjs",
+        "touches": 14
+      },
+      {
+        "path": "docs/integration-contract.md",
+        "touches": 13
+      },
+      {
+        "path": "scripts/git-publication-preflight.mjs",
+        "touches": 12
+      },
+      {
+        "path": "tests/private-ci-bridge.test.mjs",
+        "touches": 12
+      },
+      {
+        "path": ".github/workflows/night-shift-wakeup.yml",
+        "touches": 11
+      },
+      {
+        "path": "scripts/private-ci-app-auth-cli.mjs",
+        "touches": 11
+      },
+      {
+        "path": "tests/git-publication-preflight.test.mjs",
+        "touches": 11
+      },
+      {
+        "path": "tests/private-ci-execute.test.mjs",
+        "touches": 11
+      },
+      {
+        "path": ".github/workflows/ollama-public-synthetic-qualification.yml",
+        "touches": 10
+      },
+      {
+        "path": "scripts/private-ci-app-acceptance.mjs",
+        "touches": 10
+      }
+    ],
+    "touchesByTopLevelDirectory": {
+      "docs": 278,
+      "tests": 240,
+      ".github": 198,
+      "scripts": 196,
+      "wolf-ruflo": 33,
+      ".wolf-ci": 22,
+      "integration-tests": 13,
+      "infra": 12,
+      "(root)": 9,
+      "artifacts": 1
+    },
+    "shares": {
+      "fix": 0.3209,
+      "feat": 0.0821,
+      "docs": 0.1866,
+      "chore": 0.0871,
+      "checkpoint": 0.092,
+      "test": 0.0697
+    },
+    "branches": [
+      {
+        "branch": "origin/arena/156d9fee-wolf-factory-home",
+        "commitsReachable": 258,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 257,
+        "filesChanged": 155
+      },
+      {
+        "branch": "origin/arena/35e73e30-wolf-factory-home",
+        "commitsReachable": 225,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 224,
+        "filesChanged": 129
+      },
+      {
+        "branch": "origin/arena/38f3a7f7-wolf-factory-home",
+        "commitsReachable": 290,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 289,
+        "filesChanged": 193
+      },
+      {
+        "branch": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "commitsReachable": 238,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 237,
+        "filesChanged": 170
+      },
+      {
+        "branch": "origin/arena/68ba415c-wolf-factory-home",
+        "commitsReachable": 239,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 238,
+        "filesChanged": 161
+      },
+      {
+        "branch": "origin/arena/8e7c82ab-wolf-factory-home",
+        "commitsReachable": 239,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 238,
+        "filesChanged": 153
+      },
+      {
+        "branch": "origin/arena/96b41b62-wolf-factory-home",
+        "commitsReachable": 236,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 235,
+        "filesChanged": 140
+      },
+      {
+        "branch": "origin/arena/b9b951dd-wolf-factory-home",
+        "commitsReachable": 221,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 220,
+        "filesChanged": 124
+      },
+      {
+        "branch": "origin/arena/e600a8d5-wolf-factory-home",
+        "commitsReachable": 238,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 237,
+        "filesChanged": 136
+      },
+      {
+        "branch": "origin/arena/f1f02cea-wolf-factory-home",
+        "commitsReachable": 5,
+        "mergeBase": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+        "aheadOfMain": 2,
+        "filesChanged": 3
+      },
+      {
+        "branch": "origin/feat/factory-real-worker-m1-20261006",
+        "commitsReachable": 238,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 237,
+        "filesChanged": 172
+      },
+      {
+        "branch": "origin/feat/public-runtime-probe-20261022",
+        "commitsReachable": 198,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 197,
+        "filesChanged": 92
+      },
+      {
+        "branch": "origin/fix/omega-acceptance-ready-20261028",
+        "commitsReachable": 237,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 236,
+        "filesChanged": 135
+      },
+      {
+        "branch": "origin/main",
+        "commitsReachable": 3,
+        "mergeBase": null,
+        "aheadOfMain": null,
+        "filesChanged": null
+      },
+      {
+        "branch": "origin/wolf-ci-retirement",
+        "commitsReachable": 276,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 275,
+        "filesChanged": 148
+      },
+      {
+        "branch": "origin/work/omega-home-executor-20261127",
+        "commitsReachable": 290,
+        "mergeBase": "da2ae9b4cef830e0d441f5e0b4b2fdab16196bdd",
+        "aheadOfMain": 289,
+        "filesChanged": 193
+      }
+    ],
+    "mergeConflicts": [
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/arena/35e73e30-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/arena/38f3a7f7-wolf-factory-home",
+        "conflicts": 13,
+        "conflictedPaths": [
+          ".github/workflows/private-ci-bridge.yml",
+          "docs/integration-contract.md",
+          "docs/private-ci-bridge-evidence.md",
+          "scripts/private-ci-bridge.mjs",
+          "scripts/private-ci-execute.mjs",
+          "scripts/private-ci-inventory.mjs",
+          "scripts/private-ci-mission-cli.mjs",
+          "scripts/private-ci-publish-receipt.mjs",
+          "tests/private-ci-app-exposure.test.mjs",
+          "tests/private-ci-bridge.test.mjs",
+          "tests/private-ci-inventory.test.mjs",
+          "tests/private-ci-mission.test.mjs",
+          "tests/private-ci-trigger-coverage.test.mjs"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/arena/68ba415c-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/arena/8e7c82ab-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/arena/96b41b62-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/arena/b9b951dd-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/arena/e600a8d5-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          "docs/integration-contract.md",
+          "docs/private-ci-bridge-evidence.md"
+        ]
+      },
+      {
+        "a": "origin/arena/156d9fee-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 10,
+        "conflictedPaths": [
+          ".github/workflows/private-ci-bridge.yml",
+          "docs/integration-contract.md",
+          "docs/private-ci-bridge-evidence.md",
+          "scripts/private-ci-bridge.mjs",
+          "scripts/private-ci-execute.mjs",
+          "scripts/private-ci-mission-cli.mjs",
+          "scripts/private-ci-publish-receipt.mjs",
+          "tests/private-ci-app-exposure.test.mjs",
+          "tests/private-ci-bridge.test.mjs",
+          "tests/private-ci-trigger-coverage.test.mjs"
+        ]
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/arena/38f3a7f7-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/arena/68ba415c-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/arena/8e7c82ab-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/arena/96b41b62-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/arena/b9b951dd-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/arena/e600a8d5-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/35e73e30-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/arena/68ba415c-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/arena/8e7c82ab-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/arena/96b41b62-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/arena/b9b951dd-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/arena/e600a8d5-wolf-factory-home",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/38f3a7f7-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/arena/68ba415c-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/arena/8e7c82ab-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/arena/96b41b62-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/arena/b9b951dd-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/arena/e600a8d5-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/3f5e2ca6-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/arena/8e7c82ab-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/arena/96b41b62-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/arena/b9b951dd-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/arena/e600a8d5-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/68ba415c-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/8e7c82ab-wolf-factory-home",
+        "b": "origin/arena/96b41b62-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/8e7c82ab-wolf-factory-home",
+        "b": "origin/arena/b9b951dd-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/8e7c82ab-wolf-factory-home",
+        "b": "origin/arena/e600a8d5-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/8e7c82ab-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/8e7c82ab-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/8e7c82ab-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/8e7c82ab-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/8e7c82ab-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/96b41b62-wolf-factory-home",
+        "b": "origin/arena/b9b951dd-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/96b41b62-wolf-factory-home",
+        "b": "origin/arena/e600a8d5-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/96b41b62-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/96b41b62-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/96b41b62-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/96b41b62-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/96b41b62-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/b9b951dd-wolf-factory-home",
+        "b": "origin/arena/e600a8d5-wolf-factory-home",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/b9b951dd-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/b9b951dd-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/b9b951dd-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/b9b951dd-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/b9b951dd-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/e600a8d5-wolf-factory-home",
+        "b": "origin/feat/factory-real-worker-m1-20261006",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/e600a8d5-wolf-factory-home",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/e600a8d5-wolf-factory-home",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/arena/e600a8d5-wolf-factory-home",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/arena/e600a8d5-wolf-factory-home",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/feat/factory-real-worker-m1-20261006",
+        "b": "origin/feat/public-runtime-probe-20261022",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/feat/factory-real-worker-m1-20261006",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/feat/factory-real-worker-m1-20261006",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/feat/factory-real-worker-m1-20261006",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/feat/public-runtime-probe-20261022",
+        "b": "origin/fix/omega-acceptance-ready-20261028",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/feat/public-runtime-probe-20261022",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/feat/public-runtime-probe-20261022",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 0,
+        "conflictedPaths": []
+      },
+      {
+        "a": "origin/fix/omega-acceptance-ready-20261028",
+        "b": "origin/wolf-ci-retirement",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/fix/omega-acceptance-ready-20261028",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 2,
+        "conflictedPaths": [
+          ".github/workflows/night-shift-wakeup.yml",
+          ".github/workflows/private-controller-preflight.yml"
+        ]
+      },
+      {
+        "a": "origin/wolf-ci-retirement",
+        "b": "origin/work/omega-home-executor-20261127",
+        "conflicts": 0,
+        "conflictedPaths": []
+      }
+    ]
+  }
+}

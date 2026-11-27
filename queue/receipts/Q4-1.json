@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q4",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:16:50.252Z",
+  "finishedAt": "2026-11-27T15:16:50.442Z",
+  "durationMs": 190,
+  "verify": "node scripts/wolf-loop.mjs status && node scripts/wolf-loop.mjs next && node scripts/wolf-loop.mjs run --dry-run && node -e \"const{loadQueue,nextTask,unblocked,rankTasks,findCycle}=require('node:module').createRequire(process.cwd()+'/x.js');\" 2>/dev/null; node --input-type=module -e \"import {loadQueue,nextTask,findCycle} from './scripts/wolf-loop.mjs'; const q=loadQueue(); if(findCycle(q.tasks)) throw new Error('cycle'); const n=nextTask(q); if(!n) throw new Error('no next task'); if(n.deps.some(d=>q.tasks.find(t=>t.id===d).status!=='done')) throw new Error('next task still blocked'); console.log('loop ok, next='+n.id);\"",
+  "ok": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+  "outputTail": ""
+}
