@@ -166,6 +166,118 @@ unreadable. This entry demonstrates the *method*, not Wolf itself.
 
 ---
 
+---
+
+## Entry 007 — 2026-11-27 · Reuse directive: what actually exists
+
+**Question (Founder directive OMEGA X):** can existing builders (Lovable,
+Hercules, Bolt, Replit, v0, bolt.diy, OpenHands, OpenCode, Aider, Dyad)
+replace custom Factory components?
+
+**Method.** Licences read from each repository's own `LICENSE` via
+`GET /repos/{owner}/{repo}/license` — not from blog posts. Versions from
+`npm view`. Timings bracketed with `date +%s%3N` in this workspace.
+
+**Findings.**
+1. **`VERIFIED FACT`** — "Hercules" names **three unrelated projects**: an
+   AGPL-3.0 spec-first plugin (`mbienkowski/hercules`), an AGPL-3.0 browser test
+   agent (`test-zeus-ai/testzeus-hercules`), and an MIT UI clone *inspired by*
+   Hercules.ai. Any decision citing it must name the repository.
+2. **`VERIFIED FACT`** — **bolt.diy** code is MIT but its README states
+   WebContainers *"requires licensing for production usage in a commercial,
+   for-profit setting. Prototypes or POCs do not."* ⇒ POC-only for Wolf.
+3. **`VERIFIED FACT`** — **Dyad** reports `NOASSERTION`: Apache-2.0 outside
+   `src/pro`, **Functional Source License 1.1** inside. Only the Apache-2.0
+   region is safe to reuse.
+4. **`VERIFIED FACT`** — clean and usable: `sst/opencode` (MIT, 229 577★),
+   `cline/cline` (Apache-2.0), `OpenHands/OpenHands` (MIT),
+   `Aider-AI/aider` (Apache-2.0, last push 2026-05-22 — **6 months stale**).
+
+**Decision.** AGPL components **deferred pending recorded Founder decision**
+(Q14), not silently adopted. Split/commercial licences excluded from production
+use. `EUR_SPEND=0` maintained — all installs from public registries.
+
+---
+
+## Entry 008 — 2026-11-27 · Negative result: no model credential in environment
+
+**Hypothesis.** An existing open-source harness could serve as the Factory's
+engineering engine immediately.
+
+**Probe (`VERIFIED FACT`):** node v22.22.3, npm 10.9.8, python3 3.11.2;
+**uv, docker, ollama all absent**; **no `OPENROUTER_*`/`OPENAI_*`/
+`ANTHROPIC_*`/`GROQ_*` env keys** (names inspected only, no value read);
+egress to npm/pypi/github = 200.
+
+**Result (`EXPERIMENTALLY VALIDATED RESULT`, E3):**
+- **Aider** → `litellm.AuthenticationError: Missing Anthropic API Key`
+- **OpenCode** (installed from npm in 63 s) → `rc=0` but prints only
+  `> build · claude-sonnet-4.6`, **no output, no completion** — recorded
+  *inconclusive*, not success.
+
+**Classification:** the GENERATE row of any Lovable-shaped loop is
+**`BLOCKED_EXTERNAL`**. This falsifies "adopt a builder as the engine today"
+and simultaneously *confirms* that the blocker is a credential, not missing
+tooling. Recorded as queue task **Q13** (Founder-owned).
+
+**Lesson.** Reuse research that ignores the runtime environment produces
+nonsense recommendations. Probe capability *before* ranking platforms.
+
+---
+
+## Entry 009 — 2026-11-27 · Measured: reuse beats building, where it applies
+
+**`EXPERIMENTALLY VALIDATED RESULT`** — components executed offline against
+real Wolf Factory code, no key, no network:
+
+| experiment | component | result |
+|---|---|---|
+| **E1** | Aider `RepoMap` (Apache-2.0) | **0.547 s** → 23 files, 11 035 chars / 344 lines |
+| **E2** | Aider `Linter` (Apache-2.0) | **0.363 s**; caught real `SyntaxError`, passed clean file |
+| **E5** | full loop, CONTEXT+VERIFY stages | **2.969 s wall** tooling total |
+
+**E5 functional result:** a real `.gitignore` for the research lab, verified
+with `git check-ignore` control — three cache paths **IGNORED**, two evidence
+files **still TRACKED**, suite **34/34** after the change.
+
+**Graceful-degradation observation:** Aider attempted to fetch litellm pricing
+from `raw.githubusercontent.com`, was blocked by egress, and **still produced
+the map**. A component that fails soft under `COST_UNKNOWN=DENY` is reusable
+here; one that fails hard is not.
+
+**Negative result preserved:** two earlier attempts at E1 failed on guessed API
+signatures (`map_refresh` kwarg; `RepoMap` exported from `aider.repo` instead of
+`aider.repomap`). Fixed by reading the installed source rather than guessing —
+the same lesson as Entry 002: **inspect, don't assume**.
+
+---
+
+## Entry 010 — 2026-11-27 · The reuse arithmetic
+
+**`VERIFIED FACT`:** `scripts/private-ci-*.mjs` = **8 310** lines,
+`tests/private-ci-*.mjs` = **6 778** lines ⇒ **15 088 lines** in the private-CI
+family, while all other scripts+tests total ~1 640.
+
+**`VERIFIED FACT`** — `private-ci-journal.mjs`'s own header:
+
+> *"This file does not provide cross-run durability on GitHub-hosted runners:
+> the JSON file lives on one ephemeral runner. It is not the production mission
+> queue, recovery service, or admission source."*
+
+**`VERIFIED FACT`** — official MIT equivalents already published:
+`actions/create-github-app-token` (922★), `@octokit/rest` 22.0.1, `yaml` 2.9.1,
+`better-sqlite3` 13.2.0, `nanoid` 6.0.2.
+
+**`ESTIMATE`** (not measured by deletion): replacing the three clearly-covered
+layers retires on the order of 2 000–3 000 custom lines plus a share of the
+6 778 test lines. Offered as a bound for a controlled experiment.
+
+**Decision.** Recorded as decisions R3–R6 in `REUSE-MATRIX.md`, with three
+falsifiable predictions (P1 line retirement >1 500 with ≥34 green; P2 measured
+speedup; P3 one key unlocks GENERATE).
+
+---
+
 ## Open questions (next experiments)
 
 | # | Question | Type | Needs |
@@ -175,8 +287,15 @@ unreadable. This entry demonstrates the *method*, not Wolf itself.
 | 3 | Can a product-domain test be written and made to fail? | `HYPOTHESIS` | Q6, Q7 |
 | 4 | Does a bounded task take longer with or without an agent, measured wall-clock? | `HYPOTHESIS` (METR replication) | task pool |
 | 5 | Does fixing authorship alone restore deploys? | `HYPOTHESIS` | Q8 |
+| 6 | Can one model key move GENERATE from `BLOCKED_EXTERNAL` to runnable with no further infra? | `HYPOTHESIS` | Q13 |
+| 7 | Do R3+R4+R5 retire >1 500 lines of `private-ci-*` with ≥34 tests still green? | `HYPOTHESIS` (P1) | Q10 |
+| 8 | Is adopting an AGPL component acceptable, or should Hercules be rejected in writing? | `HYPOTHESIS` | Q14 |
 
 **Exhausted investigations (do not repeat):** GitHub token scope probing
 (404 is conclusive), Supabase project listing (empty, twice), Factory Home
 branch enumeration (16 branches, all measured), test-suite execution (three
-conditions, recorded).
+conditions, recorded), **candidate licence enumeration (7 repositories read
+from their own `LICENSE`; three "Hercules" names disambiguated)**,
+**model-credential probing (absent; aider and opencode both confirmed unable
+to complete a run)**, **offline component benchmarking (repo map and linter
+timed; both reusable)**.

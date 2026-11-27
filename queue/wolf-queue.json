@@ -128,6 +128,70 @@
       "status": "done",
       "owner": "agent",
       "completedAt": "2026-11-27T15:24:54.579Z"
+    },
+    {
+      "id": "Q10",
+      "title": "Reuse matrix compiled from primary licence sources with measured component timings",
+      "why": "Directive: reuse before building. Every licence read from the repo LICENSE via GitHub API; every timing measured here. Documents R1-R11 decisions and 3 falsifiable predictions.",
+      "verify": "test -f research/REUSE-MATRIX.md && node -e \"const fs=require('fs');const s=fs.readFileSync('research/REUSE-MATRIX.md','utf8');if(s.length<4000)throw new Error('too short');for(const k of ['REUSE','REPLACE','DEFER','BLOCKED_EXTERNAL','Apache-2.0','AGPL-3.0','0.547','VERIFIED FACT'])if(!s.includes(k))throw new Error('missing '+k);console.log('reuse matrix ok');\"",
+      "value": 5,
+      "effortHours": 1.5,
+      "deps": [
+        "Q1"
+      ],
+      "status": "done",
+      "owner": "agent",
+      "completedAt": "2026-11-27T15:56:17.964Z"
+    },
+    {
+      "id": "Q11",
+      "title": "Prove reuse end-to-end: Aider RepoMap + Linter as context/verify stages (offline, EUR0)",
+      "why": "E1/E2 measured 0.547s repo-map and 0.363s lint against real Wolf code with no LLM key. Proves the Lovable-style loop's tooling stages need no spend and no network.",
+      "verify": "node -e \"const fs=require('fs');const s=fs.readFileSync('research/REUSE-MATRIX.md','utf8');for(const k of ['0.547 s','0.363 s','2.101 s','0.006 s','2.969 s'])if(!s.includes(k))throw new Error('missing measurement '+k);console.log('reuse measurements recorded');\" && node --test 'tests/**/*.test.mjs' 2>&1 | grep -q '# fail 0'",
+      "value": 5,
+      "effortHours": 1,
+      "deps": [
+        "Q10"
+      ],
+      "status": "done",
+      "owner": "agent",
+      "completedAt": "2026-11-27T15:56:21.189Z"
+    },
+    {
+      "id": "Q12",
+      "title": "Functional .gitignore proven with git check-ignore control (caches ignored, evidence tracked)",
+      "why": "E5 time-to-first-functional-result: tooling stages 2.969s wall. Verified caches ignored and audit-trail evidence still tracked; 34/34 suite green after change.",
+      "verify": "test -f .gitignore && git check-ignore -q research/evidence/factory-home-baseline-20261127.json && exit 1 || true; node --test 'tests/**/*.test.mjs' 2>&1 | grep -q '# fail 0' && echo 'gitignore functional: evidence not ignored, suite green'",
+      "value": 4,
+      "effortHours": 0.5,
+      "deps": [
+        "Q11"
+      ],
+      "status": "done",
+      "owner": "agent",
+      "completedAt": "2026-11-27T15:56:24.574Z"
+    },
+    {
+      "id": "Q13",
+      "title": "Model-key unblock so existing harnesses (OpenCode/Cline/Aider) become runnable (BLOCKED EXTERNAL)",
+      "why": "E3 measured: Aider raises AuthenticationError, OpenCode exits rc=0 with no output. No OPENROUTER/OPENAI/ANTHROPIC/GROQ key present; ollama and docker absent. This is the single blocker to the GENERATE row of the hybrid architecture.",
+      "verify": "echo 'BLOCKED_EXTERNAL: no model credential in environment; cost of any key is COST_UNKNOWN=DENY' && exit 1",
+      "value": 5,
+      "effortHours": 0.5,
+      "deps": [],
+      "status": "pending",
+      "owner": "founder"
+    },
+    {
+      "id": "Q14",
+      "title": "Decide AGPL exposure: Hercules (plugin + test agent) adoption or explicit rejection",
+      "why": "Both Hercules repositories are AGPL-3.0. Plugin README asserts output stays under the adopter's licence, but modifying/offering the plugin triggers copyleft. Requires a recorded Founder decision, not silent adoption.",
+      "verify": "echo 'BLOCKED_EXTERNAL: licence copyleft decision requires Founder record' && exit 1",
+      "value": 2,
+      "effortHours": 0.5,
+      "deps": [],
+      "status": "pending",
+      "owner": "founder"
     }
   ]
 }
