@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q15",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:58:45.428Z",
+  "finishedAt": "2026-11-27T15:58:45.517Z",
+  "durationMs": 89,
+  "verify": "/tmp/avenv/bin/python -c \"from aider.linter import Linter; import sys; r=Linter().lint('scripts/wolf-loop.mjs'); sys.exit(1 if r else 0)\" && echo 'aider lint gate green: Apache-2.0 component ran inside wolf-loop verify stage'",
+  "ok": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "14c3800709fd51dae26358c322140836ae126037",
+  "outputTail": ""
+}

@@ -192,6 +192,20 @@
       "deps": [],
       "status": "pending",
       "owner": "founder"
+    },
+    {
+      "id": "Q15",
+      "title": "Integrate Aider Linter as a real gate in the loop verify stage (proves reuse, not just benchmarking)",
+      "why": "E1/E2 measured the component standalone. This runs it as an actual verify command through wolf-loop, proving an Apache-2.0 component plugs into the existing loop with zero new orchestration.",
+      "verify": "/tmp/avenv/bin/python -c \"from aider.linter import Linter; import sys; r=Linter().lint('scripts/wolf-loop.mjs'); sys.exit(1 if r else 0)\" && echo 'aider lint gate green: Apache-2.0 component ran inside wolf-loop verify stage'",
+      "value": 5,
+      "effortHours": 0.5,
+      "deps": [
+        "Q11"
+      ],
+      "status": "done",
+      "owner": "agent",
+      "completedAt": "2026-11-27T15:58:45.517Z"
     }
   ]
 }
