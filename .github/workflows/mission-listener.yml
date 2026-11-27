@@ -39,8 +39,8 @@ env:
   # The only commit this listener may start. Must be an approved, reviewed SHA and
   # must be listed in LISTENER_APPROVED_EXECUTOR_SHAS below. Full 40 hex only: a
   # branch would move, and "the SHA I meant" is not auditable.
-  WOLF_LISTENER_EXECUTOR_SHA: 9679aa76397c7b248c3708be2c063e75a7058ae5
-  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: 9679aa76397c7b248c3708be2c063e75a7058ae5
+  WOLF_LISTENER_EXECUTOR_SHA: b3f397fd959f41c1a843e917b35e0a5914f53c11
+  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: b3f397fd959f41c1a843e917b35e0a5914f53c11
   # Senders permitted to submit a mission. Empty means refuse everything.
   WOLF_LISTENER_AUTHORIZED_SENDERS: insidethemarginmedia-cpu,donraposo1-source
   WOLF_LISTENER_REPOSITORY_ALLOWLIST: donraposo1-source/project-wolf
@@ -142,7 +142,7 @@ jobs:
     # Note there is no `runs-on` and no `steps` here by design: a job that calls a
     # reusable workflow cannot also run arbitrary shell, so the listener is
     # structurally incapable of doing privileged work itself.
-    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-ci-bridge.yml@9679aa76397c7b248c3708be2c063e75a7058ae5
+    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-ci-bridge.yml@b3f397fd959f41c1a843e917b35e0a5914f53c11
     with:
       # The mission's target SHA, taken from the admitted payload. The admission
       # job already validated it as a full 40-hex commit.
