@@ -47,6 +47,10 @@ test('activation documentation is covered, because it claims test counts', () =>
   assert.match(pushBlock, /docs\/activation\/\*\*/, 'docs/activation must be able to trigger the bridge');
 });
 
+test('executor pin recovery evidence is covered by the public regression workflow', () => {
+  assert.ok(covers('docs/executor-pin-recovery.md'), 'pin/interface evidence must trigger the suite it reports');
+});
+
 test('every checkpoint under docs/checkpoints can trigger the bridge', () => {
   const pushBlock = text.slice(text.indexOf('  push:'), text.indexOf('\npermissions:'));
   // Older checkpoints predate this filter and are historical records; they are not

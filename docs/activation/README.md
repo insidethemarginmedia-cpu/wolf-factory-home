@@ -4,9 +4,12 @@
 earlier P144 design. Its patch, pins, line/test counts, and copy/paste instructions
 do not match the current implementation. The listener is only in the engineering
 PR worktree. A read-only GitHub API check confirmed that `main` (the default
-branch) has neither the listener nor the bridge workflow. The attempted current
-pin `9679aa76397c7b248c3708be2c063e75a7058ae5` does not resolve; no replacement
-is authorized or guessed. Do not apply this package verbatim.
+branch) has neither the listener nor the bridge workflow. At the time this
+historical snapshot was prepared, its worktree pin
+`9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve. The current public
+candidate now uses the history-backed `b3f397fd959f41c1a843e917b35e0a5914f53c11`
+pin, but this old package remains superseded and must not be applied. Activation
+and dispatch are still unauthorized.
 
 Historical preparation reference: `arena/38f3a7f7-wolf-factory-home` @ `0225e82`.
 

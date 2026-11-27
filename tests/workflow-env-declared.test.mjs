@@ -73,10 +73,6 @@ const PROVIDED = new Set([
   // Optional runtime configuration: expanded with ${VAR:-default}, so it is
   // deliberately absent from the workflow environment.
   'PIP_INDEX_URL',
-  // Written by the retirement step into GITHUB_ENV, so it exists at runtime but
-  // cannot be declared statically. It is listed here rather than declared, because
-  // a static value would defeat the point: the flag must reflect this run.
-  'WOLF_CI_RETIRE_PAT',
 ]);
 
 test('the job block reader returns the requested job only', () => {
@@ -96,9 +92,9 @@ test('every shell variable the execute job uses is declared in that job', () => 
   assert.deepEqual(missing, [], `execute job references undeclared variables: ${missing.join(', ')}`);
 });
 
-test('the referenced-variable scanner sees real usage', () => {
+test('the referenced-variable scanner sees real private-source and receipt paths', () => {
   const found = referencedVariables(jobBlock('execute'));
-  assert.ok(found.has('WOLF_CI_PRIVATE_PUBLICATION_FILE'), 'expected the publication file variable to be detected');
+  assert.ok(found.has('WOLF_CI_RECEIPT'), 'the private receipt path must be detected');
   assert.ok(found.has('WOLF_CI_PRIVATE_ROOT'));
 });
 

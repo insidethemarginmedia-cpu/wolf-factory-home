@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "workspaceRelPath": ".engineering-workspace/repos",
+  "repositories": [
+    {
+      "id": "wolf-factory-home",
+      "repository": "insidethemarginmedia-cpu/wolf-factory-home",
+      "url": "https://github.com/insidethemarginmedia-cpu/wolf-factory-home.git",
+      "branch": "arena/38f3a7f7-wolf-factory-home",
+      "recoverySha": "4579e4f990595e0704e24d65ed9babb557b0d0d4",
+      "path": "@current",
+      "workspaceLink": "wolf-factory-home",
+      "access": {
+        "read": "public; current session verified PR metadata and history",
+        "write": "push to this branch verified",
+        "dispatch": "not authorized or attempted",
+        "merge": "not authorized; PR #2 has no approval"
+      },
+      "recoveryShaMeaning": "Exact PR-head recovery anchor observed before this workspace-recovery change; later PR commits should descend from it."
+    },
+    {
+      "id": "wolf-compute",
+      "repository": "donraposo1-source/wolf-compute",
+      "url": "https://github.com/donraposo1-source/wolf-compute.git",
+      "branch": "main",
+      "recoverySha": "f00dd8860edd245e53a11feee24270bc553ded2b",
+      "path": "wolf-compute",
+      "access": {
+        "read": "public; exact main SHA and refs verified",
+        "write": "authenticated API reports admin; no write performed",
+        "dispatch": "not attempted",
+        "merge": "not applicable; no merge performed"
+      },
+      "recoveryShaMeaning": "Exact public main HEAD observed through GitHub's authenticated API; the same object was used for the persistent local clone."
+    },
+    {
+      "id": "project-wolf",
+      "repository": "donraposo1-source/project-wolf",
+      "url": "https://github.com/donraposo1-source/project-wolf.git",
+      "branch": "feat/factory-real-worker-m1-20261006",
+      "recoverySha": "4c9726d2a964ad32b01263b4a5e3b9a7014660fe",
+      "path": "project-wolf",
+      "availability": "blocked-unverified-access",
+      "access": {
+        "read": "not established; current GitHub API request returned 404",
+        "write": "not established",
+        "dispatch": "not established",
+        "merge": "not established"
+      },
+      "recoveryShaMeaning": "Historical checkpoint only, not a current-head claim; source: docs/checkpoints/integrations/COMPOSIO-UNIFIED-FACTORY-ACCESS-20261104.md. The recovery script probes read access and skips without replacing any local path."
+    }
+  ],
+  "unresolvedTargets": [
+    {
+      "id": "build-wolf-pr-749",
+      "pullRequest": 749,
+      "repository": null,
+      "url": null,
+      "branch": null,
+      "recoverySha": null,
+      "state": "repository-identity-not-established",
+      "reason": "No authoritative Build Wolf repository URL was supplied or found among the repositories visible to the authenticated account. Do not guess a repo or recover a PR by number alone."
+    }
+  ],
+  "safety": {
+    "remoteWrites": false,
+    "privateCodePublication": false,
+    "credentialPersistence": false,
+    "automaticDispatch": false,
+    "syncRule": "Fetch metadata; fast-forward only when the expected branch is checked out and the worktree is clean. Dirty or divergent repositories are reported and left untouched. Never reset, clean, checkout, rebase, push, dispatch, or merge a pull request."
+  }
+}
