@@ -140,9 +140,13 @@ test('the exact target is held in the metadata job and removed instead of crossi
   assert.doesNotMatch(text, /actions\/upload-artifact/);
 });
 
-test('the bridge exposes the resolver verdict contract without treating it as worker acceptance', () => {
+test('the target resolver retains its gate verdict while public receipts omit its selectors', () => {
   const bridge = fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8');
-  assert.ok(bridge.includes('acceptanceTarget:'));
-  assert.ok(bridge.includes('acceptanceValid'));
+  const resolver = fs.readFileSync('scripts/private-ci-resolve-target-cli.mjs', 'utf8');
+  assert.ok(resolver.includes('acceptanceValid'));
+  assert.ok(resolver.includes('buildPublicTargetAggregate'));
+  assert.ok(bridge.includes('buildPublicBridgeReceipt'));
+  assert.doesNotMatch(bridge, /acceptanceTarget:/,
+    'the bridge receipt must not copy private target-resolution structures into public output');
   assert.ok(statusPublisherSource.includes('not private-worker or mission acceptance'));
 });

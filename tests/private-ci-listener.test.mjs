@@ -14,6 +14,7 @@ import {
   REFUSAL,
   LISTENER_POLICY,
 } from '../scripts/private-ci-listener.mjs';
+import {missionBindingDigest} from '../scripts/private-ci-mission.mjs';
 
 const EXECUTOR = 'a'.repeat(40);
 const TARGET = '8d319fc50be4e4d225e3bb80de963583899c25ec';
@@ -220,13 +221,22 @@ test('refusals are recorded with a reason and never carry credentials', () => {
   assert.ok(!/gh[opsu]_/.test(JSON.stringify(record)));
 });
 
-test('an admitted mission records the executor, sender and mission key', () => {
+test('an admitted public ledger record binds the mission without exposing its ID, repository or source SHA', () => {
   const admitted = admitMission(validEvent(), options());
   const record = admissionRecord(admitted, {now: NOW});
+  const serialized = JSON.stringify(record);
+  assert.equal(record.schemaVersion, 2);
   assert.equal(record.state, LISTENER_STATES.ADMITTED);
   assert.equal(record.executorSha, EXECUTOR);
   assert.equal(record.sender, 'donraposo1-source');
-  assert.equal(record.missionKey, admitted.missionKey);
+  assert.equal(record.missionBindingDigest, missionBindingDigest(admitted.mission));
+  assert.equal(Object.hasOwn(record, 'missionKey'), false);
+  assert.equal(Object.hasOwn(record, 'missionId'), false);
+  assert.equal(Object.hasOwn(record, 'targetRepository'), false);
+  assert.equal(Object.hasOwn(record, 'targetSha'), false);
+  assert.equal(serialized.includes('factory-nightly-0001'), false);
+  assert.equal(serialized.includes('donraposo1-source/project-wolf'), false);
+  assert.equal(serialized.includes(TARGET), false);
 });
 
 test('concurrency is capped at one privileged execution', () => {

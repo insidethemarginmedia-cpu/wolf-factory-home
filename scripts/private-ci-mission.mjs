@@ -1,9 +1,11 @@
 // Cross-repository mission contract.
+import {createHash} from 'node:crypto';
 //
 // The Home bridge is the only authenticated interface between the private Factory
 // and this public repository. This module defines what a mission is, validates it
 // strictly enough that an untrusted sender cannot smuggle authority in, and binds
-// every mission to one exact commit SHA.
+// every mission to one exact commit SHA. Public durable records use an opaque,
+// domain-separated digest of that binding instead of publishing the private SHA.
 //
 // Design constraints, each with a reason:
 //
@@ -126,6 +128,29 @@ export function validateMission(payload, {now = Date.now(), allowlist = null} = 
 export function missionKey(mission) {
   if (!mission?.missionId || !mission?.sha) throw Error('MISSION_KEY_REQUIRES_ID_AND_SHA');
   return mission.missionId + '@' + mission.sha;
+}
+
+/**
+ * A public-safe commitment to the exact mission identity.
+ *
+ * The digest binds repository, mission id and immutable source SHA using a fixed
+ * tuple and an explicit domain separator. It is suitable for a public replay ledger
+ * because it does not reveal the private source SHA or the mission identifier.
+ * This is a commitment only; it is not a signature or independent authenticity
+ * proof. Callers still need an authenticated verifier for acceptance.
+ */
+export function missionBindingDigest(mission) {
+  if (!mission || typeof mission !== 'object'
+      || typeof mission.missionId !== 'string' || !ID_PATTERN.test(mission.missionId)
+      || typeof mission.repository !== 'string' || !REPOSITORY_PATTERN.test(mission.repository)
+      || typeof mission.sha !== 'string' || !SHA_PATTERN.test(mission.sha)) {
+    throw Error('MISSION_BINDING_INVALID');
+  }
+  const canonical = JSON.stringify([MISSION_SCHEMA_VERSION, mission.repository, mission.missionId, mission.sha]);
+  return createHash('sha256')
+    .update('wolf-factory/private-ci/mission-binding/v1:')
+    .update(canonical)
+    .digest('hex');
 }
 
 /**

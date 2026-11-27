@@ -92,11 +92,17 @@ test('the read-only execution gate verifies exact persisted mission identity and
   const verdict = JSON.parse(output.trim());
   assert.equal(code, 0);
   assert.equal(verdict.state, 'VERIFIED');
-  assert.equal(verdict.missionKey, 'mission-0001@' + TARGET);
-  assert.equal(verdict.deliveryId, 'run-3001');
-  assert.equal(verdict.runId, '3001');
+  assert.equal(verdict.missionBindingVerified, true);
+  assert.equal(verdict.targetSha, undefined);
+  assert.equal(verdict.targetRepository, undefined);
+  assert.equal(verdict.missionId, undefined);
+  assert.equal(verdict.deliveryId, undefined);
+  assert.equal(verdict.runId, undefined);
   assert.equal(verdict.credentialsPrinted, false);
   assert.equal(output.includes(LISTENER_TEST_TOKEN), false);
+  for (const privateValue of ['mission-0001', TARGET_REPOSITORY, TARGET]) {
+    assert.equal(output.includes(privateValue), false, `public gate output must not include ${privateValue}`);
+  }
   assert.deepEqual(JSON.parse(fs.readFileSync(outFile, 'utf8')), verdict);
   assert.equal(fake.writes.length, 3, 'the gate reads evidence and performs no write');
 });

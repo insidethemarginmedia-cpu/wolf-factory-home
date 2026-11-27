@@ -15,6 +15,33 @@ export const LISTENER_EXIT = Object.freeze({DECIDED: 0, USAGE: 2, UNDECIDABLE: 3
 
 const list = value => (typeof value === 'string' && value.trim() ? value.split(',').map(item => item.trim()).filter(Boolean) : []);
 const enabled = value => ['true', '1', 'yes'].includes(String(value ?? '').trim().toLowerCase());
+const publicCode = value => typeof value === 'string' && /^[A-Z][A-Z0-9_]{1,95}$/.test(value) ? value : null;
+
+export function publicListenerDecision(admission, persistence) {
+  const detail = {};
+  const storeReason = publicCode(admission?.detail?.storeReason);
+  const missionReason = publicCode(admission?.detail?.missionReason);
+  const genericReason = publicCode(admission?.detail?.reason);
+  if (storeReason) detail.storeReason = storeReason;
+  if (missionReason) detail.missionReason = missionReason;
+  if (genericReason) detail.reason = genericReason;
+  const persistenceView = {
+    state: publicCode(persistence?.state) ?? 'UNKNOWN',
+    ...(publicCode(persistence?.reason) ? {reason: publicCode(persistence.reason)} : {}),
+    ...(typeof persistence?.appended === 'boolean' ? {appended: persistence.appended} : {}),
+    ...(typeof persistence?.alreadyRecordedForRun === 'boolean' ? {alreadyRecordedForRun: persistence.alreadyRecordedForRun} : {}),
+  };
+  return {
+    state: admission?.admitted === true ? LISTENER_STATES.ADMITTED : LISTENER_STATES.REFUSED,
+    admitted: admission?.admitted === true,
+    reason: publicCode(admission?.reason) ?? 'LISTENER_DECISION_UNAVAILABLE',
+    ...(Object.keys(detail).length ? {detail} : {}),
+    executorSha: /^[0-9a-f]{40}$/.test(String(admission?.executorSha ?? '')) ? admission.executorSha : null,
+    deliveryId: typeof admission?.deliveryId === 'string' && /^[A-Za-z0-9-]{8,128}$/.test(admission.deliveryId) ? admission.deliveryId : null,
+    credentialsRequired: false,
+    persistence: persistenceView,
+  };
+}
 
 /**
  * Reconstructs the listener event from a GitHub `repository_dispatch` event.
@@ -132,12 +159,14 @@ export async function runListenerCli(argv = [], {
     }
   }
 
-  // The workflow consumes the first JSON line. `admitted` is true only after the
-  // remote ledger+anchor write succeeded when durable storage is required.
-  stdout(JSON.stringify({...admission, persistence}) + '\n');
+  // The workflow consumes the first JSON line. Keep the CLI's public-facing
+  // output aggregate-only: the raw mission is used in memory for exact binding,
+  // but never serialized to a step log or durable public artifact.
+  const safeDecision = publicListenerDecision(admission, persistence);
+  stdout(JSON.stringify(safeDecision) + '\n');
   stdout(JSON.stringify({
     admissionRecord: admissionRecord(admission, {now, runId: env.GITHUB_RUN_ID ?? null}),
-    persistence,
+    persistence: safeDecision.persistence,
   }) + '\n');
   return exitCode;
 }

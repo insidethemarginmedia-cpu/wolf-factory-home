@@ -9,7 +9,7 @@
 import {createHash} from 'node:crypto';
 
 import {admitMission, admissionRecord} from './private-ci-listener.mjs';
-import {missionKey} from './private-ci-mission.mjs';
+import {missionKey, missionBindingDigest} from './private-ci-mission.mjs';
 
 export const LISTENER_STORE_REPOSITORY = 'insidethemarginmedia-cpu/wolf-factory-home';
 export const LISTENER_STORE_BRANCH = 'wolf-mission-admissions';
@@ -101,22 +101,19 @@ export function verifyAdmissionLedger(text) {
       return {state: 'TAMPERED', records, reason: 'MALFORMED_LINE'};
     }
     const admission = entry?.admission;
-    const validMissionId = typeof admission?.missionId === 'string'
-      && /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(admission.missionId);
-    const validTargetRepository = typeof admission?.targetRepository === 'string'
-      && /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(admission.targetRepository);
+    const validMissionBinding = SHA256.test(String(admission?.missionBindingDigest ?? ''));
+    const hasPublishedPrivateIdentity = ['missionKey', 'missionId', 'targetRepository', 'targetSha']
+      .some(key => Object.hasOwn(admission ?? {}, key));
     const validRecordedAt = typeof admission?.recordedAt === 'string'
       && Number.isFinite(Date.parse(admission.recordedAt));
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)
         || !Number.isSafeInteger(entry.seq) || entry.seq !== records.length + 1
         || (entry.prev !== null && !SHA256.test(String(entry.prev)))
         || !admission || typeof admission !== 'object' || Array.isArray(admission)
-        || admission.schemaVersion !== 1 || admission.ledger !== 'listener-admissions'
+        || admission.schemaVersion !== 2 || admission.ledger !== 'listener-admissions'
         || admission.state !== 'ADMITTED' || admission.admitted !== true
         || admission.credentialsRequired !== false
-        || !validMissionId || !validTargetRepository
-        || !SHA1.test(String(admission.targetSha ?? ''))
-        || admission.missionKey !== `${admission.missionId}@${admission.targetSha}`
+        || !validMissionBinding || hasPublishedPrivateIdentity
         || !SHA1.test(String(admission.executorSha ?? ''))
         || typeof admission.sender !== 'string' || !admission.sender.trim()
         || typeof admission.deliveryId !== 'string' || !/^[A-Za-z0-9-]{8,128}$/.test(admission.deliveryId)
@@ -220,7 +217,8 @@ function admissionFromStored(record, mission) {
     detail: null,
     executorSha: record.admission.executorSha,
     mission,
-    missionKey: record.admission.missionKey,
+    missionKey: missionKey(mission),
+    missionBindingDigest: record.admission.missionBindingDigest,
     deliveryId: record.admission.deliveryId,
     sender: record.admission.sender,
     credentialsRequired: false,
@@ -268,7 +266,7 @@ export async function admitMissionDurably({
   if (repository !== LISTENER_STORE_REPOSITORY) return blocked('CONTROLLER_REPOSITORY_REQUIRED');
   if (!SHA1.test(String(executorCommit ?? ''))) return blocked('EXECUTOR_COMMIT_REQUIRED');
   if (!/^\d{1,20}$/.test(String(runId ?? ''))) return blocked('GITHUB_RUN_ID_REQUIRED');
-  const targetKey = missionKey(baseDecision.mission);
+  const targetBindingDigest = missionBindingDigest(baseDecision.mission);
   const runIdText = String(runId);
   let createdByThisInvocation = false;
   let lastFailure = null;
@@ -324,12 +322,10 @@ export async function admitMissionDurably({
 
     const records = verification.records;
     const existingForThisRun = records.find(entry => entry.admission.runId === runIdText
-      && entry.admission.missionKey === targetKey
+      && entry.admission.missionBindingDigest === targetBindingDigest
       && entry.admission.deliveryId === event.deliveryId
       && entry.admission.executorSha === event.executorSha
-      && entry.admission.sender === event.sender
-      && entry.admission.targetRepository === baseDecision.mission.repository
-      && entry.admission.targetSha === baseDecision.mission.sha);
+      && entry.admission.sender === event.sender);
 
     // A stale but prefix-consistent anchor can only be repaired by retrying the
     // exact same run whose final ledger record is unanchored. A different mission
@@ -351,7 +347,7 @@ export async function admitMissionDurably({
     } else {
       const deliveries = records.map(entry => ({
         deliveryId: entry.admission.deliveryId,
-        missionKey: entry.admission.missionKey,
+        missionBindingDigest: entry.admission.missionBindingDigest,
       }));
       const recentAdmissions = records.map(entry => ({
         sender: entry.admission.sender,
@@ -390,7 +386,7 @@ export async function admitMissionDurably({
         sha: ledgerFile.found ? ledgerFile.sha : null,
         token,
         fetchImpl,
-        message: `ci(mission): record admitted mission ${targetKey.slice(0, 80)}`,
+        message: `ci(mission): record admission sequence ${nextSeq}`,
       });
       if (!ledgerWrite.ok) {
         if (retryableConflict(ledgerWrite) && attempt < maxConflictRetries) {
@@ -430,7 +426,7 @@ export async function admitMissionDurably({
             httpStatus: anchorWrite.status,
             ledgerStored,
             anchorStored: false,
-            missionKey: targetKey,
+            missionBindingDigest: targetBindingDigest,
           }),
           exitCode: LISTENER_STORE_EXIT.BLOCKED,
         };
@@ -450,7 +446,7 @@ export async function admitMissionDurably({
         anchorStored,
         anchorConsistent: compareAdmissionAnchor(finalVerification, nextAnchor).consistent === true,
         integrity: finalVerification.state,
-        missionKey: targetKey,
+        missionBindingDigest: targetBindingDigest,
         head: finalVerification.head,
         sequence: finalVerification.sequence,
         recordCount: finalVerification.records.length,
@@ -478,11 +474,17 @@ export async function verifyStoredMissionAdmission({
   if (typeof token !== 'string' || !token.trim()) return denied('GITHUB_TOKEN_REQUIRED');
   if (repository !== LISTENER_STORE_REPOSITORY) return denied('CONTROLLER_REPOSITORY_REQUIRED');
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(String(missionId ?? ''))) return denied('MISSION_ID_INVALID');
+  if (typeof targetRepository !== 'string' || !/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(targetRepository)) return denied('MISSION_REPOSITORY_INVALID');
   if (!SHA1.test(String(targetSha ?? ''))) return denied('MISSION_SHA_INVALID');
   if (!SHA1.test(String(executorSha ?? ''))) return denied('EXECUTOR_SHA_INVALID');
   if (!/^run-[A-Za-z0-9-]{1,32}$/.test(String(deliveryId ?? ''))) return denied('DELIVERY_ID_INVALID');
   if (!/^\d{1,20}$/.test(String(runId ?? ''))) return denied('GITHUB_RUN_ID_REQUIRED');
-  const expectedKey = missionKey({missionId, sha: targetSha});
+  let expectedBindingDigest;
+  try {
+    expectedBindingDigest = missionBindingDigest({missionId, repository: targetRepository, sha: targetSha});
+  } catch {
+    return denied('MISSION_BINDING_INVALID');
+  }
 
   const ref = await getBranch({repository, token, fetchImpl});
   const branchSha = ref.body?.object?.sha ?? ref.body?.sha ?? null;
@@ -509,9 +511,7 @@ export async function verifyStoredMissionAdmission({
   const match = verification.records.find(entry => {
     const a = entry.admission;
     return a.admitted === true
-      && a.missionKey === expectedKey
-      && a.targetRepository === targetRepository
-      && a.targetSha === targetSha
+      && a.missionBindingDigest === expectedBindingDigest
       && a.deliveryId === deliveryId
       && a.executorSha === executorSha
       && a.runId === String(runId);
@@ -519,14 +519,9 @@ export async function verifyStoredMissionAdmission({
   if (!match) return denied('ADMISSION_RECORD_NOT_FOUND');
   return makeSummary('VERIFIED', {
     admitted: true,
-    missionKey: expectedKey,
-    deliveryId,
-    executorSha,
-    runId: String(runId),
-    targetRepository,
-    targetSha,
-    sequence: match.seq,
-    ledgerHead: verification.head,
+    missionBindingVerified: true,
     anchorConsistent: true,
+    trustModel: 'SAME_WRITER_ANCHORED_LEDGER',
+    independentVerifierRequired: true,
   });
 }

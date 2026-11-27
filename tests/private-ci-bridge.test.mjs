@@ -6,6 +6,9 @@ import path from 'node:path';
 import {
   BRIDGE_REPOSITORIES,
   DEFAULT_REQUIRED_CHECKS,
+  buildPublicAggregateReceipt,
+  buildPublicBridgeReceipt,
+  buildPublicEvidenceAggregate,
   createCheckRun,
   dispatchPrivateCi,
   normalizeChecks,
@@ -71,13 +74,14 @@ test('public receipt keeps retirement decision, persistence and durable proof di
   fs.rmSync(root, {recursive: true, force: true});
 });
 
-test('public receipt whitelist preserves the durable mission gate without credentials', () => {
+test('public mission-admission projection exposes only aggregate gate evidence', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-mission-admission-receipt-'));
   const verdictFile = path.join(root, 'admission.json');
   fs.writeFileSync(verdictFile, JSON.stringify({
     state: 'VERIFIED', admitted: true, reason: null,
+    missionBindingVerified: true, missionBindingDigest: 'c'.repeat(64),
     missionKey: 'mission-0001@' + sha,
-    targetRepository: repository, targetSha: sha,
+    missionId: 'mission-0001', targetRepository: repository, targetSha: sha,
     deliveryId: 'run-1001', executorSha: 'f'.repeat(40), runId: '1001',
     sequence: 2, ledgerHead: 'd'.repeat(64), anchorConsistent: true,
     trustModel: 'SAME_WRITER_ANCHORED_LEDGER', independentVerifierRequired: true,
@@ -86,11 +90,13 @@ test('public receipt whitelist preserves the durable mission gate without creden
   const receiptField = readMissionAdmission(verdictFile);
   assert.equal(receiptField.state, 'VERIFIED');
   assert.equal(receiptField.admitted, true);
-  assert.equal(receiptField.missionKey, 'mission-0001@' + sha);
-  assert.equal(receiptField.runId, '1001');
+  assert.equal(receiptField.missionBindingVerified, true);
   assert.equal(receiptField.anchorConsistent, true);
   assert.equal(receiptField.independentVerifierRequired, true);
-  assert.equal(JSON.stringify(receiptField).includes('ghp_must_not_appear'), false);
+  const publicJson = JSON.stringify(receiptField);
+  for (const privateValue of ['ghp_must_not_appear', 'mission-0001', repository, sha, 'run-1001']) {
+    assert.equal(publicJson.includes(privateValue), false, `public admission summary must omit ${privateValue}`);
+  }
 
   fs.writeFileSync(verdictFile, JSON.stringify({state: 'BLOCKED', admitted: false, reason: 'ADMISSION_ANCHOR_STALE', token: 'ghp_hidden'}));
   const blockedReceipt = readMissionAdmission(verdictFile);
@@ -100,8 +106,77 @@ test('public receipt whitelist preserves the durable mission gate without creden
   assert.equal(maliciousReceipt.reason, null, 'unrecognized input is not published as a decision reason');
   assert.equal(JSON.stringify(maliciousReceipt).includes('ghp_secret'), false);
   assert.deepEqual(readMissionAdmission('/nonexistent/admission.json'), {state: 'NOT_REPORTED', admitted: false, credentialsPrinted: false});
+  fs.writeFileSync(verdictFile, JSON.stringify({
+    state: 'VERIFIED', admitted: true, missionBindingVerified: true, anchorConsistent: true,
+    trustModel: 'SAME_WRITER_ANCHORED_LEDGER', independentVerifierRequired: true,
+  }));
+  const previousAdmissionFile = process.env.WOLF_CI_MISSION_ADMISSION_FILE;
+  try {
+    process.env.WOLF_CI_MISSION_ADMISSION_FILE = verdictFile;
+    const publicReceipt = buildPublicBridgeReceipt({
+      receipt: {state: 'VERIFIED', sha, repository, checks: DEFAULT_REQUIRED_CHECKS.map(name => ({name, status: 'success'}))},
+      expectedSha: sha,
+      expectedRepository: repository,
+      checks: DEFAULT_REQUIRED_CHECKS,
+    });
+    assert.equal(publicReceipt.missionAdmission.state, 'VERIFIED');
+    assert.equal(publicReceipt.missionAdmission.admitted, true);
+    assert.equal(publicReceipt.conclusion, 'failure', 'an aggregate admission field cannot turn an unsigned receipt into an acceptance pass');
+    for (const privateValue of ['mission-0001', repository, sha, 'run-1001']) {
+      assert.equal(JSON.stringify(publicReceipt).includes(privateValue), false);
+    }
+  } finally {
+    if (previousAdmissionFile === undefined) delete process.env.WOLF_CI_MISSION_ADMISSION_FILE;
+    else process.env.WOLF_CI_MISSION_ADMISSION_FILE = previousAdmissionFile;
+  }
   assert.match(fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8'), /missionAdmission: readMissionAdmission\(process\.env\.WOLF_CI_MISSION_ADMISSION_FILE\)/);
   fs.rmSync(root, {recursive: true, force: true});
+});
+
+test('the public private-CI receipt is aggregate-only and never claims a failed or mismatched run', () => {
+  const checks = DEFAULT_REQUIRED_CHECKS.map(name => ({name, status: 'success', durationMs: 1, steps: [{command: 'private-command', errorLine: 17}]}));
+  const receipt = {
+    state: 'VERIFIED', repository, sha, pullRequestNumber: 743,
+    checks, receiptHash: 'e'.repeat(64), privateLog: 'sensitive-log-marker',
+  };
+  const aggregate = buildPublicAggregateReceipt({receipt, expectedSha: sha, expectedRepository: repository, checks: DEFAULT_REQUIRED_CHECKS});
+  assert.equal(aggregate.state, 'CHECKS_MATCHED_UNAUTHENTICATED');
+  assert.equal(aggregate.exactShaBindingVerified, true);
+  assert.equal(aggregate.requiredChecksMatched, true);
+  assert.equal(aggregate.authenticityVerified, false);
+  assert.equal(aggregate.conclusion, 'failure', 'a local unsigned receipt cannot produce a public acceptance pass');
+  const serialized = JSON.stringify(aggregate);
+  for (const privateValue of [repository, sha, '743', 'private-command', 'sensitive-log-marker', 'security', 'unit', 'receiptHash']) {
+    assert.equal(serialized.includes(privateValue), false, `aggregate must omit ${privateValue}`);
+  }
+  assert.equal(aggregate.privateSourcePublished, false);
+  assert.equal(aggregate.privateLogsPublished, false);
+  assert.equal(aggregate.credentialsPrinted, false);
+
+  const mismatch = buildPublicAggregateReceipt({receipt: {...receipt, sha: 'b'.repeat(40)}, expectedSha: sha, expectedRepository: repository, checks: DEFAULT_REQUIRED_CHECKS});
+  assert.equal(mismatch.state, 'NOT_VERIFIED');
+  assert.equal(mismatch.exactShaBindingVerified, false);
+  assert.equal(mismatch.conclusion, 'failure');
+
+  const missing = buildPublicAggregateReceipt({receipt: {...receipt, checks: checks.slice(1)}, expectedSha: sha, expectedRepository: repository, checks: DEFAULT_REQUIRED_CHECKS});
+  assert.equal(missing.state, 'NOT_VERIFIED');
+  assert.equal(missing.requiredChecksMatched, false);
+});
+
+test('published public probe summaries omit repository identities and source metadata', () => {
+  const privateResult = {
+    state: 'PROBED', repository, sha, pullRequestNumber: 743,
+    privateSourceFetched: false, inferencePerformed: false,
+    existingCheckRuns: [{name: 'unit', conclusion: 'success'}],
+    credentialIdentity: {login: 'private-identity'},
+    commit: {message: 'private commit message'},
+  };
+  const summary = buildPublicEvidenceAggregate(privateResult);
+  assert.equal(summary.state, 'COMPLETED');
+  const serialized = JSON.stringify(summary);
+  for (const privateValue of [repository, sha, '743', 'unit', 'private-identity', 'private commit message']) {
+    assert.equal(serialized.includes(privateValue), false, `probe aggregate must omit ${privateValue}`);
+  }
 });
 
 test('repository, SHA, PR, checks and mode fail closed on malformed input', () => {
@@ -195,25 +270,19 @@ test('receipt binding rejects absent, mismatched, missing and unsuccessful check
   assert.deepEqual(failed.unsuccessful, ['security']);
 });
 
-test('dispatch addresses only the allowlisted repository, immutable SHA and safe inputs', async () => {
+test('legacy direct dispatch is permanently blocked without any network request', async () => {
   const s = serve([]);
   const result = await dispatchPrivateCi({
-    token: 'fixture-token',
-    repository,
-    workflowId: 42,
-    ref: 'main',
-    sha,
-    pr: '743',
-    baseRef: 'main',
-    checks: 'security,lint,typecheck,unit,integration,build',
-    mode: 'execute',
-    fetchImpl: s.fetchImpl,
+    token: 'fixture-token', repository, workflowId: 42, ref: 'main', sha,
+    pr: '743', baseRef: 'main', checks: DEFAULT_REQUIRED_CHECKS.join(','),
+    mode: 'execute', fetchImpl: s.fetchImpl,
   });
-  assert.equal(result.state, 'DISPATCHED');
+  assert.equal(result.state, 'BLOCKED');
+  assert.equal(result.reason, 'LEGACY_DIRECT_DISPATCH_DISABLED');
+  assert.equal(result.dispatchAttempted, false);
   assert.equal(result.refUpdated, false);
   assert.equal(result.privateSourceFetched, false);
-  assert.equal(s.calls(), 1);
-  assert.deepEqual(result.inputs.checks.split(','), [...DEFAULT_REQUIRED_CHECKS]);
+  assert.equal(s.calls(), 0);
 });
 
 test('check-run output is redacted and capped before publication', async () => {
@@ -308,15 +377,12 @@ test('a fine-grained PAT scoped to one repository is not misreported as denied',
   assert.equal(JSON.stringify(result).includes('github_pat_fixture'), false, 'the token must never appear in output');
 });
 
-test('dispatch diagnosis names the exact missing permission and never writes', async () => {
+test('dispatch diagnosis withholds the mutating probe and reports write capability as untested', async () => {
   const {diagnoseDispatch} = await import('../scripts/private-ci-bridge.mjs');
   const methods = [];
   const fetchImpl = async (url, options = {}) => {
     methods.push({url, method: options.method ?? 'GET'});
     const permitted = {get: name => (name === 'x-accepted-github-permissions' ? 'contents=read; metadata=read' : null)};
-    if (url.includes('/dispatches')) {
-      return {ok: false, status: 403, headers: permitted, body: {cancel: async () => {}}};
-    }
     if (url.includes('/actions/workflows')) return {ok: true, status: 200, headers: permitted, json: async () => ({workflows: [{id: 4242, path: '.github/workflows/bridge.yml', name: 'bridge'}]})};
     if (url.includes('/actions/runs')) return {ok: true, status: 200, headers: permitted, json: async () => ({total_count: 0, workflow_runs: []})};
     return {ok: true, status: 200, headers: permitted, json: async () => ({full_name: 'donraposo1-source/project-wolf', private: true, default_branch: 'main', permissions: {pull: true}})};
@@ -325,15 +391,24 @@ test('dispatch diagnosis names the exact missing permission and never writes', a
   assert.equal(result.capabilities.repositoryRead.ok, true);
   assert.equal(result.capabilities.workflowsRead.ok, true);
   assert.equal(result.capabilities.runsRead.ok, true);
-  assert.equal(result.capabilities.dispatchWrite.httpStatus, 403);
-  assert.deepEqual(result.requiredPermissions, ['actions: write'], 'the minimum missing permission is named');
-  assert.match(String(result.reason), /ACTIONS_WRITE_REQUIRED/);
+  assert.deepEqual(result.capabilities.dispatchWrite, {ok: false, httpStatus: null, attempted: false, reason: 'DISPATCH_PROBE_WITHHELD'});
+  assert.deepEqual(result.requiredPermissions, ['actions: write']);
+  assert.equal(result.reason, 'DISPATCH_PROBE_WITHHELD');
   assert.deepEqual(result.credentialPermissions.acceptedPermissions, ['contents=read', 'metadata=read']);
-  // Only the dispatch probe may write, and only to a read-safe payload.
-  const writes = methods.filter(entry => entry.method !== 'GET');
-  assert.equal(writes.length, 1);
-  assert.match(writes[0].url, /\/dispatches$/);
+  assert.equal(methods.some(entry => entry.method !== 'GET'), false, 'diagnostic must not create a run');
+  assert.equal(methods.some(entry => entry.url.includes('/dispatches')), false, 'dispatch endpoint is never called');
   assert.equal(JSON.stringify(result).includes('github_pat_fixture'), false);
+});
+
+test('legacy receipt-derived private status publication is blocked before credential or network access', () => {
+  const bridge = fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8');
+  const start = bridge.indexOf("if (command === 'publish-private-status')");
+  const end = bridge.indexOf("if (command === 'diagnose-dispatch')", start);
+  assert.ok(start >= 0 && end > start);
+  const command = bridge.slice(start, end);
+  assert.match(command, /UNAUTHENTICATED_RECEIPT_STATUS_PUBLISHING_DISABLED/);
+  assert.match(command, /return BRIDGE_EXIT\.DENIED/);
+  assert.doesNotMatch(command, /credentialForRole|githubJson|createCheckRun|fs\.readFileSync|WOLF_CI_RECEIPT/);
 });
 
 test('private status checks require their own credential and fail closed without it', async () => {

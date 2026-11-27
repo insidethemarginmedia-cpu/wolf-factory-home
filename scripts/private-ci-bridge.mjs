@@ -134,6 +134,8 @@ const SAFE_MISSION_ADMISSION_REASONS = new Set([
   'CONTROLLER_REPOSITORY_REQUIRED',
   'MISSION_ID_INVALID',
   'MISSION_SHA_INVALID',
+  'MISSION_REPOSITORY_INVALID',
+  'MISSION_BINDING_INVALID',
   'EXECUTOR_SHA_INVALID',
   'DELIVERY_ID_INVALID',
   'GITHUB_RUN_ID_REQUIRED',
@@ -156,14 +158,7 @@ export function readMissionAdmission(file) {
     state,
     admitted: state === 'VERIFIED' && parsed.admitted === true,
     reason: state === 'BLOCKED' && SAFE_MISSION_ADMISSION_REASONS.has(parsed.reason) ? parsed.reason : null,
-    missionKey: /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}@[a-f0-9]{40}$/.test(String(parsed.missionKey ?? '')) ? parsed.missionKey : null,
-    targetRepository: /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(String(parsed.targetRepository ?? '')) ? parsed.targetRepository : null,
-    targetSha: SHA_PATTERN.test(String(parsed.targetSha ?? '')) ? parsed.targetSha : null,
-    deliveryId: /^[A-Za-z0-9-]{8,128}$/.test(String(parsed.deliveryId ?? '')) ? parsed.deliveryId : null,
-    executorSha: SHA_PATTERN.test(String(parsed.executorSha ?? '')) ? parsed.executorSha : null,
-    runId: /^\d{1,20}$/.test(String(parsed.runId ?? '')) ? String(parsed.runId) : null,
-    sequence: Number.isSafeInteger(parsed.sequence) ? parsed.sequence : null,
-    ledgerHead: /^[a-f0-9]{64}$/.test(String(parsed.ledgerHead ?? '')) ? parsed.ledgerHead : null,
+    missionBindingVerified: state === 'VERIFIED' && parsed.missionBindingVerified === true,
     anchorConsistent: parsed.anchorConsistent === true,
     trustModel: parsed.trustModel === 'SAME_WRITER_ANCHORED_LEDGER' ? parsed.trustModel : null,
     independentVerifierRequired: parsed.independentVerifierRequired === true,
@@ -588,23 +583,17 @@ export async function diagnoseDispatch({token, repository, workflowId, fetchImpl
   const runs = await probe(`${API}/repos/${normalized}/actions/runs?per_page=1`);
   result.capabilities.runsRead = {ok: runs.ok, httpStatus: runs.httpStatus};
 
-  // A read-only Contents credential cannot dispatch: the endpoint needs the
-  // Actions permission. This probe records the observable status only; it never
-  // attempts a write.
-  if (workflowId) {
-    const dispatch = await probe(`${API}/repos/${normalized}/actions/workflows/${workflowId}/dispatches`, {
-      method: 'POST',
-      body: {ref: 'main', inputs: {probe: 'false'}},
-    });
-    result.capabilities.dispatchWrite = {ok: dispatch.ok, httpStatus: dispatch.httpStatus, attempted: true};
-  } else {
-    result.capabilities.dispatchWrite = {ok: false, httpStatus: null, attempted: false, reason: 'WORKFLOW_ID_REQUIRED'};
-  }
-
-  if (!result.capabilities.dispatchWrite.ok) {
-    result.requiredPermissions = ['actions: write'];
-    result.reason = 'ACTIONS_WRITE_REQUIRED';
-  }
+  // A live dispatch permission probe is not read-only: even a "probe" payload
+  // can create a private workflow run. Record the capability as untested and do
+  // not send a POST, regardless of the supplied workflow id.
+  result.capabilities.dispatchWrite = {
+    ok: false,
+    httpStatus: null,
+    attempted: false,
+    reason: 'DISPATCH_PROBE_WITHHELD',
+  };
+  result.requiredPermissions = ['actions: write'];
+  result.reason = 'DISPATCH_PROBE_WITHHELD';
   return result;
 }
 
@@ -664,28 +653,18 @@ export async function publishPrivateStatusChecks({statusToken, sourceToken, stat
   return {...base, state: 'PUBLISHED', results, privateStatusWritten: true};
 }
 
-// Dispatch the private-side executor. The target workflow is addressed by its
-// immutable numeric id, and the immutable commit SHA is the only source ref.
-export async function dispatchPrivateCi({token, repository, workflowId, ref, sha, pr, baseRef, checks, mode = 'execute', fetchImpl = globalThis.fetch} = {}) {
-  const normalizedRepository = normalizeRepository(repository);
-  const normalizedSha = normalizeSha(sha);
-  if (!Number.isSafeInteger(workflowId) || workflowId <= 0) throw Error('BRIDGE_WORKFLOW_ID_REQUIRED');
-  if (typeof ref !== 'string' || !ref.trim() || ref.length > 255) throw Error('BRIDGE_REF_REQUIRED');
-  const inputs = {
-    sha: normalizedSha,
-    repository: normalizedRepository,
-    ...(pr ? {pr: String(normalizePr(pr))} : {}),
-    ...(baseRef ? {base_ref: baseRef} : {}),
-    checks: normalizeChecks(checks).join(','),
-    mode: normalizeMode(mode),
+// Raw private-workflow dispatch is retired. The only admissible future handoff is
+// the separately reviewed default-branch listener invoking its pinned reusable
+// workflow after durable admission; this bridge never POSTs a dispatch event.
+export async function dispatchPrivateCi() {
+  return {
+    state: 'BLOCKED',
+    reason: 'LEGACY_DIRECT_DISPATCH_DISABLED',
+    dispatchAttempted: false,
+    refUpdated: false,
+    privateSourceFetched: false,
+    credentialsPrinted: false,
   };
-  await githubJson(`${API}/repos/${normalizedRepository}/actions/workflows/${workflowId}/dispatches`, {
-    token,
-    method: 'POST',
-    body: {ref, inputs},
-    fetchImpl,
-  });
-  return {state: 'DISPATCHED', repository: normalizedRepository, workflowId, ref, sha: normalizedSha, inputs, refUpdated: false, privateSourceFetched: false};
 }
 
 // Verify the receipt that the private-side executor attached to the exact SHA.
@@ -708,6 +687,65 @@ export function verifyReceiptBinding(receipt, {sha, repository, checks} = {}) {
   return {state: 'VERIFIED', sha: normalizedSha, repository: normalizedRepository, checks: required};
 }
 
+/**
+ * Project private execution evidence into a public, aggregate-only receipt.
+ *
+ * Verification is performed against the private repository/SHA in memory; those
+ * selectors, per-check names/results, logs and error details are deliberately not
+ * copied into the public object. The digest/checksum is not a signature or proof of
+ * independent verification.
+ */
+export function buildPublicAggregateReceipt({receipt, expectedSha, expectedRepository, checks} = {}) {
+  let binding = {state: 'REJECTED'};
+  try {
+    binding = verifyReceiptBinding(receipt, {sha: expectedSha, repository: expectedRepository, checks});
+  } catch {
+    binding = {state: 'REJECTED'};
+  }
+  const exactShaBindingVerified = binding.state === 'VERIFIED';
+  const checksMatchReceipt = exactShaBindingVerified && receipt?.state === 'VERIFIED';
+  return {
+    schema: 'wolf.private-ci.aggregate/v1',
+    state: checksMatchReceipt ? 'CHECKS_MATCHED_UNAUTHENTICATED' : 'NOT_VERIFIED',
+    conclusion: 'failure',
+    exactShaBindingVerified,
+    requiredChecksMatched: exactShaBindingVerified,
+    authenticityVerified: false,
+    privateSourcePublished: false,
+    privateLogsPublished: false,
+    credentialsPrinted: false,
+  };
+}
+
+/** Add the separately verified admission gate as a sanitized, non-acceptance field. */
+export function buildPublicBridgeReceipt(options = {}) {
+  return {
+    ...buildPublicAggregateReceipt(options),
+    kind: 'private-ci-receipt',
+    missionAdmission: readMissionAdmission(process.env.WOLF_CI_MISSION_ADMISSION_FILE),
+  };
+}
+
+const PUBLIC_EVIDENCE_STATES = new Map([
+  ['PROBED', 'COMPLETED'], ['INVENTORIED', 'COMPLETED'],
+  ['BLOCKED', 'BLOCKED'], ['DENIED', 'BLOCKED'],
+  ['FAILED', 'FAILED'], ['UNREADABLE', 'UNKNOWN'],
+]);
+
+/** Public projection for metadata probes and inventory: no target selectors/items. */
+export function buildPublicEvidenceAggregate(result = {}) {
+  const inventory = result?.state === 'INVENTORIED';
+  const secretInventory = Array.isArray(result?.inventory);
+  return {
+    schema: 'wolf.private-ci.aggregate/v1',
+    kind: secretInventory ? 'credential-inventory' : inventory ? 'private-ci-inventory' : 'private-ci-metadata-probe',
+    state: PUBLIC_EVIDENCE_STATES.get(result?.state) ?? 'UNKNOWN',
+    privateSourcePublished: false,
+    privateLogsPublished: false,
+    credentialsPrinted: false,
+  };
+}
+
 function writeProbeOutput(result) {
   const output = process.env.WOLF_CI_PROBE_OUTPUT;
   if (!output) return;
@@ -720,7 +758,7 @@ async function publishProbeCheckRun(result) {
   const repository = process.env.GITHUB_REPOSITORY;
   const sha = process.env.GITHUB_SHA;
   if (!token || !repository || !sha) return {state: 'SKIPPED', reason: 'CHECK_RUN_CONTEXT_REQUIRED'};
-  const summary = JSON.stringify(result, null, 2);
+  const summary = JSON.stringify(buildPublicEvidenceAggregate(result), null, 2);
   await createCheckRun({
     token,
     repository,
@@ -752,63 +790,42 @@ async function main(argv) {
     } catch (error) {
       result.checkRun = {state: 'FAILED', httpStatus: error.httpStatus ?? 0, reason: error.message === 'BRIDGE_HTTP_DENIED' ? 'CHECK_RUN_DENIED' : 'CHECK_RUN_FAILED'};
     }
-    process.stdout.write(JSON.stringify(result) + '\n');
+    const publicSummary = buildPublicEvidenceAggregate(result);
+    const checkRunState = ['PUBLISHED', 'FAILED', 'SKIPPED'].includes(result.checkRun?.state) ? result.checkRun.state : 'UNKNOWN';
+    process.stdout.write(JSON.stringify({...publicSummary, checkRunState}) + '\n');
     return result.state === 'PROBED' ? BRIDGE_EXIT.OK : BRIDGE_EXIT.DENIED;
   }
   if (command === 'publish-private-status') {
-    const receiptPath = process.env.WOLF_CI_RECEIPT;
-    if (!receiptPath || !fs.existsSync(receiptPath)) {
-      process.stdout.write(JSON.stringify({state: 'BLOCKED', reason: 'RECEIPT_REQUIRED', requiredPermission: PRIVATE_STATUS_PERMISSION}) + '\n');
-      return BRIDGE_EXIT.OK;
-    }
-    const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
-    const publisher = credentialForRole('publisher');
-    const reader = credentialForRole('reader');
-    const result = await publishPrivateStatusChecks({
-      statusToken: publisher.token,
-      statusIdentity: publisher.source === 'github-app' ? 'app-installation' : publisher.source === 'pat-fallback' ? 'status-pat' : 'none',
-      sourceToken: reader.token,
-      repository: process.env.WOLF_CI_REPOSITORY,
-      sha: receipt.sha,
-      names: [`wolf-private-ci-${process.env.WOLF_CI_PR ?? 'head'}`],
-      conclusion: receipt.state === 'VERIFIED' ? 'success' : 'failure',
-      summary: 'SHA-bound private CI receipt: ' + receipt.state + ' (' + (receipt.receiptHash ?? '').slice(0, 16) + ')',
-    });
-    // Only role/source labels are serialized. Tokens remain in memory and are
-    // never included in the status result.
-    result.publisherCredentialSource = publisher.source;
-    result.readerCredentialSource = reader.source;
-    process.stdout.write(JSON.stringify(result) + '\n');
-    return BRIDGE_EXIT.OK;
+    const publication = {
+      schema: 'wolf.private-ci.aggregate/v1',
+      kind: 'private-check-publication',
+      state: 'BLOCKED',
+      reason: 'UNAUTHENTICATED_RECEIPT_STATUS_PUBLISHING_DISABLED',
+      exactShaCheckPublished: false,
+      authenticityVerified: false,
+      privateSourcePublished: false,
+      privateLogsPublished: false,
+      credentialsPrinted: false,
+    };
+    process.stdout.write(JSON.stringify(publication) + '\n');
+    return BRIDGE_EXIT.DENIED;
   }
   if (command === 'diagnose-dispatch') {
-    const dispatcher = credentialForRole('dispatcher');
-    const result = await diagnoseDispatch({
-      token: dispatcher.token,
-      repository: process.env.WOLF_CI_REPOSITORY,
-      workflowId: Number(process.env.WOLF_CI_WORKFLOW_ID) || 0,
-    });
-    result.credentialSource = dispatcher.source;
+    const result = {
+      state: 'BLOCKED',
+      reason: 'DISPATCH_DIAGNOSTIC_WITHHELD',
+      dispatchAttempted: false,
+      privateMetadataRead: false,
+      credentialsPrinted: false,
+    };
     if (process.env.WOLF_CI_PROBE_OUTPUT) writeProbeOutput(result);
     process.stdout.write(JSON.stringify(result) + '\n');
     return BRIDGE_EXIT.OK;
   }
   if (command === 'dispatch') {
-    const dispatcher = credentialForRole('dispatcher');
-    const result = await dispatchPrivateCi({
-      token: dispatcher.token,
-      repository: process.env.WOLF_CI_REPOSITORY,
-      workflowId: Number(process.env.WOLF_CI_WORKFLOW_ID),
-      ref: process.env.WOLF_CI_REF,
-      sha: process.env.WOLF_CI_SHA,
-      pr: process.env.WOLF_CI_PR,
-      baseRef: process.env.WOLF_CI_BASE_REF,
-      checks: process.env.WOLF_CI_CHECKS,
-      mode: process.env.WOLF_CI_MODE,
-    });
-    result.credentialSource = dispatcher.source;
+    const result = await dispatchPrivateCi();
     process.stdout.write(JSON.stringify(result) + '\n');
-    return BRIDGE_EXIT.OK;
+    return BRIDGE_EXIT.DENIED;
   }
   if (command === 'publish-comment') {
     const token = process.env.GITHUB_TOKEN;
@@ -820,43 +837,20 @@ async function main(argv) {
       return BRIDGE_EXIT.CONFIGURATION_REQUIRED;
     }
     const result = JSON.parse(fs.readFileSync(output, 'utf8'));
-    const publicSummary = {
-      state: result.state,
-      reason: result.reason ?? null,
-      repository: result.repository,
-      sha: result.sha,
-      pullRequestNumber: result.pullRequestNumber ?? null,
-      commitPresent: result.commit?.present === true,
-      pullRequestPresent: result.pullRequest?.headSha === result.sha,
-      bridgeWorkflowInstalled: result.bridgeWorkflowInstalled === true,
-      workflowCount: Array.isArray(result.workflows) ? result.workflows.length : 0,
-      existingCheckRuns: Array.isArray(result.existingCheckRuns) ? result.existingCheckRuns.map(run => ({name: run.name, conclusion: run.conclusion})) : [],
-      branchProtectionRequiredChecks: Array.isArray(result.branchProtection?.requiredStatusChecks) ? result.branchProtection.requiredStatusChecks : null,
-      actionsPermissions: result.actionsPermissions?.state === 'UNAVAILABLE' ? 'UNAVAILABLE' : result.actionsPermissions ?? null,
-      credentialIdentity: result.credentialIdentity ?? null,
-      httpStatus: result.httpStatus ?? null,
-      detail: typeof result.detail === 'string' ? redact(result.detail).slice(0, 4000) : null,
-      credentialHttpStatus: result.credentialIdentity?.httpStatus ?? null,
-      workflowsHttpStatus: result.workflowsHttpStatus ?? null,
-      existingCheckRunsHttpStatus: result.existingCheckRunsHttpStatus ?? null,
-      branchProtectionHttpStatus: result.branchProtection?.httpStatus ?? null,
-      actionsPermissionsHttpStatus: result.actionsPermissions?.httpStatus ?? null,
-      privateSourceFetched: false,
-      inferencePerformed: false,
-    };
+    const publicSummary = buildPublicEvidenceAggregate(result);
     await githubJson(`${API}/repos/${repository}/commits/${sha}/comments`, {
       token,
       method: 'POST',
       body: {body: '```json\n' + JSON.stringify(publicSummary, null, 2) + '\n```'},
     });
-    process.stdout.write(JSON.stringify({state: 'PUBLISHED', ...publicSummary}) + '\n');
+    process.stdout.write(JSON.stringify({publicationState: 'PUBLISHED', ...publicSummary}) + '\n');
     return BRIDGE_EXIT.OK;
   }
   if (command === 'secret-inventory') {
     const names = String(process.env.WOLF_CI_SECRET_NAMES ?? '')
       .split(',').map(name => name.trim()).filter(Boolean);
     const inventory = names.map(name => ({name, present: String(process.env[name] ?? '').length > 0}));
-    const summary = {state: 'INVENTORIED', inventory, privateSourceFetched: false, inferencePerformed: false};
+    const summary = buildPublicEvidenceAggregate({state: 'INVENTORIED', inventory});
     const token = process.env.GITHUB_TOKEN;
     const repository = process.env.GITHUB_REPOSITORY;
     const sha = process.env.GITHUB_SHA;
@@ -880,106 +874,12 @@ async function main(argv) {
       return BRIDGE_EXIT.CONFIGURATION_REQUIRED;
     }
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
-    // The private-side publication is recorded by the previous step so its
-    // real outcome (never silently "success") is part of the public receipt.
-    const privatePublication = process.env.WOLF_CI_PRIVATE_PUBLICATION_FILE && fs.existsSync(process.env.WOLF_CI_PRIVATE_PUBLICATION_FILE)
-      ? (() => { try { return JSON.parse(fs.readFileSync(process.env.WOLF_CI_PRIVATE_PUBLICATION_FILE, 'utf8')); } catch { return {state: 'UNREADABLE'}; } })()
-      : {state: 'NOT_REPORTED'};
-    const summary = {
-      state: receipt.state,
-      repository: receipt.repository,
-      sha: receipt.sha,
-      pullRequestNumber: process.env.WOLF_CI_PR ? Number(process.env.WOLF_CI_PR) : null,
-      receiptHash: receipt.receiptHash ?? null,
-      checks: (receipt.checks ?? []).map(check => ({
-        name: check.name,
-        status: check.status,
-        durationMs: check.durationMs,
-        steps: (check.steps ?? []).map(step => ({
-          // Attribution lets a failure be traced to the exact private workflow
-          // step without publishing the step's command or output.
-          stepName: step.workflowStep?.stepName ?? step.label ?? null,
-          workflow: step.workflowStep?.workflow ?? null,
-          command: step.command,
-          exitCode: step.exitCode,
-          status: step.status,
-          durationMs: step.durationMs,
-          ...(step.errorClass ? {errorClass: step.errorClass} : {}),
-          ...(step.sqlstate ? {sqlstate: step.sqlstate} : {}),
-          ...(step.errorLine ? {errorLine: step.errorLine} : {}),
-          ...(step.sqlDetail ? {sqlDetail: step.sqlDetail} : {}),
-          ...(step.python ? {python: step.python} : {}),
-        })),
-      })),
-      authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
-      dispatchVerification: reconcileDispatch({
-        probe: readDispatchVerification(process.env.WOLF_CI_DISPATCH_FILE),
-        acceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
-      }),
-      authRecovery: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
-      appAcceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
-      // Read from the artefact the enforcement step wrote, so the receipt shows the
-      // decision that actually took effect rather than a second, independent
-      // recomputation that could disagree with it.
-      fallbackRetirement: readRetirementArtefact(process.env.WOLF_CI_RETIREMENT_FILE, {
-        acceptance: readAcceptance(process.env.WOLF_CI_ACCEPTANCE_FILE),
-        authentication: readAuthenticationPosture(process.env.WOLF_CI_APP_AUTH_FILE),
-        renewal: readAuthRecovery(process.env.WOLF_CI_AUTH_RECOVERY_FILE),
-      }),
-      // Persistence and adversarial proof are reported separately: a per-run
-      // decision, a stored record, and an observed durable denial are not the same
-      // claim. The same-writer anchor is explicitly not treated as independent.
-      retirementPersistence: readRetirementPersistence(process.env.WOLF_CI_RETIREMENT_PERSIST_FILE),
-      durableLedgerProof: readDurableLedgerProof(process.env.WOLF_CI_LEDGER_PROOF_FILE),
-      missionAdmission: readMissionAdmission(process.env.WOLF_CI_MISSION_ADMISSION_FILE),
-      // The acceptance target this run resolved, and whether the pin was still the
-      // PR head when it ran. Published so a stale acceptance cannot pass as current:
-      // a reader sees `acceptanceValid: false` on the receipt itself rather than
-      // having to re-derive it.
-      acceptanceTarget: (() => {
-        const file = process.env.WOLF_CI_TARGET_OUTPUT;
-        if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
-        try {
-          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-          return {
-            state: parsed.target?.state ?? 'UNKNOWN',
-            relation: parsed.target?.relation ?? null,
-            prHead: parsed.target?.prHead ?? null,
-            pinnedSha: parsed.target?.pinnedSha ?? null,
-            treeIdentical: parsed.target?.treeIdentity?.identical === true,
-            acceptanceValid: parsed.verdict?.acceptanceValid === true,
-            reason: parsed.verdict?.reason ?? null,
-            credentialsPrinted: false,
-          };
-        } catch {
-          return {state: 'UNREADABLE'};
-        }
-      })(),
-      privateStatusCheck: (() => {
-        const file = process.env.WOLF_CI_PRIVATE_STATUS_FILE;
-        if (!file || !fs.existsSync(file)) return {state: 'NOT_REPORTED'};
-        try {
-          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-          return {
-            state: parsed.state ?? 'UNKNOWN',
-            ...(parsed.reason ? {reason: parsed.reason} : {}),
-            ...(parsed.requiredPermission ? {requiredPermission: parsed.requiredPermission} : {}),
-            ...(parsed.identitySeparation ? {identitySeparation: parsed.identitySeparation} : {}),
-          };
-        } catch {
-          return {state: 'UNREADABLE'};
-        }
-      })(),
-      privateReceipt: {
-        state: privatePublication.state ?? 'NOT_REPORTED',
-        ...(privatePublication.reason ? {reason: privatePublication.reason} : {}),
-        ...(privatePublication.branch ? {branch: privatePublication.branch} : {}),
-      },
-      privateLogsPublished: false,
-      privateSourcePublished: false,
-      inferencePerformed: false,
-      refUpdated: false,
-    };
+    const summary = buildPublicBridgeReceipt({
+      receipt,
+      expectedSha: process.env.WOLF_CI_SHA,
+      expectedRepository: process.env.WOLF_CI_REPOSITORY,
+      checks: process.env.WOLF_CI_CHECKS,
+    });
     // The check run is the status surface the private commit would normally
     // have. It is created first so its outcome is recorded in the receipt
     // comment that follows, instead of being silently discarded.
@@ -989,35 +889,32 @@ async function main(argv) {
         token,
         repository,
         sha,
-        name: `wolf-private-ci-${summary.pullRequestNumber ?? 'head'}`,
-        conclusion: summary.state === 'VERIFIED' ? 'success' : 'failure',
-        title: 'Private CI bridge SHA-bound receipt',
-        summary: 'SHA-bound private CI receipt: ' + summary.state,
+        name: 'wolf-private-ci-aggregate',
+        conclusion: summary.conclusion,
+        title: 'Private CI aggregate',
+        summary: 'Aggregate private CI outcome: ' + summary.state,
       });
-      checkRun = {state: 'CREATED', id: created?.id ?? null};
+      checkRun = {state: 'CREATED'};
     } catch (error) {
-      checkRun = {
-        state: 'FAILED',
-        reason: redact(error?.message ?? 'CHECK_RUN_FAILED').slice(0, 120),
-        httpStatus: error?.httpStatus ?? null,
-      };
+      checkRun = {state: 'FAILED', httpStatus: error?.httpStatus ?? null};
     }
-    summary.checkRun = checkRun;
-    const body = '```json\n' + JSON.stringify(summary, null, 2) + '\n```';
+    const publicSummary = {...summary, publicCheckRunState: checkRun.state};
+    const body = '```json\n' + JSON.stringify(publicSummary, null, 2) + '\n```';
     await githubJson(`${API}/repos/${repository}/commits/${sha}/comments`, {token, method: 'POST', body: {body}});
-    process.stdout.write(JSON.stringify({state: 'PUBLISHED', ...summary}) + '\n');
+    process.stdout.write(JSON.stringify({publicationState: 'PUBLISHED', ...publicSummary}) + '\n');
     return BRIDGE_EXIT.OK;
   }
   if (command === 'verify-receipt') {
     const receiptPath = process.env.WOLF_CI_RECEIPT;
     const receipt = receiptPath ? JSON.parse(fs.readFileSync(receiptPath, 'utf8')) : null;
-    const result = verifyReceiptBinding(receipt, {
-      sha: process.env.WOLF_CI_SHA,
-      repository: process.env.WOLF_CI_REPOSITORY,
+    const summary = buildPublicBridgeReceipt({
+      receipt,
+      expectedSha: process.env.WOLF_CI_SHA,
+      expectedRepository: process.env.WOLF_CI_REPOSITORY,
       checks: process.env.WOLF_CI_CHECKS,
     });
-    process.stdout.write(JSON.stringify(result) + '\n');
-    return result.state === 'VERIFIED' ? BRIDGE_EXIT.OK : BRIDGE_EXIT.DENIED;
+    process.stdout.write(JSON.stringify(summary) + '\n');
+    return summary.state === 'VERIFIED' ? BRIDGE_EXIT.OK : BRIDGE_EXIT.DENIED;
   }
   process.stderr.write(JSON.stringify({state: 'FAILED', reason: 'BRIDGE_COMMAND_REQUIRED'}) + '\n');
   return BRIDGE_EXIT.DEFECT;

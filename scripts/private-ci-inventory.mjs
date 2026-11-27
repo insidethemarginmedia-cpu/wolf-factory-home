@@ -63,6 +63,23 @@ function redact(text) {
     .slice(0, 4000);
 }
 
+const PUBLIC_STATES = new Map([
+  ['INVENTORIED', 'COMPLETED'], ['BLOCKED', 'BLOCKED'],
+  ['DENIED', 'BLOCKED'], ['FAILED', 'FAILED'],
+]);
+
+/** Only an aggregate outcome is safe to put in a public repository or run log. */
+export function buildPublicInventoryAggregate(result = {}) {
+  return {
+    schema: 'wolf.private-ci.aggregate/v1',
+    kind: 'private-ci-inventory',
+    state: PUBLIC_STATES.get(result?.state) ?? 'UNKNOWN',
+    privateSourcePublished: false,
+    privateLogsPublished: false,
+    credentialsPrinted: false,
+  };
+}
+
 export async function inventoryPrivateRepository({repository, sha, pr, deployKey, runnerTemp = process.env.RUNNER_TEMP, fetchImpl = globalThis.fetch} = {}) {
   const normalizedSha = normalizeSha(sha);
   const base = {
@@ -170,21 +187,9 @@ export async function inventoryPrivateRepository({repository, sha, pr, deployKey
   }
 }
 
-async function publish(result, fetchImpl = globalThis.fetch) {
-  const token = process.env.GITHUB_TOKEN;
-  const repository = process.env.GITHUB_REPOSITORY;
-  const sha = process.env.GITHUB_SHA;
-  if (!token || !repository || !sha) return {state: 'SKIPPED', reason: 'PUBLIC_RECEIPT_CONTEXT_REQUIRED'};
-  const body = JSON.stringify(result, null, 2).slice(0, 60000);
-  const response = await fetchImpl(`https://api.github.com/repos/${repository}/commits/${sha}/comments`, {
-    method: 'POST',
-    headers: {authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'content-type': 'application/json', 'user-agent': 'WolfPrivateCiInventory'},
-    body: JSON.stringify({body: '```json\n' + body + '\n```'}),
-    redirect: 'error',
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!response.ok) { await response.body?.cancel(); return {state: 'FAILED', httpStatus: response.status}; }
-  return {state: 'PUBLISHED'};
+async function publish() {
+  // Public output is owned by the workflow's aggregate-only publisher.
+  return {state: 'DEFERRED_TO_AGGREGATE_PUBLISHER'};
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -202,7 +207,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         fs.writeFileSync(process.env.WOLF_CI_PROBE_OUTPUT, JSON.stringify(result, null, 2) + '\n', {mode: 0o600, flag: 'wx'});
       } catch {}
     }
-    process.stdout.write(JSON.stringify(result) + '\n');
+    process.stdout.write(JSON.stringify(buildPublicInventoryAggregate(result)) + '\n');
     process.exitCode = result.state === 'INVENTORIED' ? 0 : 78;
   } catch (error) {
     const failure = {state: 'FAILED', reason: error?.message ?? 'INVENTORY_FAILED', privateSourceFetched: false, sourcePublished: false, inferencePerformed: false};
@@ -213,7 +218,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         fs.writeFileSync(process.env.WOLF_CI_PROBE_OUTPUT, JSON.stringify(failure, null, 2) + '\n', {mode: 0o600, flag: 'wx'});
       } catch {}
     }
-    process.stderr.write(JSON.stringify(failure) + '\n');
+    process.stderr.write(JSON.stringify(buildPublicInventoryAggregate(failure)) + '\n');
     process.exitCode = 1;
   }
 }

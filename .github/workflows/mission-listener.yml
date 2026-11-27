@@ -52,8 +52,15 @@ env:
 jobs:
   admit:
     # A literal repository check, not a variable: the listener must never run
-    # anywhere but its own repository.
-    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
+    # anywhere but its own repository. Keep the runner dormant until the owner has
+    # independently verified the free-cost runner, billing, provider and isolation
+    # controls; missing attestations must not consume Actions minutes.
+    if: >-
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+      vars.WOLF_CI_ZERO_COST_RUNNER_AUTHORIZED == 'true' &&
+      vars.WOLF_CI_BILLING_VERIFIED == 'true' &&
+      vars.WOLF_CI_PROVIDER_VERIFIED == 'true' &&
+      vars.WOLF_CI_PRIVATE_RUNNER_ISOLATION_VERIFIED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -121,7 +128,21 @@ jobs:
           set -euo pipefail
           echo "LISTENER_ADMITTED=${{ steps.admit.outputs.admitted }}"
           echo "LISTENER_REASON=${{ steps.admit.outputs.reason }}"
-          cat "$WOLF_LISTENER_OUTPUT" 2>/dev/null || echo '{"state":"UNREADABLE"}'
+          node -e '
+            const fs = require("fs");
+            let d = {};
+            try {
+              const firstLine = fs.readFileSync(process.env.WOLF_LISTENER_OUTPUT, "utf8").split(/\r?\n/, 1)[0];
+              d = JSON.parse(firstLine);
+            } catch { d = {}; }
+            const summary = {
+              state: ["ADMITTED", "REFUSED"].includes(d.state) ? d.state : "UNKNOWN",
+              admitted: d.admitted === true,
+              durableState: typeof d.persistence?.state === "string" ? d.persistence.state : "UNKNOWN",
+              credentialsRequired: false
+            };
+            process.stdout.write(JSON.stringify(summary) + "\\n");
+          '
 
   execute:
     needs: admit

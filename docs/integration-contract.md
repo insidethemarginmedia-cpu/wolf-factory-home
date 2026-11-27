@@ -31,8 +31,9 @@ would not by itself establish external worker output, callback authentication,
 zero cost, or independent acceptance.
 
 ```
-mission payload  →  validate  →  execute 6 required checks  →  publish receipt
-   (JSON)            (schema)      (immutable SHA)              (durable, public)
+mission payload  →  validate  →  execute required checks  →  private exact-SHA status
+   (JSON)            (schema)      (immutable SHA)              (aggregate only)
+                                                    public view: no source selectors, logs or per-check detail
 ```
 
 ## 2. How to call it
@@ -80,16 +81,41 @@ activation or permission change was performed. An upstream caller needs only the
 minimum permission approved for dispatching the listener; it must not receive
 private-source access, and it must not send credentials in payloads.
 
-The current anti-replay identity is the GitHub run id plus the durable
-`missionId@sha` key. There is no separate nonce field, HMAC, or signed callback
-contract in this repository. Compatibility with Factory P1.59 / Factory 2
-P1.47+ is therefore **NOT VERIFIED** until their authoritative envelope, nonce,
-callback-signature, receipt and retry schemas are reviewed side by side.
+The current anti-replay identity is the GitHub run id plus the durable opaque
+commitment described above; the full `missionId@sha` key exists only in memory
+while validating the exact repository/SHA. There is no separate nonce field, HMAC,
+or signed callback contract in this repository. Compatibility with Factory P1.59 /
+Factory 2 P1.47+ is therefore **NOT VERIFIED** until their authoritative envelope,
+nonce, callback-signature, receipt and retry schemas are reviewed side by side.
 
 The old `gh api .../dispatches` example is withdrawn. A 2xx dispatch response is
-not evidence of an admitted mission, a workflow run, or worker acceptance.
+not evidence of an admitted mission, a workflow run, or worker acceptance. The
+legacy raw private-workflow dispatcher and "dispatch capability probe" now return
+`BLOCKED` without making a request; even a probe payload can create a real run.
 
-### 2.2 Payload — code contract, not an activated API
+### 2.2 Public-data boundary — not approved for activation
+
+The public Home candidate writes no raw mission ID, target repository/SHA,
+per-check result, private command, log, credential name, or installation identity
+to public ledger records, Actions summaries, checks, or comments. Admission-ledger
+schema 2 stores only a domain-separated SHA-256 commitment over the exact
+repository + mission ID + target SHA tuple. The bridge re-computes that commitment
+from the caller's exact values at the execution gate. The commitment is a
+same-writer replay-binding mechanism, **not** a signature or independent verifier;
+old schema-1 records containing raw selectors fail closed.
+
+The `repository_dispatch` event and reusable-workflow inputs still carry the raw
+private target SHA into the public Home workflow context. No live listener exists,
+and this review does not establish that GitHub exposes or withholds that event
+payload from public viewers. If this metadata must remain confidential, use an
+owner-approved opaque/encrypted envelope before activation. Likewise, the local
+receipt hash is not signed: the public projection reports
+`CHECKS_MATCHED_UNAUTHENTICATED`, never `VERIFIED`, and cannot create an
+acceptance-pass check from an unsigned local JSON receipt. The separate private
+status job is intended to publish only its aggregate conclusion to the exact
+private SHA, but is not active or independently accepted.
+
+### 2.3 Payload — code contract, not an activated API
 
 The current local validator expects this mission data in `client_payload`:
 
@@ -118,7 +144,7 @@ persist it. This is one of the unresolved compatibility points with Factory
 P1.59 and Factory 2 P1.47+; no compatibility claim is made until their exact
 schemas are available and compared.
 
-### 2.3 Replay and idempotency
+### 2.4 Replay and idempotency
 
 The durable admission key is **`missionId@sha`**, paired with a delivery id
 derived from the GitHub run id. The admission ledger and external head anchor
@@ -135,7 +161,7 @@ schedule-backed retry/recovery. Do not change `missionId` to bypass a duplicate,
 and do not replay work with unknown external effects; reconcile with the existing
 Factory owner/controller first.
 
-### 2.4 Retries — no automatic recovery is enabled
+### 2.5 Retries — no automatic recovery is enabled
 
 A failed, cancelled, or ambiguous run is not automatically retried. A same-run
 GitHub rerun still requires the exact durable admission and must be reviewed

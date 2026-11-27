@@ -39,8 +39,12 @@ test('the real gate CLI allows only a current, exact, tree-resolved target', () 
   fs.writeFileSync(input, JSON.stringify(currentTarget()));
   const result = run(['gate', '--in', input], {WOLF_CI_SHA: validSha});
   assert.equal(result.code, 0, result.stderr);
-  assert.match(result.stdout, /"state":"ACCEPTED"/);
-  assert.match(result.stdout, /"executionSha":"aaaaaaaa/);
+  const verdict = JSON.parse(result.stdout.trim());
+  assert.equal(verdict.state, 'ACCEPTED');
+  assert.equal(verdict.acceptanceValid, true);
+  assert.equal(verdict.treeIdentical, true);
+  assert.equal(verdict.executionSha, undefined);
+  assert.equal(result.stdout.includes(validSha), false, 'the public gate output omits the private target SHA');
 });
 
 test('the gate rejects stale or mismatched target SHAs before checkout', () => {

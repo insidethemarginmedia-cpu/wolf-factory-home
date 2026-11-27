@@ -13,6 +13,31 @@ import {resolveTarget, targetVerdict} from './private-ci-resolve-target.mjs';
 
 export const RESOLVE_EXIT = Object.freeze({OK: 0, USAGE: 2, BLOCKED: 79});
 
+const SAFE_TARGET_REASONS = new Set([
+  'NO_READER_CREDENTIAL', 'REPOSITORY_INVALID', 'PR_NUMBER_INVALID',
+  'PR_STATE_UNVERIFIED', 'PR_UNREADABLE', 'PR_HEAD_UNRESOLVED',
+  'PR_HEAD_CHANGED_DURING_RESOLUTION', 'TARGET_UNRESOLVED',
+  'TARGET_IDENTITY_UNESTABLISHED', 'PIN_NO_LONGER_PR_HEAD',
+  'PR_HEAD_RELATION_UNVERIFIED', 'PR_NOT_OPEN', 'TREE_IDENTITY_UNRESOLVED',
+  'TREE_IDENTITY_MISMATCH', 'PERSISTED_VERDICT_NOT_ACCEPTED', 'TARGET_NOT_EXECUTION_SHA',
+]);
+
+/** A public run-log projection; private PR number, repository and commit IDs stay local. */
+export function buildPublicTargetAggregate(target = {}, verdict = {}) {
+  const states = new Set(['RESOLVED', 'BLOCKED', 'CURRENT', 'STALE', 'UNKNOWN', 'ACCEPTED']);
+  const relations = new Set(['CURRENT', 'STALE', 'UNKNOWN']);
+  return {
+    state: states.has(verdict.state) ? verdict.state : states.has(target.state) ? target.state : 'UNKNOWN',
+    relation: relations.has(target.relation) ? target.relation : null,
+    treeIdentical: typeof target.treeIdentity?.identical === 'boolean'
+      ? target.treeIdentity.identical
+      : typeof verdict.treeIdentical === 'boolean' ? verdict.treeIdentical : null,
+    acceptanceValid: verdict.acceptanceValid === true,
+    reason: SAFE_TARGET_REASONS.has(verdict.reason) ? verdict.reason : null,
+    credentialsPrinted: false,
+  };
+}
+
 export async function resolveTargetCli(argv = [], {
   env = process.env,
   fetchImpl = globalThis.fetch,
@@ -50,27 +75,18 @@ export async function resolveTargetCli(argv = [], {
         : parsed.verdict?.acceptanceValid !== true
           ? 'PERSISTED_VERDICT_NOT_ACCEPTED'
           : 'TARGET_NOT_EXECUTION_SHA';
-      stdout(JSON.stringify({
+      stdout(JSON.stringify(buildPublicTargetAggregate(parsed.target, {
         state: 'BLOCKED',
         acceptanceValid: false,
         reason,
-        prHead: parsed.target.prHead ?? null,
-        pinnedSha: parsed.target.pinnedSha ?? null,
-        executionSha: expectedSha,
-        credentialsPrinted: false,
-      }) + '\n');
+      })) + '\n');
       return RESOLVE_EXIT.BLOCKED;
     }
-    stdout(JSON.stringify({
+    stdout(JSON.stringify(buildPublicTargetAggregate(parsed.target, {
       state: 'ACCEPTED',
       acceptanceValid: true,
       reason: null,
-      prHead: parsed.target.prHead,
-      pinnedSha: parsed.target.pinnedSha,
-      executionSha: expectedSha,
-      treeIdentical: true,
-      credentialsPrinted: false,
-    }) + '\n');
+    })) + '\n');
     return RESOLVE_EXIT.OK;
   }
 
@@ -97,17 +113,7 @@ export async function resolveTargetCli(argv = [], {
     fs.writeFileSync(out, JSON.stringify(output, null, 2), {mode: 0o600});
   }
 
-  stdout(JSON.stringify({
-    state: target.state,
-    relation: target.relation ?? null,
-    prHead: target.prHead ?? null,
-    pinnedSha: target.pinnedSha ?? null,
-    treeIdentical: target.treeIdentity?.identical ?? null,
-    acceptanceValid: verdict.acceptanceValid,
-    reason: verdict.reason ?? target.reason ?? null,
-    credentialSource: reader.source,
-    credentialsPrinted: false,
-  }) + '\n');
+  stdout(JSON.stringify(buildPublicTargetAggregate(target, verdict)) + '\n');
   return RESOLVE_EXIT.OK;
 }
 

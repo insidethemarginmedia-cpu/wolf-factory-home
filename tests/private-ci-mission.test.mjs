@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {validateMission, missionKey, missionRecord, dedupe, nextAttempt, MISSION_STATES, MISSION_POLICY, MISSION_SCHEMA_VERSION} from '../scripts/private-ci-mission.mjs';
+import {validateMission, missionKey, missionBindingDigest, missionRecord, dedupe, nextAttempt, MISSION_STATES, MISSION_POLICY, MISSION_SCHEMA_VERSION} from '../scripts/private-ci-mission.mjs';
 
 const NOW = Date.parse('2026-11-25T00:00:00Z');
 const SHA = '8d319fc50be4e4d225e3bb80de963583899c25ec';
@@ -66,6 +66,21 @@ test('the same mission delivered twice is a duplicate, whatever the attempt numb
   const result = dedupe(retry, {seenKeys: [key]});
   assert.equal(result.state, MISSION_STATES.DUPLICATE);
   assert.equal(result.accepted, false);
+});
+
+test('the public mission binding digest is opaque and binds repository, mission ID and exact SHA', () => {
+  const first = validateMission(base, {now: NOW}).mission;
+  const retry = validateMission({...base, attempt: 4, issuedAt: NOW - 30_000}, {now: NOW}).mission;
+  const digest = missionBindingDigest(first);
+  assert.match(digest, /^[a-f0-9]{64}$/);
+  assert.equal(missionBindingDigest(retry), digest, 'attempt and issuedAt are not identity');
+  assert.notEqual(missionBindingDigest({...first, missionId: 'MISSION-2026-11-25-0002'}), digest);
+  assert.notEqual(missionBindingDigest({...first, repository: 'owner/other-private-repo'}), digest);
+  assert.notEqual(missionBindingDigest({...first, sha: '7'.repeat(40)}), digest);
+  assert.equal(JSON.stringify(digest).includes(first.sha), false);
+  assert.equal(JSON.stringify(digest).includes(first.missionId), false);
+  assert.equal(JSON.stringify(digest).includes(first.repository), false);
+  assert.throws(() => missionBindingDigest({...first, sha: 'main'}), /MISSION_BINDING_INVALID/);
 });
 
 test('a rejected mission still produces a durable record with its reason', () => {

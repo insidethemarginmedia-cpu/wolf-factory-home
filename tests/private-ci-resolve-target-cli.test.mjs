@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {test} from 'node:test';
+import {buildPublicTargetAggregate} from '../scripts/private-ci-resolve-target-cli.mjs';
 
 const CLI = 'scripts/private-ci-resolve-target-cli.mjs';
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wolf-target-'));
@@ -44,14 +45,30 @@ test('the command emits a decision rather than printing nothing', () => {
   assert.equal(decision.acceptanceValid, false);
 });
 
-test('a blocked resolution is never reported as valid acceptance', () => {
+test('a blocked resolution is never reported as valid acceptance and omits the private target SHA', () => {
+  const targetSha = '8d319fc50be4e4d225e3bb80de963583899c25ec';
   const result = run(['resolve'], {
     WOLF_CI_REPOSITORY: 'donraposo1-source/project-wolf',
     WOLF_CI_PR: '743',
-    WOLF_CI_SHA: '8d319fc50be4e4d225e3bb80de963583899c25ec',
+    WOLF_CI_SHA: targetSha,
   });
   const decision = JSON.parse(result.stdout.trim().split('\n')[0]);
   assert.equal(decision.acceptanceValid, false);
+  assert.equal(result.stdout.includes(targetSha), false);
+});
+
+test('a public target-resolution summary contains no private repo, PR number or SHA', () => {
+  const targetSha = '8d319fc50be4e4d225e3bb80de963583899c25ec';
+  const summary = buildPublicTargetAggregate({
+    state: 'RESOLVED', relation: 'CURRENT', prHead: targetSha, pinnedSha: targetSha,
+    treeIdentity: {identical: true},
+  }, {acceptanceValid: true, reason: null});
+  assert.equal(summary.acceptanceValid, true);
+  assert.equal(summary.treeIdentical, true);
+  const serialized = JSON.stringify(summary);
+  for (const privateValue of ['donraposo1-source/project-wolf', '743', targetSha]) {
+    assert.equal(serialized.includes(privateValue), false);
+  }
 });
 
 test('the output file is written when requested, so later steps read a file', () => {

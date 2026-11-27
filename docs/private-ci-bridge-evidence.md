@@ -323,9 +323,11 @@ receipt is not a substitute for private-worker acceptance.
 
 The local listener accepts a GitHub `repository_dispatch` event only on the
 listener workflow, validates the mission, and durably appends **admitted**
-records to a hash-chained ledger plus a same-writer head anchor. Refused events
-are reported in their Actions run log; they are not persisted to that ledger.
-The bridge re-reads and verifies the exact admission before private checkout.
+records to a hash-chained ledger plus a same-writer head anchor. Schema 2 stores
+a domain-separated commitment over repository, mission id and source SHA rather
+than raw selectors. Public Actions logs emit only the aggregate decision and stable
+reason code, not the event payload. Refused events are not persisted to that ledger.
+The bridge re-reads and verifies the exact commitment before private checkout.
 This code has only fake-GitHub/unit-test evidence so far; no production admission
 or mission run occurred.
 
@@ -361,11 +363,14 @@ identity is derived from the GitHub run id; executor SHA is fixed by listener
 policy. A mission may not choose a workflow, token, permissions, ref, or paid
 execution.
 
-The local key `missionId@sha` and run correlation protect **admission replay**.
-They do not establish external-effect idempotency. This schema has no separate
-nonce, signed callback, lease/fence state, or authenticated terminal receipt.
-No compatibility claim is made for Factory P1.59 / Factory 2 P1.47+ until their
-authoritative contracts are reviewed against it.
+The full key `missionId@sha` is used only in memory. Public ledger schema 2
+stores a domain-separated SHA-256 commitment to the exact repository, mission ID
+and target SHA, paired with the GitHub run id; this protects **admission replay**
+without publishing those selectors. It does not establish external-effect
+idempotency or authenticity. This schema has no separate nonce, signed callback,
+lease/fence state, or authenticated terminal receipt. No compatibility claim is
+made for Factory P1.59 / Factory 2 P1.47+ until their authoritative contracts are
+reviewed against it.
 
 ### 11.2 Recovery and acceptance limits
 

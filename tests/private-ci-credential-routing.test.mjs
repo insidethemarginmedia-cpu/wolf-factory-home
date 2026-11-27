@@ -113,13 +113,16 @@ test('manual private-CI probe uses an App reader output, not a PAT env injection
   assert.match(block, /Mint the least-privilege reader token/);
 });
 
-test('runtime bridge and dispatch probe route tokens through the selector', () => {
+test('withheld dispatch paths do not inspect dispatcher credentials', () => {
   const bridge = fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8');
   const dispatch = fs.readFileSync('scripts/private-ci-dispatch-probe.mjs', 'utf8');
   assert.match(bridge, /credentialForRole\('reader'\)/);
-  assert.match(bridge, /credentialForRole\('publisher'\)/);
-  assert.match(bridge, /credentialForRole\('dispatcher'\)/);
-  assert.doesNotMatch(bridge, /process\.env\.WOLF_FACTORY_(?:REPO|STATUS)_TOKEN/);
-  assert.match(dispatch, /credentialForRole\('dispatcher'/);
-  assert.doesNotMatch(dispatch, /env\.WOLF_FACTORY_REPO_TOKEN/);
+  assert.match(bridge, /LEGACY_DIRECT_DISPATCH_DISABLED/);
+  assert.doesNotMatch(bridge, /credentialForRole\('(publisher|dispatcher)'\)/,
+    'legacy receipt and dispatch commands must not mint write credentials');
+  assert.match(bridge, /UNAUTHENTICATED_RECEIPT_STATUS_PUBLISHING_DISABLED/);
+  assert.doesNotMatch(bridge, /process\.env\.WOLF_FACTORY_(?:REPO|STATUS|DISPATCHER)_TOKEN/);
+  assert.match(dispatch, /DISPATCH_PROBE_WITHHELD/);
+  assert.doesNotMatch(dispatch, /credentialForRole\('dispatcher'/);
+  assert.doesNotMatch(dispatch, /env\.WOLF_FACTORY_REPO_TOKEN|WOLF_FACTORY_DISPATCHER_TOKEN/);
 });

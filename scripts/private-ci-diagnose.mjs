@@ -296,29 +296,41 @@ export function diagnosePrivateCi({root} = {}) {
   };
 }
 
+export function buildPublicDiagnosticAggregate(result = {}) {
+  return {
+    schema: 'wolf.private-ci.aggregate/v1',
+    kind: 'private-ci-diagnostic',
+    state: result?.state === 'DIAGNOSED' ? 'COMPLETED' : result?.state === 'FAILED' ? 'FAILED' : 'UNKNOWN',
+    privateSourcePublished: false,
+    privateLogsPublished: false,
+    credentialsPrinted: false,
+  };
+}
+
 async function publish(result) {
   const token = process.env.GITHUB_TOKEN;
   const repository = process.env.GITHUB_REPOSITORY;
   const sha = process.env.GITHUB_SHA;
-  if (!token || !repository || !sha) return {state: 'SKIPPED', reason: 'PUBLIC_RECEIPT_CONTEXT_REQUIRED'};
+  if (!token || !repository || !sha) return {state: 'SKIPPED'};
+  const aggregate = buildPublicDiagnosticAggregate(result);
   const response = await fetch(`https://api.github.com/repos/${repository}/commits/${sha}/comments`, {
     method: 'POST',
     headers: {authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'content-type': 'application/json', 'user-agent': 'WolfPrivateCiDiagnostic'},
-    body: JSON.stringify({body: '```json\n' + JSON.stringify(result, null, 2) + '\n```'}),
+    body: JSON.stringify({body: '```json\n' + JSON.stringify(aggregate, null, 2) + '\n```'}),
     redirect: 'error',
     signal: AbortSignal.timeout(20000),
   });
-  if (!response.ok) { await response.body?.cancel(); return {state: 'FAILED', httpStatus: response.status}; }
+  if (!response.ok) { await response.body?.cancel(); return {state: 'FAILED'}; }
   return {state: 'PUBLISHED'};
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const result = diagnosePrivateCi({root: process.env.WOLF_CI_PRIVATE_ROOT});
-    result.publication = await publish(result);
-    process.stdout.write(JSON.stringify(result) + '\n');
-  } catch (error) {
-    process.stderr.write(JSON.stringify({state: 'FAILED', reason: error?.message ?? 'DIAGNOSTIC_FAILED', sourcePublished: false}) + '\n');
+    const publication = await publish(result);
+    process.stdout.write(JSON.stringify({...buildPublicDiagnosticAggregate(result), publicationState: publication.state}) + '\n');
+  } catch {
+    process.stderr.write(JSON.stringify({state: 'FAILED', reason: 'DIAGNOSTIC_FAILED', privateSourcePublished: false, credentialsPrinted: false}) + '\n');
     process.exitCode = 1;
   }
 }

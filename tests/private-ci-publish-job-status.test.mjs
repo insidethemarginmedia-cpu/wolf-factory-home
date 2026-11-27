@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {buildJobStatus, publishJobStatus} from '../scripts/private-ci-publish-job-status.mjs';
+import {buildJobStatus, buildPublicJobStatusAggregate, publishJobStatus} from '../scripts/private-ci-publish-job-status.mjs';
 
 const repository = 'donraposo1-source/project-wolf';
 const sha = 'a'.repeat(40);
@@ -29,6 +29,18 @@ test('repository, SHA, and pull-request input fail closed', () => {
   assert.throws(() => buildJobStatus({repository: 'public/repo', sha, pullRequest: '743', executionResult: 'success'}), /JOB_STATUS_REPOSITORY_DENIED/);
   assert.throws(() => buildJobStatus({repository, sha: 'latest', pullRequest: '743', executionResult: 'success'}), /JOB_STATUS_SHA_MALFORMED/);
   assert.throws(() => buildJobStatus({repository, sha, pullRequest: '0', executionResult: 'success'}), /JOB_STATUS_PR_MALFORMED/);
+});
+
+test('public job-status output is a fixed aggregate and omits publisher response details', () => {
+  const projection = buildPublicJobStatusAggregate({
+    state: 'PUBLISHED', statusId: 123, repository: 'private/repo', sha: 'secret-sha',
+    checks: [{name: 'private-check', conclusion: 'success'}], error: 'private diagnostic',
+  });
+  assert.deepEqual(projection, {
+    schema: 'wolf.private-ci.aggregate/v1', kind: 'private-check-publication', state: 'PUBLISHED',
+    exactShaStatusPublished: true, privateSourcePublished: false, privateLogsPublished: false,
+    credentialsPrinted: false,
+  });
 });
 
 test('publisher receives no source-read token or artifact payload', async () => {

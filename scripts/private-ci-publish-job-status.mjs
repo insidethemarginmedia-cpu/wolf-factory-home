@@ -36,6 +36,21 @@ export function buildJobStatus({repository, sha, pullRequest, executionResult} =
   });
 }
 
+export function buildPublicJobStatusAggregate(result = {}) {
+  const state = result?.state === 'PUBLISHED' ? 'PUBLISHED'
+    : result?.state === 'BLOCKED' ? 'BLOCKED'
+      : result?.state === 'FAILED' ? 'FAILED' : 'UNKNOWN';
+  return {
+    schema: 'wolf.private-ci.aggregate/v1',
+    kind: 'private-check-publication',
+    state,
+    exactShaStatusPublished: state === 'PUBLISHED',
+    privateSourcePublished: false,
+    privateLogsPublished: false,
+    credentialsPrinted: false,
+  };
+}
+
 export async function publishJobStatus({
   token,
   repository,
@@ -64,9 +79,7 @@ async function main() {
     pullRequest: process.env.WOLF_CI_PR,
     executionResult: process.env.WOLF_CI_EXECUTION_RESULT,
   });
-  // The returned bridge result contains status labels and IDs only, never a
-  // credential, source, diff, log body, or artifact content.
-  process.stdout.write(`${JSON.stringify(result)}\n`);
+  process.stdout.write(`${JSON.stringify(buildPublicJobStatusAggregate(result))}\n`);
   if (result.state !== 'PUBLISHED') process.exitCode = result.state === 'BLOCKED' ? 78 : 1;
 }
 
@@ -74,7 +87,7 @@ if (process.argv[1] && new URL(`file://${process.argv[1]}`).href === import.meta
   try {
     await main();
   } catch (error) {
-    process.stderr.write(`${JSON.stringify({state: 'FAILED', reason: error?.message ?? 'JOB_STATUS_PUBLISH_FAILED'})}\n`);
+    process.stderr.write(`${JSON.stringify({schema: 'wolf.private-ci.aggregate/v1', kind: 'private-check-publication', state: 'FAILED', exactShaStatusPublished: false, privateSourcePublished: false, privateLogsPublished: false, credentialsPrinted: false})}\n`);
     process.exitCode = 1;
   }
 }

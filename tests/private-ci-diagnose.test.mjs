@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {diagnosePrivateCi, extractCommands, extractEnvKeys, extractExitCodes} from '../scripts/private-ci-diagnose.mjs';
+import {diagnosePrivateCi, buildPublicDiagnosticAggregate, extractCommands, extractEnvKeys, extractExitCodes} from '../scripts/private-ci-diagnose.mjs';
 
 test('exit-code extraction reports only numbers', () => {
   assert.deepEqual(extractExitCodes("process.exit(77); process.exitCode = 78; process.exit('bad')"), [77, 78]);
@@ -31,6 +31,14 @@ test('diagnostics never publish source lines', () => {
   assert.deepEqual(result.dbos.exitCodes, [77]);
   assert.ok(result.dbos.envKeys.includes('PGDATABASE'));
   assert.equal(JSON.stringify(result).includes('private-source-marker'), false);
+  const aggregate = buildPublicDiagnosticAggregate(result);
+  assert.equal(aggregate.state, 'COMPLETED');
+  const publicText = JSON.stringify(aggregate);
+  for (const privateValue of ['wolf-dbos-outer-e2e.mjs', 'PGDATABASE', 'psql', 'scripts/', 'private-source-marker']) {
+    assert.equal(publicText.includes(privateValue), false);
+  }
+  assert.equal(aggregate.privateSourcePublished, false);
+  assert.equal(aggregate.privateLogsPublished, false);
   fs.rmSync(root, {recursive: true, force: true});
 });
 

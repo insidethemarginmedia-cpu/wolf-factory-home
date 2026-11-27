@@ -22,9 +22,9 @@
 // unauthorised request produces evidence that it was refused, which is what makes
 // "this cannot trigger privileged execution" a claim with something behind it.
 
-import {validateMission, MISSION_STATES, missionKey} from './private-ci-mission.mjs';
+import {validateMission, MISSION_STATES, missionKey, missionBindingDigest} from './private-ci-mission.mjs';
 
-export const LISTENER_SCHEMA_VERSION = 1;
+export const LISTENER_SCHEMA_VERSION = 2;
 
 export const LISTENER_EVENT_TYPE = 'wolf-private-ci';
 
@@ -142,7 +142,8 @@ export function admitMission(event, {
   }
 
   const key = missionKey(decision.mission);
-  if (seen.some(entry => entry?.missionKey === key)) {
+  const binding = missionBindingDigest(decision.mission);
+  if (seen.some(entry => entry?.missionKey === key || entry?.missionBindingDigest === binding)) {
     return refuse(REFUSAL.REPLAY_DETECTED, {deliveryId, missionKey: key});
   }
 
@@ -178,10 +179,7 @@ export function admissionRecord(admission, {now = Date.now(), runId = null} = {}
     admitted: admission?.admitted === true,
     reason: admission?.reason ?? null,
     deliveryId: admission?.deliveryId ?? null,
-    missionKey: admission?.missionKey ?? null,
-    missionId: admission?.mission?.missionId ?? null,
-    targetRepository: admission?.mission?.repository ?? null,
-    targetSha: admission?.mission?.sha ?? null,
+    missionBindingDigest: admission?.mission ? missionBindingDigest(admission.mission) : null,
     sender: admission?.sender ?? null,
     executorSha: admission?.executorSha ?? null,
     runId: runId === null || runId === undefined ? null : String(runId),

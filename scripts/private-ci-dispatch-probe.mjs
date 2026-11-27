@@ -5,14 +5,9 @@
 //
 // Only repository, workflow id, SHA and HTTP metadata appear in the result. No
 // token, response body or private content is ever returned or printed.
-import {credentialForRole} from './private-ci-app-auth.mjs';
-
 const API = 'https://api.github.com';
 
 export const DISPATCH_PROBE_STATES = Object.freeze({
-  NOT_ATTEMPTED: 'NOT_ATTEMPTED',
-  DISPATCHED: 'DISPATCHED',
-  DISPATCHED_WITH_NEW_RUN: 'DISPATCHED_WITH_NEW_RUN',
   BLOCKED: 'BLOCKED',
 });
 
@@ -69,70 +64,17 @@ export async function resolveWorkflow({token, repository, workflowId, workflowFi
  * after. A duplicate is reported, never retried: re-dispatching to "make sure"
  * is exactly how the same SHA gets executed twice.
  */
-export async function probeDispatch({
-  token,
-  repository,
-  workflowId,
-  workflowFile,
-  ref = 'main',
-  sha,
-  pr = '743',
-  mode = 'verify',
-  settleMs = 4000,
-  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-  fetchImpl = globalThis.fetch,
-} = {}) {
-  const result = {
-    state: DISPATCH_PROBE_STATES.NOT_ATTEMPTED,
-    reason: null,
-    credentialSource: token ? (token.source ?? null) : null,
-    repository: repository ?? null,
-    workflowId: workflowId ?? null,
-    workflowFile: workflowFile ? normalisePath(workflowFile) : null,
-    duplicateSuppressed: false,
-    runsBefore: null,
-    runsAfter: null,
-  };
-  if (!token || !token.value) return {...result, reason: 'DISPATCH_CREDENTIAL_REQUIRED'};
-  if (!repository) return {...result, reason: 'REPOSITORY_REQUIRED'};
-
-  const resolved = await resolveWorkflow({token: token.value, repository, workflowId, workflowFile, fetchImpl});
-  if (resolved.reason) return {...result, state: DISPATCH_PROBE_STATES.BLOCKED, reason: resolved.reason};
-  const target = resolved.workflowFile ?? resolved.workflowId;
-  result.workflowId = resolved.workflowId || null;
-  result.workflowFile = resolved.workflowFile;
-  result.workflowDiscovered = resolved.discovered === true;
-  if (resolved.discoveredName) result.discoveredWorkflow = {name: resolved.discoveredName, path: resolved.discoveredPath};
-
-  const base = API + '/repos/' + repository + '/actions/workflows/' + target;
-  const listed = await request(base, token.value, {}, fetchImpl);
-  result.workflowReadable = {ok: listed.ok, httpStatus: listed.httpStatus};
-  if (!listed.ok) return {...result, state: DISPATCH_PROBE_STATES.BLOCKED, reason: 'WORKFLOW_NOT_READABLE'};
-
-  const before = await request(base + '/runs?per_page=1', token.value, {}, fetchImpl);
-  result.runsBefore = before.body?.total_count ?? null;
-
-  const dispatched = await request(base + '/dispatches', token.value, {
-    method: 'POST',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify({ref, inputs: {sha: sha ?? '', pr, mode}}),
-  }, fetchImpl);
-  result.dispatch = {ok: dispatched.ok, httpStatus: dispatched.httpStatus};
-  if (!dispatched.ok) {
-    return {
-      ...result,
-      state: DISPATCH_PROBE_STATES.BLOCKED,
-      reason: dispatched.httpStatus === 403 || dispatched.httpStatus === 404 ? 'ACTIONS_WRITE_REQUIRED' : 'DISPATCH_FAILED',
-    };
-  }
-
-  await sleep(settleMs);
-  const after = await request(base + '/runs?per_page=1', token.value, {}, fetchImpl);
-  result.runsAfter = after.body?.total_count ?? null;
-  result.duplicateSuppressed = result.runsBefore !== null && result.runsBefore === result.runsAfter;
+export async function probeDispatch() {
+  // Dispatching a "probe" is still an externally visible workflow run and can
+  // execute private code. Capability is therefore not tested by mutation here.
+  // The only future activation path is an approved, pinned mission listener.
   return {
-    ...result,
-    state: result.duplicateSuppressed ? DISPATCH_PROBE_STATES.DISPATCHED : DISPATCH_PROBE_STATES.DISPATCHED_WITH_NEW_RUN,
+    state: DISPATCH_PROBE_STATES.BLOCKED,
+    reason: 'DISPATCH_PROBE_WITHHELD',
+    dispatchAttempted: false,
+    refUpdated: false,
+    privateSourceFetched: false,
+    credentialsPrinted: false,
   };
 }
 
@@ -143,33 +85,16 @@ export const DISPATCH_PROBE_EXIT = Object.freeze({OK: 0, DEFECT: 1, USAGE: 2, BL
  * is not yet granted is a fail-closed outcome, not a crash.
  */
 export async function dispatchProbeCli(argv = [], env = process.env, {
-  fetchImpl = globalThis.fetch,
-  write = () => {},
-  writeError = () => {},
+  write = text => process.stdout.write(text),
 } = {}) {
   const outPath = argv.find(arg => arg.startsWith('--out='))?.slice('--out='.length) ?? env.WOLF_CI_DISPATCH_FILE;
-  const selected = credentialForRole('dispatcher', {env});
-  const token = selected.token ? {value: selected.token, source: selected.source} : null;
-  const result = await probeDispatch({
-    token,
-    repository: env.WOLF_CI_REPOSITORY,
-    workflowId: Number(env.WOLF_CI_WORKFLOW_ID) || 0,
-    workflowFile: env.WOLF_CI_WORKFLOW_FILE,
-    ref: env.WOLF_CI_REF || 'main',
-    sha: env.WOLF_CI_SHA,
-    pr: env.WOLF_CI_PR || '743',
-    mode: env.WOLF_CI_MODE || 'verify',
-    fetchImpl,
-  });
+  const result = await probeDispatch();
   if (outPath) {
     const {writeFileSync} = await import('node:fs');
-    writeFileSync(outPath, JSON.stringify(result));
+    writeFileSync(outPath, JSON.stringify(result) + '\n', {mode: 0o600});
   }
-  write(result.state + ' ' + (result.reason ?? '-') + ' source=' + (result.credentialSource ?? 'none') + '\n');
-  // A capability that could not even be attempted is blocked, not fine: an
-  // unexercised dispatch must never be reported as a passing verification.
-  if (result.state === DISPATCH_PROBE_STATES.BLOCKED || result.reason) return DISPATCH_PROBE_EXIT.BLOCKED;
-  return DISPATCH_PROBE_EXIT.OK;
+  write(JSON.stringify(result) + '\n');
+  return DISPATCH_PROBE_EXIT.BLOCKED;
 }
 
 if (import.meta.url === 'file://' + process.argv[1]) {

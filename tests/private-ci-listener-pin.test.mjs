@@ -81,6 +81,31 @@ test('the runtime listener requires the durable store and the configured executo
   assert.doesNotMatch(source, /deliveries:\s*\[\]/);
 });
 
+test('the listener cannot start a runner until every economic and isolation gate is verified', () => {
+  const start = text.indexOf('  admit:');
+  const end = text.indexOf('\n  execute:', start);
+  assert.ok(start >= 0 && end > start);
+  const admissionJob = text.slice(start, end);
+  for (const variable of [
+    'WOLF_CI_ZERO_COST_RUNNER_AUTHORIZED',
+    'WOLF_CI_BILLING_VERIFIED',
+    'WOLF_CI_PROVIDER_VERIFIED',
+    'WOLF_CI_PRIVATE_RUNNER_ISOLATION_VERIFIED',
+  ]) {
+    assert.match(admissionJob, new RegExp(`vars\\.${variable} == 'true'`), `${variable} must be explicitly verified before runner allocation`);
+  }
+});
+
+test('public listener logs print only an admission aggregate, never the raw mission payload', () => {
+  assert.match(text, /LISTENER_ADMITTED=/);
+  assert.match(text, /durableState/);
+  assert.doesNotMatch(text, /cat "\$WOLF_LISTENER_OUTPUT"/);
+  assert.doesNotMatch(text, /cat '\$WOLF_LISTENER_OUTPUT'/);
+  const source = fs.readFileSync(path.join(ROOT, 'scripts/private-ci-listener-cli.mjs'), 'utf8');
+  assert.match(source, /publicListenerDecision/);
+  assert.doesNotMatch(source, /stdout\(JSON\.stringify\(\{\.\.\.admission, persistence\}\)/);
+});
+
 test('every executor reference agrees, and action pins are separately allowed', () => {
   // `actions/checkout` is also pinned by SHA, which is correct and unrelated. The
   // check is that no executor reference disagrees with the configured candidate.

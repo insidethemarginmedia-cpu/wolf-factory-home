@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 import {runListenerCli} from '../scripts/private-ci-listener-cli.mjs';
+import {missionBindingDigest} from '../scripts/private-ci-mission.mjs';
 import {
   LISTENER_STORE_ANCHOR_PATH,
   LISTENER_STORE_BRANCH,
@@ -94,9 +95,14 @@ test('a first admission durably writes a hash-chained record and matching anchor
   const verification = verifyAdmissionLedger(ledgerText);
   assert.equal(verification.state, 'INTACT');
   assert.equal(verification.sequence, 1);
-  assert.equal(verification.records[0].admission.missionKey, 'mission-0001@' + TARGET);
+  assert.equal(verification.records[0].admission.missionBindingDigest, missionBindingDigest({
+    missionId: 'mission-0001', repository: TARGET_REPOSITORY, sha: TARGET,
+  }));
   assert.equal(verification.records[0].admission.deliveryId, 'run-1001');
   assert.equal(verification.records[0].admission.runId, '1001');
+  for (const privateValue of ['mission-0001', TARGET_REPOSITORY, TARGET]) {
+    assert.equal(ledgerText.includes(privateValue), false, `public ledger must not include ${privateValue}`);
+  }
   const anchor = JSON.parse(fake.files.get(LISTENER_TEST_ANCHOR).text);
   assert.equal(anchor.head, verification.head);
   assert.equal(anchor.sequence, 1);
@@ -167,6 +173,9 @@ test('the listener CLI uses the durable store at runtime and suppresses a second
   assert.equal(first.persistence.state, 'PERSISTED');
   assert.equal(first.deliveryId, 'run-2001');
   assert.equal(output.includes(LISTENER_TEST_TOKEN), false);
+  for (const privateValue of ['factory-nightly-0001', TARGET_REPOSITORY, TARGET]) {
+    assert.equal(output.includes(privateValue), false, `public listener output must not include ${privateValue}`);
+  }
 
   const writesAfterFirst = fake.writes.length;
   output = '';
@@ -200,8 +209,16 @@ test('a stale Contents API blob SHA conflict retries from the remote head withou
   const verification = verifyAdmissionLedger(fake.files.get(LISTENER_TEST_LEDGER).text);
   assert.equal(verification.state, 'INTACT');
   assert.equal(verification.records.length, 2);
-  assert.equal(verification.records[0].admission.missionKey, 'mission-0001@' + TARGET);
-  assert.equal(verification.records[1].admission.missionKey, 'mission-0002@' + TARGET_NEXT);
+  assert.equal(verification.records[0].admission.missionBindingDigest, missionBindingDigest({
+    missionId: 'mission-0001', repository: TARGET_REPOSITORY, sha: TARGET,
+  }));
+  assert.equal(verification.records[1].admission.missionBindingDigest, missionBindingDigest({
+    missionId: 'mission-0002', repository: TARGET_REPOSITORY, sha: TARGET_NEXT,
+  }));
+  const publicLedger = fake.files.get(LISTENER_TEST_LEDGER).text;
+  for (const privateValue of ['mission-0001', 'mission-0002', TARGET_REPOSITORY, TARGET, TARGET_NEXT]) {
+    assert.equal(publicLedger.includes(privateValue), false, `public ledger must not include ${privateValue}`);
+  }
   assert.equal(verification.records[1].prev, verification.records[0].hash);
   assert.equal(existingText.split('\n').filter(Boolean).length, 1);
 });
@@ -308,7 +325,7 @@ test('hash corruption and an incomplete ledger shape fail verification', async (
   await persist(fake);
   const stored = fake.files.get(LISTENER_TEST_LEDGER);
   const entry = JSON.parse(stored.text.trim());
-  entry.admission.targetSha = TARGET_NEXT;
+  entry.admission.missionBindingDigest = 'd'.repeat(64);
   fake.files.set(LISTENER_TEST_LEDGER, {...stored, text: JSON.stringify(entry) + '\n'});
   const verdict = await gate(fake);
   assert.equal(verdict.state, 'BLOCKED');
