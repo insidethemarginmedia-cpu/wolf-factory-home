@@ -69,33 +69,37 @@ test('workflow probe and PR resolver do not receive a PAT directly', () => {
   assert.match(probe, /WOLF_CI_APP_READER_TOKEN/);
 });
 
-test('workflow App tokens are scoped to the metadata resolver and status publisher', () => {
+test('workflow App tokens are scoped to target metadata, source checkout, and status jobs', () => {
   const workflow = fs.readFileSync('.github/workflows/private-ci-bridge.yml', 'utf8');
-  const execute = workflow.slice(workflow.indexOf('  execute:'));
-  const resolver = workflow.slice(workflow.indexOf('Resolve the authoritative PR head'), workflow.indexOf('Require current exact PR target'));
-  const publisher = workflow.slice(workflow.indexOf('Publish the authenticated check to the private commit'), workflow.indexOf('Publish the sanitized public receipt', workflow.indexOf('Publish the authenticated check to the private commit')));
-  assert.match(resolver, /WOLF_CI_APP_READER_TOKEN:\s*\$\{\{\s*steps\.app_reader\.outputs\.token\s*\}\}/);
+  const targetStart = workflow.indexOf('  target_verification:');
+  const executeStart = workflow.indexOf('  execute:', targetStart);
+  const publishStart = workflow.indexOf('  publish_status:', executeStart);
+  const target = workflow.slice(targetStart, executeStart);
+  const execute = workflow.slice(executeStart, publishStart);
+  const publisher = workflow.slice(publishStart);
+  const resolver = target.slice(target.indexOf('Resolve the authoritative PR head'), target.indexOf('Require the current exact PR target'));
+  const publish = publisher.slice(publisher.indexOf('Publish only the aggregate exact-SHA job conclusion'));
+
+  assert.match(resolver, /WOLF_CI_APP_READER_TOKEN:\s*\$\{\{\s*steps\.target_reader\.outputs\.token\s*\}\}/);
   assert.doesNotMatch(resolver, /\$\{\{\s*env\.WOLF_CI_APP_READER_TOKEN/);
-  assert.match(publisher, /WOLF_CI_APP_PUBLISHER_TOKEN:\s*\$\{\{\s*steps\.publisher_mint\.outputs\.token\s*\}\}/);
-  assert.doesNotMatch(publisher, /\$\{\{\s*env\.WOLF_CI_APP_PUBLISHER_TOKEN/);
-  assert.doesNotMatch(workflow, /WOLF_CI_APP_(?:READER|PUBLISHER)_TOKEN[^\n]*>>\s*["\']?\$GITHUB_ENV/);
-  assert.equal(execute.includes('WOLF_CI_APP_READER_TOKEN: ${{ env.'), false);
-  assert.equal(execute.includes('WOLF_CI_APP_PUBLISHER_TOKEN: ${{ env.'), false);
+  assert.match(execute, /token:\s*\$\{\{\s*steps\.source_reader\.outputs\.token\s*\}\}/);
+  assert.doesNotMatch(execute, /WOLF_CI_APP_(?:READER|PUBLISHER|DISPATCHER)_TOKEN/,
+    'the private execution job must not receive metadata or status tokens');
+  assert.match(publish, /WOLF_CI_APP_PUBLISHER_TOKEN:\s*\$\{\{\s*steps\.status_publisher\.outputs\.token\s*\}\}/);
+  assert.doesNotMatch(publish, /\$\{\{\s*env\.WOLF_CI_APP_PUBLISHER_TOKEN/);
+  assert.match(publisher, /permission-checks: write/);
+  assert.doesNotMatch(workflow, /WOLF_CI_APP_(?:READER|PUBLISHER)_TOKEN[^\n]*>>\s*[\"']?\$GITHUB_ENV/);
 });
 
-test('only the adversarial durable-ledger proof receives the PAT directly', () => {
+test('the private execution job has no PAT, deploy-key, or status-write fallback', () => {
   const workflow = fs.readFileSync('.github/workflows/private-ci-bridge.yml', 'utf8');
   const start = workflow.indexOf('  execute:');
-  const execute = workflow.slice(start);
-  const assignments = [...execute.matchAll(/WOLF_FACTORY_(?:REPO|STATUS)_TOKEN:\s*\$\{\{\s*secrets\./g)];
-  assert.equal(assignments.length, 1);
-  const proofStart = execute.indexOf('Prove durable fallback denial without the per-run flag');
-  const nextStep = execute.indexOf('\n      - name:', proofStart + 10);
-  const proof = execute.slice(proofStart, nextStep === -1 ? undefined : nextStep);
-  assert.ok(proofStart >= 0);
-  assert.match(proof, /WOLF_FACTORY_REPO_TOKEN:\s*\$\{\{\s*secrets\./);
-  assert.doesNotMatch(execute.slice(0, proofStart), /WOLF_FACTORY_(?:REPO|STATUS)_TOKEN:\s*\$\{\{\s*secrets\./);
-  if (nextStep !== -1) assert.doesNotMatch(execute.slice(nextStep), /WOLF_FACTORY_(?:REPO|STATUS)_TOKEN:\s*\$\{\{\s*secrets\./);
+  const end = workflow.indexOf('  publish_status:', start);
+  assert.ok(start >= 0 && end > start);
+  const execute = workflow.slice(start, end);
+  assert.doesNotMatch(execute, /WOLF_FACTORY_(?:REPO|STATUS|DEPLOY|DISPATCHER)_TOKEN|WOLF_FACTORY_DEPLOY_KEY|WOLF_CI_RETIRE_PAT/);
+  assert.match(execute, /steps\.source_reader\.outputs\.token/);
+  assert.match(execute, /Revoke the private-source read token before running private code/);
 });
 
 test('manual private-CI probe uses an App reader output, not a PAT env injection', () => {

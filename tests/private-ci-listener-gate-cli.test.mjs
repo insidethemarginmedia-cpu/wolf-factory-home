@@ -135,11 +135,12 @@ test('a raw repository_dispatch cannot bypass the listener admission ledger', ()
     'the listener caller handles repository_dispatch; the bridge itself has no raw-dispatch trigger');
   assert.match(condition, /github\.workflow_ref == 'insidethemarginmedia-cpu\/wolf-factory-home\/\.github\/workflows\/mission-listener\.yml@refs\/heads\/main'/,
     'only the default-branch listener may call privileged execution');
-  assert.match(execute, /needs: mission_admission/);
+  assert.match(execute, /needs: \[mission_admission, target_verification\]/);
   const admissionStart = workflow.indexOf('\n  mission_admission:\n');
+  const targetStartForOrdering = workflow.indexOf('\n  target_verification:\n');
   const executeStartForOrdering = workflow.indexOf('\n  execute:\n');
-  assert.ok(admissionStart >= 0 && admissionStart < executeStartForOrdering);
-  const admissionTail = workflow.slice(admissionStart, executeStartForOrdering);
+  assert.ok(admissionStart >= 0 && targetStartForOrdering > admissionStart && executeStartForOrdering > targetStartForOrdering);
+  const admissionTail = workflow.slice(admissionStart, targetStartForOrdering);
   assert.match(jobCondition(admissionTail), /github\.event_name == 'repository_dispatch'/);
   assert.match(admissionTail, /contents: read/);
   assert.doesNotMatch(admissionTail, /secrets\./);
@@ -160,21 +161,37 @@ test('the gate verdict file is shared with the public receipt builder', () => {
   assert.match(fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8'), /missionAdmission: readMissionAdmission\(process\.env\.WOLF_CI_MISSION_ADMISSION_FILE\)/);
 });
 
-test('the bridge runs the durable admission gate before any private-source checkout or App credential mint', () => {
+test('durable admission gates both metadata access and the private source checkout', () => {
   const workflow = fs.readFileSync('.github/workflows/private-ci-bridge.yml', 'utf8');
+  const admissionStart = workflow.indexOf('\n  mission_admission:\n');
+  const targetStart = workflow.indexOf('\n  target_verification:\n');
   const executeStart = workflow.indexOf('\n  execute:\n');
-  assert.ok(executeStart >= 0, 'execute job exists');
-  const executeTail = workflow.slice(executeStart + 1);
-  const nextJob = executeTail.slice(1).search(/\n  [A-Za-z0-9_-]+:\n/);
-  const execute = nextJob < 0 ? executeTail : executeTail.slice(0, nextJob + 1);
-  const readOnlyGate = workflow.indexOf('Verify durable mission admission with a read-only token');
-  const gate = execute.indexOf('Re-verify durable mission admission before private access');
-  const retirement = execute.indexOf('Hydrate and verify durable retirement evidence before credential selection');
-  const appMint = execute.indexOf('Mint the reader installation token with the official action');
-  const privateCheckout = execute.indexOf('Clone the private commit at its immutable SHA');
-  assert.ok(readOnlyGate >= 0 && readOnlyGate < executeStart, 'read-only admission must pass before the privileged execute job starts');
-  assert.ok(gate >= 0, 'reusable execution must re-read the durable admission ledger');
-  assert.ok(retirement >= 0 && gate < retirement, 'the second gate runs before retirement or other repository access');
-  assert.ok(gate < appMint, 'the gate runs before a private App credential is minted');
-  assert.ok(gate < privateCheckout, 'the gate runs before private source checkout');
+  assert.ok(admissionStart >= 0 && targetStart > admissionStart && executeStart > targetStart);
+
+  const admission = workflow.slice(admissionStart, targetStart);
+  const target = workflow.slice(targetStart, executeStart);
+  const publishStart = workflow.indexOf('\n  publish_status:\n', executeStart);
+  const execute = workflow.slice(executeStart, publishStart);
+  assert.match(jobCondition(admission), /github\.event_name == 'repository_dispatch'/);
+  assert.match(admission, /contents: read/);
+  assert.doesNotMatch(admission, /secrets\./);
+
+  // The read-only admission job must finish before the metadata-only App token
+  // can be minted in target_verification.
+  assert.match(target, /needs: mission_admission/);
+  assert.match(jobCondition(target), /needs\.mission_admission\.outputs\.verified == 'true'/);
+  const metadataMint = target.indexOf('Mint a read-only App token for private PR metadata');
+  const resolve = target.indexOf('Resolve the authoritative PR head');
+  const targetGate = target.indexOf('Require the current exact PR target');
+  assert.ok(metadataMint >= 0 && resolve > metadataMint && targetGate > resolve);
+  assert.match(target, /steps\.target_reader\.outputs\.token/);
+
+  // The per-job admission re-check is before any private source credential or
+  // checkout in the execution job, and target verification is a required need.
+  assert.match(execute, /needs: \[mission_admission, target_verification\]/);
+  const secondGate = execute.indexOf('Re-verify durable mission admission before private access');
+  const sourceMint = execute.indexOf('Mint the least-privilege read token for private source checkout');
+  const privateCheckout = execute.indexOf('Checkout the private target at the immutable SHA');
+  assert.ok(secondGate >= 0 && sourceMint > secondGate && privateCheckout > sourceMint);
+  assert.match(execute, /steps\.source_reader\.outputs\.token/);
 });

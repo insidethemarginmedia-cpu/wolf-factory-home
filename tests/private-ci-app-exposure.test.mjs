@@ -51,38 +51,36 @@ test('the workflow never uploads an artefact', () => {
   assert.equal(/upload-artifact/.test(workflow), false, 'nothing is uploaded, so nothing can leak through one');
 });
 
-test('the publisher token is minted and scoped only to the private-status publication step', () => {
-  // The mint was first inserted into the probe job, where it could never reach the
-  // publish step. A job-scoped assertion is the only thing that catches a step
-  // landing in the wrong job - a plain indexOf finds the probe job's publish step
-  // first and proves nothing.
-  // Parsed with the in-repo workflow reader rather than PyYAML: a test that needs a
-  // package the runner does not have passes locally and fails in CI, which is
-  // exactly what happened here.
+test('the checks-write App token is minted only in the isolated aggregate-status publisher job', () => {
   const {parseWorkflowJobs} = require('../scripts/private-ci-workflow.mjs');
   const parsed = Object.fromEntries(parseWorkflowJobs(workflow).map(job => [job.name, job.steps.map(step => step.name)]));
-
-  const execute = parsed.execute;
-  const mintName = 'Mint the least-privilege publisher token for the private check';
-  const publishName = 'Publish the authenticated check to the private commit';
-  const mintAt = execute.indexOf(mintName);
-  const publishAt = execute.indexOf(publishName);
-  assert.ok(mintAt >= 0, 'the mint step must exist in the execute job');
-  assert.ok(publishAt >= 0, 'the publish step must exist in the execute job');
-  assert.ok(mintAt < publishAt, 'the token must be minted before the step that uses it');
-
-  // And it must not be duplicated into another job.
+  const publisher = parsed.publish_status;
+  const mintName = 'Mint a checks-write-only App token for the private result';
+  const publishName = 'Publish only the aggregate exact-SHA job conclusion';
+  const mintAt = publisher.indexOf(mintName);
+  const publishAt = publisher.indexOf(publishName);
+  assert.ok(mintAt >= 0, 'the checks-write token must be minted in publish_status');
+  assert.ok(publishAt > mintAt, 'the status token must be minted before its single publication step');
   for (const [job, steps] of Object.entries(parsed)) {
-    if (job === 'execute') continue;
-    assert.equal(steps.includes(mintName), false, `the mint must not live in ${job}`);
+    if (job === 'publish_status') continue;
+    assert.equal(steps.includes(mintName), false, `checks-write mint must not live in ${job}`);
   }
 
   const mintStart = workflow.indexOf('name: ' + mintName);
   const mintBlock = workflow.slice(mintStart, workflow.indexOf('      - name:', mintStart + 10));
   const publishStart = workflow.indexOf('name: ' + publishName);
-  const publishBlock = workflow.slice(publishStart, workflow.indexOf('      - name:', publishStart + 10));
+  const publishBlock = workflow.slice(publishStart);
+  const executeStart = workflow.indexOf('\n  execute:\n');
+  const publishJobStart = workflow.indexOf('\n  publish_status:\n');
+  const executeBlock = workflow.slice(executeStart, publishJobStart);
   assert.match(mintBlock, /actions\/create-github-app-token@/);
+  assert.match(mintBlock, /permission-checks: write/);
+  assert.match(mintBlock, /repositories: project-wolf/);
   assert.doesNotMatch(mintBlock, /GITHUB_ENV/, 'the token must not be exported job-wide');
-  assert.match(publishBlock, /steps\.publisher_mint\.outputs\.token/);
-  assert.doesNotMatch(publishBlock, /\$\{\{\s*env\.WOLF_CI_APP_PUBLISHER_TOKEN/);
+  assert.match(publishBlock, /steps\.status_publisher\.outputs\.token/);
+  assert.match(publishBlock, /needs\.execute\.result/);
+  assert.doesNotMatch(publishBlock, /\$\{\{\s*env\.WOLF_CI_APP_PUBLISHER_TOKEN|upload-artifact|private-ci-publish-receipt/);
+  assert.ok(executeStart >= 0 && publishJobStart > executeStart);
+  assert.doesNotMatch(executeBlock, /checks: write|contents: write|publisher_mint/i,
+    'private source execution must not share a write token or public-repository write scope');
 });

@@ -55,6 +55,26 @@ raw event cannot enter privileged execution. The intended path is:
    delivery id, executor SHA, and caller run id again before private checkout or
    App-token mint. Neither gate alone is worker acceptance.
 
+The candidate bridge now separates exact-target metadata verification, private
+source execution, and aggregate status publication into three separate jobs. A
+least-privilege source-read App token is revoked immediately after the immutable
+checkout and before dependency installation or private code runs. Private package
+manager and test output is kept in runner-local files and deleted; the publisher
+job receives only the trusted execution-job conclusion and writes one
+SHA-bound aggregate check. No source, diff, test log, receipt, or artifact is
+passed between jobs or attached to the check.
+
+That limits intentional publication; it is **not** proof of network-egress
+isolation. The current candidate uses `ubuntu-latest`, and arbitrary code/tests
+can make outbound network requests from that runner. Private execution therefore
+remains blocked unless the actual runner/network isolation, zero-cost billing,
+and provider authorization are independently verified. Every mission job also
+fails closed unless `WOLF_CI_ZERO_COST_RUNNER_AUTHORIZED`,
+`WOLF_CI_BILLING_VERIFIED`, `WOLF_CI_PROVIDER_VERIFIED`, and
+`WOLF_CI_PRIVATE_RUNNER_ISOLATION_VERIFIED` are explicitly set to `true`. These
+workflow variables are gates, not evidence; do not set them based on this PR or a
+public canary. None has been changed or verified in this session.
+
 That listener is present only on this engineering branch. No default-branch
 activation or permission change was performed. An upstream caller needs only the
 minimum permission approved for dispatching the listener; it must not receive
@@ -185,8 +205,9 @@ refusal is not permission to try another transport or credential.
 | --- | --- | --- |
 | Target SHA fallback | **REPAIRED IN LOCAL CODE; NOT LIVE-ACCEPTED** | `WOLF_CI_SHA` resolves only from typed `inputs.sha`; missing input stays empty and fails closed |
 | Listener executor pin | **RESOLVED FOR PUBLIC CANDIDATE; NOT ACTIVATED** | `b3f397fd959f41c1a843e917b35e0a5914f53c11` resolves via GitHub and its tree contains the required workflow, `workflow_call` inputs, durable pre-job admission and in-job recheck; the former `9679aa...` value was invalid. No activation approval is implied |
-| Public regression suite | **PASSED LOCALLY AND IN PUBLIC CI** | `node --test tests/*.test.mjs`: 491 passed, 0 failed; run [45901572224](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45901572224) on head `5bec9fb98a2edeef3e685c426bb361bad21545f3` passed `validate`; `probe`, `inventory`, `mission_admission`, and `execute` were skipped |
+| Regression suite | **CURRENT WORKTREE 502/502 LOCAL; LATEST PUBLIC RUN IS HISTORICAL** | `node --test tests/*.test.mjs`: 502 passed, 0 failed in this dirty worktree. Public run [45901825772](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45901825772) on committed head `4579e4f990595e0704e24d65ed9babb557b0d0d4` passed `validate` with the earlier 491-test suite; `probe`, `inventory`, `mission_admission`, and `execute` were skipped. The 502 local tests do not constitute a private run |
 | Private mission entrypoint | **IMPLEMENTED IN THE PR WORKTREE; NOT ACTIVATED** | Fake-GitHub tests exercise admission/anchor logic; the listener is absent from `main`, and no production admission occurred |
+| Exact-SHA private CI and aggregate status | **CANDIDATE CODE ONLY; EXECUTION BLOCKED** | Target metadata, private execution, and status publication are separate jobs; the source token is revoked before code runs and only the aggregate job result is published. The current `ubuntu-latest` runner has outbound network access, so private-code non-disclosure is not established; runner isolation, billing, provider and owner approvals remain unverified |
 | Raw bridge `repository_dispatch` | **REMOVED** | The bridge has no raw dispatch trigger; a read-only pre-job gate and an in-job re-check require the trusted default-branch listener caller and typed mission inputs before private access |
 | Direct manual private execution | **DENIED BY CONDITION** | Full execute job is limited to a `repository_dispatch` call from `mission-listener.yml@refs/heads/main`; manual inputs cannot satisfy it |
 | Durable admission/replay ledger | **UNIT-TESTED, LIVE PERSISTENCE UNKNOWN** | Fake GitHub API exercises anchored append, stale/conflict refusal, replay and gate; no production admission run occurred |

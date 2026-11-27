@@ -1,10 +1,7 @@
-// Ordering invariants for durable retirement.
-//
-// The bypass this guards against is not in the selector, it is in the *sequence*:
-// if any step that consumes a PAT is declared before the retirement decision is
-// hydrated, that step enforces nothing and the retirement is advisory again.
-// Unit tests of `selectCredential` cannot catch that, because the selector is
-// never reached with the right input. So the workflow's own step order is tested.
+// The bridge no longer selects a PAT fallback: source checkout uses one
+// least-privilege App token, revoked before private dependencies or code run.
+// These workflow-level assertions guard that stronger boundary. The dedicated
+// retirement-ledger tests continue to exercise the retired fallback protocol.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {test} from 'node:test';
@@ -13,147 +10,135 @@ import {parseWorkflowJobs} from '../scripts/private-ci-workflow.mjs';
 
 const WORKFLOW = '.github/workflows/private-ci-bridge.yml';
 const text = fs.readFileSync(WORKFLOW, 'utf8');
+const statusPublisherSource = fs.readFileSync('scripts/private-ci-publish-job-status.mjs', 'utf8');
 const jobs = parseWorkflowJobs(text);
 const execute = jobs.find(job => job.name === 'execute');
+const target = jobs.find(job => job.name === 'target_verification');
+const publisher = jobs.find(job => job.name === 'publish_status');
 
-// A step "consumes the PAT" if its env or run block mentions any PAT secret.
-// Both are checked because the workflow mixes `token:` inputs with `env:`.
-const patMarkers = ['WOLF_FACTORY_REPO_TOKEN', 'WOLF_FACTORY_STATUS_TOKEN'];
-const consumesPat = step => patMarkers.some(marker => JSON.stringify(step).includes(marker));
+function jobBlock(name) {
+  const start = text.indexOf('  ' + name + ':' + '\n');
+  assert.ok(start >= 0, `job ${name} must exist`);
+  const tail = text.slice(start);
+  const next = tail.slice(1).search(/^  [a-z][a-z0-9_-]*:$/m);
+  return tail.slice(0, next < 0 ? undefined : next + 1);
+}
 
-const indexOfStep = predicate => execute.steps.findIndex(predicate);
-
-test('the execute job exists and carries the retirement steps', () => {
+test('the execute job exists and contains the bounded exact-SHA CI path', () => {
   assert.ok(execute, 'execute job must exist');
-  assert.ok(execute.steps.length > 20, 'execute job should still carry its full pipeline');
-});
-
-test('durable retirement is hydrated before the first PAT-consuming step', () => {
-  const hydrate = indexOfStep(step => step.name === 'Hydrate and verify durable retirement evidence before credential selection');
-  assert.ok(hydrate >= 0, 'the hydration step must exist');
-
-  const firstPat = indexOfStep(consumesPat);
-  assert.ok(firstPat >= 0, 'expected at least one PAT-consuming step');
-
-  assert.ok(
-    hydrate < firstPat,
-    `hydration is step ${hydrate + 1} but the first PAT-consuming step is ${firstPat + 1} ` +
-    `("${execute.steps[firstPat].name}") - a step that runs before hydration cannot be gated by it`,
-  );
-});
-
-test('retirement hydration runs immediately after the in-job admission re-check, before credential work', () => {
-  const hydrate = indexOfStep(step => step.name === 'Hydrate and verify durable retirement evidence before credential selection');
-  const names = execute.steps.slice(0, hydrate).map(step => step.name);
-  // The exact ledger re-check must be the only step between checkout and retirement
-  // hydration. No credential selector, service probe or private-source access may
-  // precede either gate.
-  assert.deepEqual(names, [
-    'Checkout the public controller without persisted credentials',
+  for (const name of [
     'Re-verify durable mission admission before private access',
-  ]);
-  const admissionGate = indexOfStep(step => step.name === 'Re-verify durable mission admission before private access');
-  assert.ok(admissionGate >= 0 && admissionGate < hydrate);
+    'Checkout the private target at the immutable SHA without persisted credentials',
+    'Execute the six required checks, build, migrations and security scans with private logs',
+    'Remove private source and ephemeral test state',
+  ]) assert.ok(execute.steps.some(step => step.name === name), `missing required step: ${name}`);
+  const block = jobBlock('execute');
+  assert.ok(block.includes('permissions:' + '\n' + '      contents: read'));
+  assert.doesNotMatch(block, /contents: write|checks: write/);
 });
 
-test('the retirement decision is persisted so later runs inherit it', () => {
-  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision without rewriting remote history');
-  assert.ok(persist, 'a persistence step must exist');
-  // `continue-on-error` is not among the keys the step parser surfaces, so the
-  // raw block is checked. Persistence failure is separately saved to a receipt.
-  const start = text.indexOf('Persist the retirement decision without rewriting remote history');
-  const end = text.indexOf('- name:', start + 10);
-  const block = text.slice(start, end === -1 ? start + 2500 : end);
-  assert.match(block, /continue-on-error:\s*true/);
-  assert.match(String(persist.run), /private-ci-retirement-persist\.mjs/);
-  assert.match(block, /RETIREMENT_PERSISTENCE_EXIT=/);
-  assert.doesNotMatch(String(persist.run), /branch=main\b/);
+test('private source execution has no PAT, deploy-key, dispatcher, or write-token fallback', () => {
+  const block = jobBlock('execute');
+  assert.doesNotMatch(block, /WOLF_FACTORY_(?:REPO|STATUS|DEPLOY|DISPATCHER)_TOKEN|WOLF_FACTORY_DEPLOY_KEY|WOLF_CI_RETIRE_PAT/);
+  assert.doesNotMatch(block, /WOLF_CI_APP_(?:READER|PUBLISHER|DISPATCHER)_TOKEN/);
+  assert.ok(block.includes('permission-contents: read'));
+  assert.ok(block.includes('persist-credentials: false'));
 });
 
-test('no step writes retirement evidence to the default branch', () => {
+test('the read token is scoped to immutable checkout and revoked before untrusted code', () => {
+  const mint = execute.steps.findIndex(step => step.name === 'Mint the least-privilege read token for private source checkout');
+  const checkout = execute.steps.findIndex(step => step.name === 'Checkout the private target at the immutable SHA without persisted credentials');
+  const revoke = execute.steps.findIndex(step => step.name === 'Revoke the private-source read token before running private code');
+  const install = execute.steps.findIndex(step => step.name === 'Install private lockfile dependencies without lifecycle scripts');
+  const runPrivate = execute.steps.findIndex(step => step.name === 'Execute the six required checks, build, migrations and security scans with private logs');
+  assert.ok(mint >= 0 && checkout > mint && revoke > checkout, 'token mint -> checkout -> revocation order is mandatory');
+  assert.ok(install > revoke && runPrivate > revoke, 'dependency and test code must run after token revocation');
+
+  const executeSource = jobBlock('execute');
+  const checkoutBlock = JSON.stringify(execute.steps[checkout]);
+  const revokeBlock = JSON.stringify(execute.steps[revoke]);
+  assert.ok(executeSource.includes('permission-contents: read'));
+  assert.ok(executeSource.includes('permission-metadata: read'));
+  assert.ok(executeSource.includes('skip-token-revoke: true'));
+  assert.ok(checkoutBlock.includes('steps.source_reader.outputs.token'));
+  assert.equal(execute.steps[checkout].with['persist-credentials'], 'false');
+  assert.ok(revokeBlock.includes("method: 'DELETE'"));
+  assert.ok(revokeBlock.includes('api.github.com/installation/token'));
+});
+
+test('private output stays runner-local and cleanup runs even after a failed check', () => {
+  const install = execute.steps.find(step => step.name === 'Install private lockfile dependencies without lifecycle scripts');
+  const runPrivate = execute.steps.find(step => step.name === 'Execute the six required checks, build, migrations and security scans with private logs');
+  const cleanup = execute.steps.find(step => step.name === 'Remove private source and ephemeral test state');
+  const executeBlock = jobBlock('execute');
+  const cleanupStart = executeBlock.indexOf('      - name: Remove private source and ephemeral test state');
+  const cleanupEnd = executeBlock.indexOf('      - name:', cleanupStart + 10);
+  const cleanupText = executeBlock.slice(cleanupStart, cleanupEnd < 0 ? undefined : cleanupEnd);
+  assert.ok(String(install.run).includes('>>"$install_log" 2>&1'));
+  assert.ok(String(runPrivate.run).includes('node scripts/private-ci-execute.mjs >/tmp/wolf-ci-executor.log 2>&1'));
+  assert.ok(cleanupText.includes('if: always()'));
+  assert.ok(String(cleanup.run).includes('$GITHUB_WORKSPACE/wolf-private'));
+  assert.ok(String(cleanup.run).includes('/tmp/wolf-ci-install.log'));
+  assert.ok(String(cleanup.run).includes('/tmp/wolf-ci-executor.log'));
+  assert.ok(String(cleanup.run).includes('$HOME/.npm'));
+  assert.ok(String(cleanup.run).includes('$HOME/.cache/pip'));
+  assert.doesNotMatch(cleanupText, /secrets\.|WOLF_CI_SOURCE_READ_TOKEN/);
+});
+
+test('target verification and aggregate status publication run outside the private-source job', () => {
+  assert.ok(target && publisher);
+  assert.ok(jobBlock('target_verification').includes('needs: mission_admission'));
+  assert.ok(jobBlock('target_verification').includes('private-ci-resolve-target-cli.mjs gate'));
+  assert.ok(jobBlock('target_verification').includes('Remove metadata-only target response'));
+  assert.ok(jobBlock('execute').includes('needs: [mission_admission, target_verification]'));
+  assert.ok(jobBlock('publish_status').includes('needs: [mission_admission, target_verification, execute]'));
+  assert.ok(jobBlock('publish_status').includes('needs.execute.result'));
+  assert.ok(jobBlock('publish_status').includes('private-ci-publish-job-status.mjs'));
+  const runtimeCommands = execute.steps.map(step => String(step.run ?? '')).join('\n');
+  assert.doesNotMatch(runtimeCommands, /node scripts\/private-ci-publish-job-status\.mjs|node scripts\/private-ci-publish-receipt\.mjs|actions\/upload-artifact/);
+  assert.doesNotMatch(jobBlock('publish_status'), /WOLF_CI_PRIVATE_ROOT|private-ci-publish-receipt\.mjs|upload-artifact/);
+});
+
+test('the execute job neither persists retirement state nor writes it to a branch', () => {
+  const runtimeCommands = execute.steps.map(step => String(step.run ?? '')).join('\n');
+  assert.doesNotMatch(runtimeCommands, /private-ci-retirement-persist\.mjs|retirement-ledger\.jsonl|retirement-head\.json/);
   const offenders = execute.steps.filter(step => {
     const body = String(step.run ?? '');
-    return /contents\/\.wolf-ci|retirement-ledger/.test(body) && /branch=main\b|-f branch=main/.test(body);
+    return body.includes('contents/.wolf-ci') || body.includes('retirement-ledger.jsonl');
   });
-  assert.deepEqual(offenders.map(s => s.name), []);
+  assert.deepEqual(offenders.map(step => step.name), []);
 });
 
-test('the persistence step delegates branch creation and remote fetch to the tested CLI', () => {
-  const persist = execute.steps.find(step => step.name === 'Persist the retirement decision without rewriting remote history');
-  assert.ok(persist, 'the persistence step must exist');
-  assert.match(String(persist.run), /private-ci-retirement-persist\.mjs persist/);
-  assert.match(JSON.stringify(persist.env), /WOLF_CI_RETIREMENT_PERSIST_FILE/);
+test('the bridge exposes no private receipt or source artifact publication step', () => {
+  const block = jobBlock('execute') + jobBlock('publish_status');
+  assert.doesNotMatch(block, /Publish the SHA-bound receipt|Publish the sanitized public receipt|Publish the receipt to a dedicated private branch/);
+  assert.doesNotMatch(block, /actions\/upload-artifact|private-ci-publish-receipt\.mjs/);
+  assert.ok(statusPublisherSource.includes('No private source, diff, logs, credential, or artifact is attached'));
+  assert.ok(statusPublisherSource.includes('not private-worker or mission acceptance'));
+});
 
+test('the retired-ledger persistence helper validates the old anchor before writing new bytes', () => {
   const source = fs.readFileSync('scripts/private-ci-retirement-persist.mjs', 'utf8');
-  const createBranch = source.indexOf('/git/refs');
-  const fetchFiles = source.indexOf('const [ledgerFile, anchorFile]');
-  const writeLedger = source.indexOf('/contents/${RETIREMENT_LEDGER_PATH}');
-  const writeAnchor = source.indexOf('/contents/${RETIREMENT_ANCHOR_PATH}');
-  assert.ok(createBranch >= 0 && fetchFiles > createBranch, 'the ref is resolved before remote contents are read');
-  assert.ok(writeLedger > fetchFiles && writeAnchor > writeLedger, 'the remote ledger is written before its anchor');
-});
-
-test('unavailable retirement evidence withholds PAT but does not block the App path', () => {
-  const hydrate = execute.steps.find(step => step.name === 'Hydrate and verify durable retirement evidence before credential selection');
-  const start = text.indexOf('Hydrate and verify durable retirement evidence');
-  const end = text.indexOf('- name:', start + 10);
-  const block = text.slice(start, end === -1 ? start + 6000 : end);
-  assert.doesNotMatch(block, /continue-on-error:\s*true/, 'an error cannot be hidden as successful hydration');
-  assert.match(String(hydrate.run), /WOLF_CI_RETIREMENT_REQUIRE_ANCHOR=true/);
-  assert.match(String(hydrate.run), /RETIREMENT_FALLBACK=WITHHELD_EVIDENCE_UNVERIFIABLE/);
-  assert.match(String(hydrate.run), /RETIREMENT_LEDGER=UNAVAILABLE/);
-});
-
-test('the resolver receives a step-scoped App reader token before private source access', () => {
-  const reader = execute.steps.findIndex(step => /Mint the reader installation token with the official action/.test(step.name ?? ''));
-  const resolve = execute.steps.findIndex(step => /Resolve the authoritative PR head/.test(step.name ?? ''));
-  const clone = execute.steps.findIndex(step => /Clone the private commit/.test(step.name ?? ''));
-  assert.ok(reader >= 0, 'the official reader token action must exist');
-  assert.ok(resolve > reader, `resolver is step ${resolve + 1} but reader token action is step ${reader + 1}`);
-  assert.ok(clone > resolve, 'target resolution must precede the private clone');
-  assert.match(JSON.stringify(execute.steps[resolve].env), /steps\.app_reader\.outputs\.token/);
-  assert.doesNotMatch(JSON.stringify(execute.steps[resolve].env), /\$\{\{\s*env\.WOLF_CI_APP_READER_TOKEN/);
-});
-
-test('the resolver publishes its verdict onto the receipt', () => {
-  // A resolved target that never reaches the receipt is a check nobody can read.
-  const bridge = fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8');
-  assert.match(bridge, /acceptanceTarget:/);
-  assert.match(bridge, /acceptanceValid/);
-});
-
-test('the target output path is job-level, so the receipt builder can read it', () => {
-  // Declared only in the resolver step, the path was invisible to the step that
-  // builds the receipt: the resolution happened and published as NOT_REPORTED.
-  // Sized from the execute job's own env block, located by its distinctive first
-  // entry rather than by the first `env:` in the file, which belongs to another job.
-  const jobStart = text.indexOf('\n  execute:');
-  assert.ok(jobStart > 0, 'the execute job must exist');
-  // Anchored on the execute job, because the probe job opens with the same first
-  // variable and would match a naive search for the first `env:` block.
-  const envStart = text.indexOf('    env:\n', jobStart);
-  assert.ok(envStart > 0, 'the execute job must have a job-level env block');
-  const envEnd = text.indexOf('    steps:', envStart);
-  const envBlock = text.slice(envStart, envEnd);
-  // Six-space indent is job level; ten-space is a step. The distinction is the bug.
-  assert.match(envBlock, /^      WOLF_CI_TARGET_OUTPUT:/m, 'the path must be job-level, not step-level');
-});
-
-test('the persistence CLI verifies and anchors the exact remote ledger bytes', () => {
-  const source = fs.readFileSync('scripts/private-ci-retirement-persist.mjs', 'utf8');
-  assert.match(source, /verifyLedger\(ledgerText\)/);
-  assert.match(source, /compareToAnchor\(verification, previousAnchor\)/);
-  assert.match(source, /buildHeadAnchor\(finalVerification/);
-  assert.match(source, /RETIREMENT_LEDGER_ANCHOR_PAIR_INCOMPLETE/);
-  assert.match(source, /LEDGER_SHORTER_THAN_ANCHOR/);
+  assert.ok(source.includes('verifyLedger(ledgerText)'));
+  assert.ok(source.includes('compareToAnchor(verification, previousAnchor)'));
+  assert.ok(source.includes('buildHeadAnchor(finalVerification'));
+  assert.ok(source.includes('RETIREMENT_LEDGER_ANCHOR_PAIR_INCOMPLETE'));
+  assert.ok(source.includes('LEDGER_SHORTER_THAN_ANCHOR'));
   assert.ok(source.indexOf('/contents/${RETIREMENT_LEDGER_PATH}') < source.indexOf('/contents/${RETIREMENT_ANCHOR_PATH}'));
 });
 
-test('the prior anchor is parsed and compared before it can be overwritten', () => {
-  const source = fs.readFileSync('scripts/private-ci-retirement-persist.mjs', 'utf8');
-  const fetchAnchor = source.indexOf('getContents({repository, file: RETIREMENT_ANCHOR_PATH');
-  const compare = source.indexOf('compareToAnchor(verification, previousAnchor)');
-  const writeAnchor = source.indexOf('/contents/${RETIREMENT_ANCHOR_PATH}');
-  assert.ok(fetchAnchor >= 0 && compare > fetchAnchor, 'remote anchor is read and verified first');
-  assert.ok(writeAnchor > compare, 'anchor write follows the successful comparison');
+test('the exact target is held in the metadata job and removed instead of crossing jobs', () => {
+  const targetBlock = jobBlock('target_verification');
+  const executeBlock = jobBlock('execute');
+  assert.ok(targetBlock.includes('WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json'));
+  assert.ok(targetBlock.includes('rm -f -- /tmp/wolf-ci-target.json'));
+  assert.doesNotMatch(executeBlock, /WOLF_CI_TARGET_OUTPUT|wolf-ci-target\.json/);
+  assert.doesNotMatch(text, /actions\/upload-artifact/);
+});
+
+test('the bridge exposes the resolver verdict contract without treating it as worker acceptance', () => {
+  const bridge = fs.readFileSync('scripts/private-ci-bridge.mjs', 'utf8');
+  assert.ok(bridge.includes('acceptanceTarget:'));
+  assert.ok(bridge.includes('acceptanceValid'));
+  assert.ok(statusPublisherSource.includes('not private-worker or mission acceptance'));
 });

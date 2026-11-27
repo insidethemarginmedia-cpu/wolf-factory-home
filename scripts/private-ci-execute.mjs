@@ -1,10 +1,11 @@
 // Isolated executor for the six required private CI checks.
 //
-// Private source is cloned only into the ephemeral runner temp directory. Every
-// command's stdout/stderr is captured to a mode-0600 log file that is deleted at
-// the end of the job. The only published values are check names, exit codes,
-// durations and a SHA-bound receipt hash. No source, log, diff or credential is
-// printed or uploaded.
+// Private source is checked out only on the ephemeral execution runner. Every
+// command's stdout/stderr is captured to a mode-0600 runner-local log, and the
+// executor writes a SHA-bound internal receipt for local diagnosis. The current
+// bridge redirects this program's output and deletes both the logs and receipt;
+// a separate job publishes only the aggregate GitHub job conclusion. No source,
+// diff, test log, internal receipt, credential, or artifact is uploaded.
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -632,7 +633,7 @@ if (process.argv[1] && import.meta.url === new URL('file://' + process.argv[1]).
       logDir: process.env.WOLF_CI_LOG_DIR,
       receiptPath: process.env.WOLF_CI_RECEIPT,
       env: {
-        EUR_SPEND: '0', COST_UNKNOWN: 'DENY', PAID_FALLBACK: 'DENY', TRIAL_CREDIT: 'DENY',
+        EUR_SPEND: '0', COST_UNKNOWN: 'DENY', PAID_FALLBACK: 'DENY', UNVERIFIED_BILLING: 'DENY', UNVERIFIED_PROVIDER: 'DENY', TRIAL_CREDIT: 'DENY',
         ...(process.env.PGHOST ? {PGHOST: process.env.PGHOST} : {}),
         ...(process.env.PGPORT ? {PGPORT: process.env.PGPORT} : {}),
         ...(process.env.PGUSER ? {PGUSER: process.env.PGUSER} : {}),

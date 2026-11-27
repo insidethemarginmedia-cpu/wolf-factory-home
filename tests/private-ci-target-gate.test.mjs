@@ -71,26 +71,34 @@ test('missing or forged resolver output is not an acceptance', () => {
   assert.equal(JSON.parse(denied.stdout).acceptanceValid, false);
 });
 
-test('the execute workflow gates the target before clone and does not continue on resolver failure', () => {
-  const jobs = parseWorkflowJobs(fs.readFileSync(WORKFLOW, 'utf8'));
-  const execute = jobs.find(job => job.name === 'execute');
-  assert.ok(execute);
-  const resolve = execute.steps.findIndex(step => /Resolve the authoritative PR head/.test(step.name ?? ''));
-  const gate = execute.steps.findIndex(step => /Require current exact PR target/.test(step.name ?? ''));
-  const clone = execute.steps.findIndex(step => /Clone the private commit at its immutable SHA/.test(step.name ?? ''));
-  assert.ok(resolve >= 0 && gate > resolve && clone > gate, 'resolve -> enforce -> clone ordering is mandatory');
-
+test('the target job gates the exact PR SHA before the dependent source checkout', () => {
   const text = fs.readFileSync(WORKFLOW, 'utf8');
-  const resolverBlock = text.slice(text.indexOf('Resolve the authoritative PR head'), text.indexOf('- name:', text.indexOf('Resolve the authoritative PR head') + 10));
-  assert.doesNotMatch(resolverBlock, /continue-on-error:\s*true/, 'a failed resolver cannot be ignored');
-  assert.match(resolverBlock, /WOLF_CI_APP_READER_TOKEN/);
-  assert.doesNotMatch(resolverBlock, /WOLF_FACTORY_REPO_TOKEN/);
+  const jobs = parseWorkflowJobs(text);
+  const target = jobs.find(job => job.name === 'target_verification');
+  const execute = jobs.find(job => job.name === 'execute');
+  assert.ok(target && execute);
 
-  const gateBlock = text.slice(text.indexOf('Require current exact PR target'), text.indexOf('- name:', text.indexOf('Require current exact PR target') + 10));
-  assert.match(gateBlock, /private-ci-resolve-target-cli\.mjs gate/);
-  assert.doesNotMatch(gateBlock, /continue-on-error:\s*true/);
+  const resolve = target.steps.findIndex(step => /Resolve the authoritative PR head/.test(step.name ?? ''));
+  const gate = target.steps.findIndex(step => /Require the current exact PR target/.test(step.name ?? ''));
+  assert.ok(resolve >= 0 && gate > resolve, 'resolve -> exact-SHA gate ordering is mandatory');
 
-  const executionSteps = execute.steps.slice(gate + 1, execute.steps.findIndex(step => /Validate the cross-repository mission/.test(step.name ?? '')));
-  const bypasses = executionSteps.filter(step => /if:\s*always\(\)/.test(String(step.if ?? '')));
-  assert.deepEqual(bypasses.map(step => step.name), [], 'target code must rely on the failing gate, not `always()`');
+  const targetBlockStart = text.indexOf('  target_verification:');
+  const executeBlockStart = text.indexOf('  execute:', targetBlockStart);
+  const targetBlock = text.slice(targetBlockStart, executeBlockStart);
+  const executeBlockEnd = text.indexOf('  publish_status:', executeBlockStart);
+  const executeBlock = text.slice(executeBlockStart, executeBlockEnd);
+  assert.match(targetBlock, /private-ci-resolve-target-cli\.mjs gate/);
+  assert.doesNotMatch(targetBlock, /continue-on-error:\s*true/);
+  assert.match(targetBlock, /WOLF_CI_APP_READER_TOKEN/);
+  assert.doesNotMatch(targetBlock, /WOLF_FACTORY_REPO_TOKEN/);
+  assert.match(executeBlock, /needs: \[mission_admission, target_verification\]/);
+  assert.match(executeBlock, /needs\.target_verification\.outputs\.verified == 'true'/);
+
+  const checkout = execute.steps.find(step => /Checkout the private target at the immutable SHA/.test(step.name ?? ''));
+  assert.ok(checkout, 'the source checkout must be explicit');
+  assert.equal(checkout.with.ref, '${{ inputs.sha }}');
+  assert.equal(checkout.with['persist-credentials'], 'false');
+  assert.equal(checkout.with.token, '${{ steps.source_reader.outputs.token }}');
+  assert.equal(target.steps.some(step => /Checkout the private target/.test(step.name ?? '')), false,
+    'metadata verification must not fetch private source');
 });

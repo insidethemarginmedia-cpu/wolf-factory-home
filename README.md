@@ -12,6 +12,8 @@ No mission was dispatched, no private worker or authenticated callback ran, and 
 
 The current, non-executable contract and blockers are in [`docs/integration-contract.md`](docs/integration-contract.md). Do not dispatch or activate the bridge from this repository while those blockers remain.
 
+The persistent multi-repository recovery instructions and exact-SHA inventory are in [`docs/engineering-workspace.md`](docs/engineering-workspace.md); the single ordered infrastructure backlog is [`docs/engineering-backlog.md`](docs/engineering-backlog.md). Workspace recovery is read-only against remotes and fast-forwards only clean expected branches.
+
 ## Withdrawn credential and App setup guidance
 
 Earlier README and `docs/app-activation/` instructions proposed creating/installing a new GitHub App and adding repository secrets. Those instructions are withdrawn. They are not authorization to create duplicate infrastructure, install an App, change repository settings, add or rotate secrets, or dispatch a mission. The static pages now state this explicitly and contain no setup form.

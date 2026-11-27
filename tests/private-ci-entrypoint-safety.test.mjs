@@ -79,30 +79,26 @@ test('only a mission-qualified reusable-workflow call may enter private executio
     'the second gate cannot be optional');
 });
 
-test('always-run secret and write steps are conditional on a successful durable admission gate', () => {
+test('aggregate status publication always follows successful admission and exact-target verification', () => {
   const execute = job('execute');
-  const gate = execute.indexOf('id: mission_admission');
-  assert.ok(gate >= 0, 'the durable gate needs a stable step id for downstream conditions');
-  const protectedSteps = [
-    'Publish the SHA-bound receipt to a dedicated private branch',
-    'Publish the diagnosis to a public check run the agent can read',
-    'Persist the retirement decision without rewriting remote history',
-    'Enforce the fallback-retirement decision for this run',
-    'Prove durable fallback denial without the per-run flag',
-    'Mint the least-privilege publisher token for the private check',
-    'Publish the authenticated check to the private commit',
-    'Publish the sanitized public receipt',
-  ];
-  for (const name of protectedSteps) {
-    const start = execute.indexOf(`      - name: ${name}`);
-    assert.ok(start >= 0, `step ${name} must exist`);
-    assert.ok(gate < start, `${name} must follow the successful durable admission gate`);
-    const tail = execute.slice(start);
-    const end = tail.indexOf('\n      - name:');
-    const step = end < 0 ? tail : tail.slice(0, end);
-    assert.match(step, /if: always\(\) && steps\.mission_admission\.outcome == 'success'/,
-      `${name} must not receive credentials or publish after admission failure`);
-  }
+  const gate = execute.indexOf('Re-verify durable mission admission before private access');
+  const sourceMint = execute.indexOf('Mint the least-privilege read token for private source checkout');
+  const sourceCheckout = execute.indexOf('Checkout the private target at the immutable SHA');
+  assert.ok(gate >= 0 && sourceMint > gate && sourceCheckout > sourceMint,
+    'the second durable admission gate must precede private source credentials and checkout');
+  assert.match(execute, /permissions:\n      contents: read/);
+  assert.doesNotMatch(execute, /contents: write|checks: write|actions\/upload-artifact|Publish the SHA-bound receipt|Publish the authenticated check|Publish the sanitized public receipt/);
+
+  const publisher = job('publish_status');
+  const condition = jobCondition(publisher);
+  assert.match(condition, /always\(\)/, 'aggregate failure status remains publishable after failed execution');
+  assert.match(condition, /needs\.mission_admission\.outputs\.verified == 'true'/);
+  assert.match(condition, /needs\.target_verification\.outputs\.verified == 'true'/);
+  assert.match(publisher, /needs: \[mission_admission, target_verification, execute\]/);
+  assert.match(publisher, /needs\.execute\.result/);
+  assert.match(publisher, /permission-checks: write/);
+  assert.match(publisher, /private-ci-publish-job-status\.mjs/);
+  assert.doesNotMatch(publisher, /actions\/upload-artifact|private-ci-publish-receipt\.mjs|WOLF_FACTORY_DEPLOY_KEY/);
 });
 
 test('push validation is public and does not invoke private mission jobs', () => {
