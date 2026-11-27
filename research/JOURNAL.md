@@ -278,6 +278,33 @@ speedup; P3 one key unlocks GENERATE).
 
 ---
 
+---
+
+## Entry 011 — 2026-11-27 · E6: reuse wired into the loop, with a negative control
+
+**Purpose.** Entries 009 benchmarked components *standalone*. This entry proves
+one actually runs **inside** `wolf-loop.mjs` as an executable verify gate —
+i.e. reuse, not a demo.
+
+**Design.** Treatment / control pair, the discipline P1 requires:
+
+| arm | input | result |
+|---|---|---|
+| **treatment** | clean `scripts/wolf-loop.mjs` | gate **PASSES**; Q15 receipt `ok:true` |
+| **control** | same file + injected `function broken( {` at line 453 | gate **BLOCKS**, reporting the exact line |
+| restore | `diff -q` against pre-edit backup | byte-identical, `RESTORED OK` |
+
+**`EXPERIMENTALLY VALIDATED RESULT`** — a gate that passes everything is not a
+gate; the control demonstrates rejection of a real `SyntaxError`.
+
+**Cost:** one `verify` command, **zero new orchestration, zero new service,
+EUR 0**. This is the concrete answer to "can an existing component replace a
+custom Factory mechanism" — for the *verification* layer, yes, immediately.
+
+**Still open:** the *generation* layer remains `BLOCKED_EXTERNAL` (Entry 008).
+
+---
+
 ## Open questions (next experiments)
 
 | # | Question | Type | Needs |
