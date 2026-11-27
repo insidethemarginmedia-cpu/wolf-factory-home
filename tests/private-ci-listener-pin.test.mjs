@@ -126,3 +126,35 @@ test('every executor reference agrees, and action pins are separately allowed', 
 test('the listener does not pin a branch or tag', () => {
   assert.doesNotMatch(text, /private-ci-bridge\.yml@(main|master|HEAD|\$\{)/);
 });
+
+function pinnedJob(name) {
+  const workflow = showAtPin(BRIDGE);
+  const start = workflow.indexOf('\n  ' + name + ':\n');
+  assert.ok(start >= 0, 'pinned executor must contain job ' + name);
+  const remainder = workflow.slice(start + 1);
+  const next = remainder.slice(1).search(/^  [a-z_][a-z0-9_-]*:\s*$/m);
+  return next < 0 ? remainder : remainder.slice(0, next + 1);
+}
+
+test('the invoked executor enforces exact-target and economic gates before private execution', () => {
+  const target = pinnedJob('target_verification');
+  const execute = pinnedJob('execute');
+  assert.match(target, /private-ci-resolve-target-cli\.mjs gate/);
+  assert.match(target, /WOLF_CI_SHA: \$\{\{ inputs\.sha \}\}/);
+  assert.match(execute, /needs: \[mission_admission, target_verification\]/);
+  assert.match(execute, /needs\.target_verification\.outputs\.verified == 'true'/);
+  for (const gate of ['ZERO_COST_RUNNER_AUTHORIZED', 'BILLING_VERIFIED', 'PROVIDER_VERIFIED', 'PRIVATE_RUNNER_ISOLATION_VERIFIED']) {
+    assert.ok(execute.includes("vars.WOLF_CI_" + gate + " == 'true'"), 'pinned executor must enforce ' + gate);
+  }
+  assert.match(execute, /permissions:\n      contents: read\n/);
+  assert.doesNotMatch(execute, /contents: write|checks: write|actions\/upload-artifact|private-ci-publish-receipt\.mjs/);
+});
+
+test('the invoked executor isolates aggregate status publication from private source execution', () => {
+  const publisher = pinnedJob('publish_status');
+  assert.match(publisher, /needs: \[mission_admission, target_verification, execute\]/);
+  assert.match(publisher, /needs\.execute\.result/);
+  assert.match(publisher, /permission-checks: write/);
+  assert.match(publisher, /private-ci-publish-job-status\.mjs/);
+  assert.doesNotMatch(publisher, /actions\/upload-artifact|private-ci-publish-receipt\.mjs|WOLF_FACTORY_DEPLOY_KEY/);
+});
