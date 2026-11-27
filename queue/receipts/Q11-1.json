@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q11",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:56:18.025Z",
+  "finishedAt": "2026-11-27T15:56:21.189Z",
+  "durationMs": 3164,
+  "verify": "node -e \"const fs=require('fs');const s=fs.readFileSync('research/REUSE-MATRIX.md','utf8');for(const k of ['0.547 s','0.363 s','2.101 s','0.006 s','2.969 s'])if(!s.includes(k))throw new Error('missing measurement '+k);console.log('reuse measurements recorded');\" && node --test 'tests/**/*.test.mjs' 2>&1 | grep -q '# fail 0'",
+  "ok": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "54321908ef4477b2a9ad2a30fa5f2c3c0eaecd1c",
+  "outputTail": ""
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q12",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:56:21.224Z",
+  "finishedAt": "2026-11-27T15:56:24.574Z",
+  "durationMs": 3350,
+  "verify": "test -f .gitignore && git check-ignore -q research/evidence/factory-home-baseline-20261127.json && exit 1 || true; node --test 'tests/**/*.test.mjs' 2>&1 | grep -q '# fail 0' && echo 'gitignore functional: evidence not ignored, suite green'",
+  "ok": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "54321908ef4477b2a9ad2a30fa5f2c3c0eaecd1c",
+  "outputTail": ""
+}

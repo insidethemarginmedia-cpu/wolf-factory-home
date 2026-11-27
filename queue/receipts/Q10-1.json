@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q10",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:56:17.918Z",
+  "finishedAt": "2026-11-27T15:56:17.964Z",
+  "durationMs": 46,
+  "verify": "test -f research/REUSE-MATRIX.md && node -e \"const fs=require('fs');const s=fs.readFileSync('research/REUSE-MATRIX.md','utf8');if(s.length<4000)throw new Error('too short');for(const k of ['REUSE','REPLACE','DEFER','BLOCKED_EXTERNAL','Apache-2.0','AGPL-3.0','0.547','VERIFIED FACT'])if(!s.includes(k))throw new Error('missing '+k);console.log('reuse matrix ok');\"",
+  "ok": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "54321908ef4477b2a9ad2a30fa5f2c3c0eaecd1c",
+  "outputTail": ""
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "Q1",
+  "attempt": 1,
+  "startedAt": "2026-11-27T15:16:40.158Z",
+  "finishedAt": "2026-11-27T15:16:40.992Z",
+  "durationMs": 834,
+  "verify": "node scripts/wolf-research-instrument.mjs --repo . --pretty > /tmp/wolf-baseline.json && node -e \"const r=require('/tmp/wolf-baseline.json'); const m=r.measurement; if(m.commitsUnique<400) throw new Error('commitsUnique='+m.commitsUnique); if(m.mergeConflicts.length<80) throw new Error('pairs='+m.mergeConflicts.length); if(m.mergeConflicts.filter(c=>c.conflicts>0).length<40) throw new Error('conflicting pairs='+m.mergeConflicts.filter(c=>c.conflicts>0).length); if(m.shares.feat>0.10) throw new Error('feat share too high: '+m.shares.feat); console.log('baseline ok: '+m.commitsUnique+' commits, '+m.mergeConflicts.filter(c=>c.conflicts>0).length+'/'+m.mergeConflicts.length+' pairs conflict');\"",
+  "ok": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "3742bcc76ee2a5a8ff09897dda6611d50a4ef053",
+  "outputTail": ""
+}

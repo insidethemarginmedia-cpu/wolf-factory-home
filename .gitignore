@@ -1,0 +1,25 @@
+# Wolf Engineering Research Lab — ignore generated/local state only.
+# Tracked evidence (research/evidence/*.json, queue/receipts/*.json) is
+# committed deliberately: it is the audit trail, not build output.
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Aider repo-map tag cache (regenerated on demand, never authoritative)
+.aider.tags.cache*/
+.aider.input.history
+.aider.chat.history.md
+
+# Local-only workspace clones and scratch
+.engineering-workspace/
+*.local
+
+# OS noise
+.DS_Store
+Thumbs.db
