@@ -5,7 +5,7 @@ This is the single ordered infrastructure backlog. Other documents are evidence 
 ## Current state
 
 - Factory Home PR [#2](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/pull/2) is open and not approved. Its executor pin/interface defect is resolved for the public candidate; no activation or private-worker acceptance is established.
-- Public validation has passed on earlier PR heads, with private-path jobs skipped. The preserved historical baseline is `node --test tests/*.test.mjs`: **491 passed, 0 failed**. The current dirty worktree now passes **502/502** local regression tests; this is not a private workflow run or public CI result.
+- Public run [45917702188](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45917702188) on `d4b5596adff4eb22e4f9a4d2e2db8b3254cbf5fd` passed `validate` with **502/502** tests; `probe`, `inventory`, `mission_admission`, `target_verification`, `execute`, and `publish_status` were skipped. This is public controller validation, not private CI acceptance. The preserved historical baseline remains **491 passed, 0 failed**.
 - The current session has read access to public Wolf Compute, but no confirmed read access to private Project Wolf. Wolf Compute issue [#2](https://github.com/donraposo1-source/wolf-compute/issues/2) remains unanswered; a prior attempt to add a comment was denied with 403. Do not retry that write without authorized access.
 - No mission, worker run, authenticated callback, production write, deployment, merge, or dispatch occurred. `EUR_SPEND=0`.
 
