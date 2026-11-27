@@ -1,0 +1,184 @@
+# Minimal trusted mission listener.
+#
+# This file is the only thing that must exist on the default branch for a mission
+# to be startable. It is deliberately the least powerful component in the system:
+#
+#   * no GitHub App credentials, no PAT, no deploy key
+#   * no private source checkout
+#   * cannot publish anything
+#
+# Its entire authority is "start one reusable workflow at one approved immutable
+# commit". Everything privileged happens in that workflow, on a ref that is pinned,
+# after the admission decision has been recorded.
+#
+# Being credential-free is not the security property. The security property is that
+# every request is an explicit allow decision with positive evidence. Refusals are
+# reported in the Actions run log; only admitted missions are persisted in the
+# durable ledger. See scripts/private-ci-listener.mjs and its adversarial tests.
+# The gate below is the second line of defence: the privileged job re-checks the
+# admission before it starts, so a tampered output cannot start work.
+
+name: Wolf Mission Listener
+
+on:
+  repository_dispatch:
+    types: [wolf-private-ci]
+
+# Never run for a fork, and never inherit a token with more than read.
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  # One privileged execution at a time, repository-wide. Two missions racing over
+  # the same receipt path would make the receipt ambiguous.
+  group: wolf-mission-listener
+  cancel-in-progress: false
+
+env:
+  # The only commit this listener could start if it is later approved and
+  # activated. It must be in the static allowlist below. Full 40 hex only: a
+  # branch would move, and "the SHA I meant" is not auditable.
+  # Recovered from the full repository history: this exact immutable commit has
+  # the reusable inputs, durable pre-job admission and execution-time gate. This
+  # is a review candidate only; it does not authorize activation or dispatch.
+  WOLF_LISTENER_EXECUTOR_SHA: b3f397fd959f41c1a843e917b35e0a5914f53c11
+  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: b3f397fd959f41c1a843e917b35e0a5914f53c11
+  # Senders permitted to submit a mission. Empty means refuse everything.
+  WOLF_LISTENER_AUTHORIZED_SENDERS: insidethemarginmedia-cpu,donraposo1-source
+  WOLF_LISTENER_REPOSITORY_ALLOWLIST: donraposo1-source/project-wolf
+  WOLF_LISTENER_APPROVED_REPOSITORY: insidethemarginmedia-cpu/wolf-factory-home
+
+jobs:
+  admit:
+    # A literal repository check, not a variable: the listener must never run
+    # anywhere but its own repository. Keep the runner dormant until the owner has
+    # independently verified the free-cost runner, billing, provider and isolation
+    # controls; missing attestations must not consume Actions minutes.
+    if: >-
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+      vars.WOLF_CI_ZERO_COST_RUNNER_AUTHORIZED == 'true' &&
+      vars.WOLF_CI_BILLING_VERIFIED == 'true' &&
+      vars.WOLF_CI_PROVIDER_VERIFIED == 'true' &&
+      vars.WOLF_CI_PRIVATE_RUNNER_ISOLATION_VERIFIED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      admitted: ${{ steps.admit.outputs.admitted }}
+      executor_sha: ${{ steps.admit.outputs.executor_sha }}
+      delivery_id: ${{ steps.admit.outputs.delivery_id }}
+      reason: ${{ steps.admit.outputs.reason }}
+    steps:
+      - name: Checkout the approved executor commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          # The admission logic is read at the pinned executor, not from the
+          # default branch, so the decision procedure is the reviewed one.
+          ref: ${{ env.WOLF_LISTENER_EXECUTOR_SHA }}
+
+      - name: Decide admission from the event, refusing by default
+        id: admit
+        shell: bash
+        env:
+          # The payload is attacker-controlled data. It is passed as a file so it
+          # can never be interpreted as shell, and the decision is made in Node.
+          EVENT_JSON: ${{ toJSON(github.event) }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          WOLF_LISTENER_STORE_REQUIRED: 'true'
+          WOLF_LISTENER_POLICY_FILE: /tmp/wolf-listener-event.json
+          WOLF_LISTENER_OUTPUT: /tmp/wolf-listener-admission.json
+        run: |
+          set -euo pipefail
+          node -e 'process.stdout.write(process.env.EVENT_JSON ?? "{}")' > "$WOLF_LISTENER_POLICY_FILE"
+
+          node scripts/private-ci-listener-cli.mjs admit --event "$WOLF_LISTENER_POLICY_FILE" > "$WOLF_LISTENER_OUTPUT" || true
+
+          # Every branch below sets the outputs explicitly, so a crash cannot leave
+          # `admitted` unset and be read as truthy downstream.
+          node -e '
+            const fs = require("fs");
+            let d = {};
+            try {
+              const firstLine = fs.readFileSync(process.env.WOLF_LISTENER_OUTPUT, "utf8").split(/\r?\n/, 1)[0];
+              d = JSON.parse(firstLine);
+            } catch { d = {admitted: false, reason: "LISTENER_OUTPUT_UNREADABLE"}; }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "admitted=" + (d.admitted === true) + "\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "executor_sha=" + (d.executorSha ?? "") + "\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "reason=" + (d.reason ?? d.detail?.missionReason ?? "UNKNOWN") + "\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "delivery_id=" + (d.deliveryId ?? "") + "\n");
+            process.stdout.write(JSON.stringify({admitted: d.admitted === true, reason: d.reason ?? null, credentialsRequired: false}) + "\n");
+          '
+
+      - name: Record the admission decision
+        if: always()
+        shell: bash
+        # Keep both outcomes visible in this Actions run log. Refusals are not
+        # appended to the durable admission ledger; only admitted missions are.
+        env:
+          WOLF_LISTENER_OUTPUT: /tmp/wolf-listener-admission.json
+        run: |
+          set -euo pipefail
+          echo "LISTENER_ADMITTED=${{ steps.admit.outputs.admitted }}"
+          echo "LISTENER_REASON=${{ steps.admit.outputs.reason }}"
+          node -e '
+            const fs = require("fs");
+            let d = {};
+            try {
+              const firstLine = fs.readFileSync(process.env.WOLF_LISTENER_OUTPUT, "utf8").split(/\r?\n/, 1)[0];
+              d = JSON.parse(firstLine);
+            } catch { d = {}; }
+            const summary = {
+              state: ["ADMITTED", "REFUSED"].includes(d.state) ? d.state : "UNKNOWN",
+              admitted: d.admitted === true,
+              durableState: typeof d.persistence?.state === "string" ? d.persistence.state : "UNKNOWN",
+              credentialsRequired: false
+            };
+            process.stdout.write(JSON.stringify(summary) + "\\n");
+          '
+
+  execute:
+    needs: admit
+    # Only an admitted mission reaches privileged execution. This is the gate that
+    # makes "an invalid request cannot cause privileged execution" true rather than
+    # merely intended.
+    if: |
+      always() &&
+      needs.admit.outputs.admitted == 'true' &&
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
+    permissions:
+      actions: write
+      checks: write
+      contents: write
+    # A job-level `uses:` is the credential-free handoff. GitHub resolves the
+    # workflow reference itself, so the listener needs no dispatch token, no PAT and
+    # no App installation to start the privileged pipeline. The reference is an
+    # immutable commit: the pipeline that runs is the reviewed one, not whatever the
+    # default branch happens to contain later.
+    #
+    # Note there is no `runs-on` and no `steps` here by design: a job that calls a
+    # reusable workflow cannot also run arbitrary shell, so the listener is
+    # structurally incapable of doing privileged work itself.
+    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-ci-bridge.yml@b3f397fd959f41c1a843e917b35e0a5914f53c11
+    with:
+      # The mission's target SHA, taken from the admitted payload. The admission
+      # job already validated it as a full 40-hex commit.
+      sha: ${{ github.event.client_payload.sha }}
+      missionId: ${{ github.event.client_payload.missionId }}
+      deliveryId: ${{ needs.admit.outputs.delivery_id }}
+      executorSha: ${{ needs.admit.outputs.executor_sha }}
+    secrets:
+      WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+      WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+      WOLF_FACTORY_READER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_READER_INSTALLATION_ID }}
+      WOLF_FACTORY_PUBLISHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_PUBLISHER_INSTALLATION_ID }}
+      WOLF_FACTORY_DISPATCHER_INSTALLATION_ID: ${{ secrets.WOLF_FACTORY_DISPATCHER_INSTALLATION_ID }}
+      WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+      WOLF_FACTORY_REPO_TOKEN: ${{ secrets.WOLF_FACTORY_REPO_TOKEN }}

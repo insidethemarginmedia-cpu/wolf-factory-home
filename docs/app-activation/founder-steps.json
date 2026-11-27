@@ -1,0 +1,15 @@
+{
+  "state": "WITHDRAWN",
+  "status": "BLOCKED / NOT AUTHORIZED",
+  "title": "Former GitHub App setup instructions",
+  "reason": "The prior setup flow proposed a new GitHub App without verifying that no approved existing App already serves this role, and requested repository-secret changes before the listener, executor pin, upstream contract, recovery owner, and required approvals were resolved. It was withdrawn to avoid duplicate infrastructure and unauthorized credential changes.",
+  "authorizedActions": [],
+  "dispatchAuthorized": false,
+  "appCreationAuthorized": false,
+  "secretChangesAuthorized": false,
+  "steps": [],
+  "credentialsPrinted": false,
+  "privateWorkerAcceptance": false,
+  "eurSpend": 0,
+  "contract": "../integration-contract.md"
+}

@@ -1,26 +1,21 @@
 # wolf-factory-home
 
-Bounded public runner for the existing private Factory. The application source, database snapshots, provider responses and private test logs remain outside this repository.
+Bounded public runner for the existing private Factory. Application source, database snapshots, provider responses and private test logs remain outside this repository.
 
-The observed Node/PostgreSQL runtime proof is recorded in docs/checkpoints/WOLF-20261022-PUBLIC-RUNTIME.json. The original probe is manual-only so integration commits do not repeat it.
+The historical public-runtime proof is archived in `docs/checkpoints/WOLF-20261022-PUBLIC-RUNTIME.json`; it is not current private-worker or mission acceptance evidence.
 
-## Private-controller preflight
+## Current integration status: blocked / not activated
 
-Changes to the preflight workflow, script or tests on feat/public-runtime-probe-20261022 trigger:
-1. Credential-free negative security tests.
-2. A read-only service-access check, restricted to this repository, branch and owner actor.
+The private mission listener and reusable bridge are present only in the open engineering PR, not on the default branch. The former invalid executor value has been replaced with the repository-history candidate `b3f397fd959f41c1a843e917b35e0a5914f53c11`; its remote tree contains the exact reusable interface and durable admission gates. This resolves the SHA/interface defect for review only, not activation approval. The authoritative Factory/Build Wolf/Compute request and callback contract, durable execution/recovery owner, and required approvals are still unresolved; see [`docs/executor-pin-recovery.md`](docs/executor-pin-recovery.md).
 
-No pull-request or fork trigger receives service credentials. Checkout credentials are not persisted. Missing configuration stops with exit 78 before network access. Success verifies metadata only: it does not fetch private code, invoke AI, run missions, publish code or prove durable recovery.
+No mission was dispatched, no private worker or authenticated callback ran, and no production write or paid inference occurred. `EUR_SPEND=0`. Tests, public canaries, old receipts, HTTP success responses and green runs do not establish private-worker acceptance.
 
-Required Actions repository secrets:
-- OPENROUTER_API_KEY: inference-only service key with USD spending limit zero, no management privileges.
-- WOLF_FACTORY_REPO_TOKEN: short-lived GitHub App installation token, or an owner-issued fine-grained service token restricted to the private application repository. Contents: read and implicit metadata read suffice for this preflight. Contents: write is additionally needed only for later approved-branch publication and private backup persistence. No Actions, Workflows, Administration or Secrets permissions are needed.
+The current, non-executable contract and blockers are in [`docs/integration-contract.md`](docs/integration-contract.md). Do not dispatch or activate the bridge from this repository while those blockers remain.
 
-Provision through GitHub Settings → Secrets and variables → Actions → New repository secret:
-https://github.com/insidethemarginmedia-cpu/wolf-factory-home/settings/secrets/actions
+The persistent multi-repository recovery instructions and exact-SHA inventory are in [`docs/engineering-workspace.md`](docs/engineering-workspace.md); the single ordered infrastructure backlog is [`docs/engineering-backlog.md`](docs/engineering-backlog.md). Workspace recovery is read-only against remotes and fast-forwards only clean expected branches.
 
-Existing GitHub secrets cannot be retrieved or automatically shared by changing repository visibility. Never put credential values in issues, commits, workflow inputs, logs or public artifacts. After authorized provisioning, rerun the failed service-access job on the reviewed commit.
+## Withdrawn credential and App setup guidance
 
-The source branch and repository are fixed inside the preflight. Source hashes and remote error bodies are not printed. The observed live result must still be checked; tests using fixture responses do not prove authenticated access.
+Earlier README and `docs/app-activation/` instructions proposed creating/installing a new GitHub App and adding repository secrets. Those instructions are withdrawn. They are not authorization to create duplicate infrastructure, install an App, change repository settings, add or rotate secrets, or dispatch a mission. The static pages now state this explicitly and contain no setup form.
 
-This is bounded push-driven execution. Continuous operation, real missions and cross-job database recovery are not yet verified.
+Do not paste credentials into chat, issues, commits, workflow inputs, logs, or public artifacts. Existing secret values stay in GitHub and cannot be retrieved by this agent; no credential value is requested here. Any future credential or infrastructure change requires an approved owner and a reviewed contract first.

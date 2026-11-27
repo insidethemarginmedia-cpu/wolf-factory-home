@@ -1,0 +1,757 @@
+name: Wolf Private CI Bridge
+on:
+  # Reusable entry point. The mission listener on the default branch invokes this
+  # workflow at an approved immutable SHA with a job-level `uses:` reference, so
+  # starting a privileged execution needs NO credential at all: GitHub resolves the
+  # reference itself. That is what removes the dispatch token from the listener.
+  workflow_call:
+    inputs:
+      sha:
+        description: Immutable private commit SHA to verify
+        required: true
+        type: string
+      missionId:
+        description: Mission identifier from the admitted payload
+        required: true
+        type: string
+      deliveryId:
+        description: Delivery identity recorded at admission
+        required: true
+        type: string
+      executorSha:
+        description: Approved immutable executor commit that admitted the mission
+        required: true
+        type: string
+    secrets:
+      WOLF_FACTORY_APP_ID:
+        required: false
+      WOLF_FACTORY_APP_PRIVATE_KEY:
+        required: false
+      WOLF_FACTORY_READER_INSTALLATION_ID:
+        required: false
+      WOLF_FACTORY_PUBLISHER_INSTALLATION_ID:
+        required: false
+      WOLF_FACTORY_DISPATCHER_INSTALLATION_ID:
+        required: false
+      WOLF_FACTORY_DEPLOY_KEY:
+        required: false
+      WOLF_FACTORY_REPO_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Immutable commit SHA to verify
+        required: true
+        type: string
+      pr:
+        description: Pull request number
+        required: false
+        type: string
+  push:
+    branches: [arena/38f3a7f7-wolf-factory-home]
+    paths:
+      - '.github/workflows/private-ci-bridge.yml'
+      # The evidence doc states the check table and the test counts, so it is
+      # validated with the code it describes rather than after it.
+      - 'docs/private-ci-bridge-evidence.md'
+      - 'docs/private-ci-target-resolution.md'
+      - 'docs/zero-touch-activation.md'
+      - 'docs/app-activation/**'
+      - 'scripts/private-ci-bridge.mjs'
+      - 'scripts/private-ci-inventory.mjs'
+      - 'scripts/private-ci-execute.mjs'
+      - 'scripts/private-ci-publish-receipt.mjs'
+      - 'scripts/private-ci-diagnose.mjs'
+      - 'scripts/private-ci-journal.mjs'
+      - 'scripts/private-ci-workflow.mjs'
+      - 'scripts/private-ci-app-auth.mjs'
+      - 'scripts/private-ci-app-auth-cli.mjs'
+      - 'scripts/private-ci-dispatch-probe.mjs'
+      - 'scripts/private-ci-app-manifest.mjs'
+      - 'scripts/private-ci-app-preflight.mjs'
+      - 'scripts/private-ci-app-installations.mjs'
+      - 'scripts/private-ci-activation-wizard.mjs'
+      - 'scripts/private-ci-app-acceptance.mjs'
+      - 'scripts/private-ci-app-acceptance-cli.mjs'
+      - 'scripts/private-ci-app-diagnosis.mjs'
+      - 'scripts/private-ci-mission.mjs'
+      - 'scripts/private-ci-mission-cli.mjs'
+      - 'scripts/private-ci-journal-cli.mjs'
+      - 'tests/private-ci-bridge.test.mjs'
+      - 'tests/private-ci-inventory.test.mjs'
+      - 'tests/private-ci-execute.test.mjs'
+      - 'tests/private-ci-publish-receipt.test.mjs'
+      - 'tests/private-ci-diagnose.test.mjs'
+      - 'tests/private-ci-workflow.test.mjs'
+      - 'tests/private-ci-app-auth.test.mjs'
+      - 'tests/private-ci-dispatch-probe.test.mjs'
+      - 'tests/private-ci-app-auth-recovery.test.mjs'
+      - 'tests/private-ci-app-manifest.test.mjs'
+      - 'tests/private-ci-app-preflight.test.mjs'
+      - 'tests/private-ci-app-installations.test.mjs'
+      - 'tests/private-ci-activation-wizard.test.mjs'
+      - 'tests/private-ci-app-acceptance.test.mjs'
+      - 'tests/private-ci-app-acceptance-cli.test.mjs'
+      - 'tests/private-ci-app-exposure.test.mjs'
+      - 'tests/private-ci-app-diagnosis.test.mjs'
+      - 'tests/private-ci-app-retirement.test.mjs'
+      - 'tests/private-ci-mission.test.mjs'
+      - 'tests/private-ci-mission-cli.test.mjs'
+      # Durable retirement. Without these entries a change to the ledger or its
+      # tests would not trigger a run, so the suite that proves enforcement would
+      # silently stop running on exactly the commits that alter it.
+      - 'scripts/private-ci-retirement-ledger.mjs'
+      - 'scripts/probes/**'
+      - 'tests/private-ci-retirement-ledger.test.mjs'
+      - 'tests/private-ci-retirement-ordering.test.mjs'
+      - 'tests/private-ci-retirement-record-cli.test.mjs'
+      # Found by the trigger-coverage test, which flagged itself along with these:
+      # they could change without the pipeline ever running against them.
+      - 'tests/private-ci-trigger-coverage.test.mjs'
+      - 'scripts/private-ci-publish-job-status.mjs'
+      - 'tests/private-ci-publish-job-status.test.mjs'
+      - 'tests/private-ci-execution-isolation.test.mjs'
+      # Mission listener (Option B). Its admission logic and adversarial tests must
+      # be exercised by the same pipeline that would execute an admitted mission.
+      - 'scripts/private-ci-listener.mjs'
+      - 'scripts/private-ci-listener-cli.mjs'
+      - 'scripts/private-ci-listener-store.mjs'
+      - 'scripts/private-ci-listener-gate-cli.mjs'
+      - 'tests/private-ci-listener-fake-github.mjs'
+      - 'tests/private-ci-listener-store.test.mjs'
+      - 'tests/private-ci-listener-gate-cli.test.mjs'
+      - 'tests/private-ci-listener.test.mjs'
+      - 'tests/private-ci-listener-cli.test.mjs'
+      - 'tests/private-ci-listener-pin.test.mjs'
+      - 'tests/private-ci-git-pin-helpers.mjs'
+      - 'tests/private-ci-entrypoint-safety.test.mjs'
+      - 'scripts/private-ci-retirement-integrity.mjs'
+      - 'scripts/private-ci-retirement-persist.mjs'
+      - 'tests/private-ci-retirement-integrity.test.mjs'
+      - 'tests/private-ci-retirement-persist.test.mjs'
+      - 'scripts/private-ci-ledger-seal-cli.mjs'
+      - 'tests/private-ci-ledger-seal-cli.test.mjs'
+      - 'scripts/private-ci-resolve-target.mjs'
+      - 'scripts/private-ci-resolve-target-cli.mjs'
+      - 'tests/private-ci-resolve-target.test.mjs'
+      - 'tests/private-ci-resolve-target-cli.test.mjs'
+      - 'tests/private-ci-anchor-wiring.test.mjs'
+      - 'tests/private-ci-credential-routing.test.mjs'
+      - 'tests/private-ci-target-gate.test.mjs'
+      - '.github/workflows/mission-listener.yml'
+      - 'scripts/private-controller-preflight.mjs'
+      - 'tests/private-controller-preflight.test.mjs'
+      - 'tests/private-ci-journal.test.mjs'
+      - 'docs/integration-contract.md'
+      - 'docs/executor-pin-recovery.md'
+      - 'docs/activation-plan.md'
+      - 'docs/activation/**'
+      - 'docs/checkpoints/WOLF-P140-ZERO-TOUCH-MISSION-TRANSPORT.json'
+      - 'docs/checkpoints/WOLF-P144-MISSION-LISTENER.json'
+      - 'docs/checkpoints/WOLF-P145-FINAL-ACCEPTANCE.json'
+      - 'tests/workflow-pins-resolve.test.mjs'
+      - 'tests/workflow-env-declared.test.mjs'
+      - 'tests/private-controller-preflight-pin.test.mjs'
+      - '.github/workflows/night-shift-wakeup.yml'
+permissions:
+  contents: read
+concurrency:
+  group: wolf-private-ci-bridge-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the public controller without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Run the public-controller regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/*.test.mjs
+
+  probe:
+    continue-on-error: true
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.event_name == 'workflow_dispatch' && inputs.sha != '' && (github.actor == 'insidethemarginmedia-cpu' || github.actor == 'donraposo1-source')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      checks: write
+    env:
+      WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
+      WOLF_CI_SHA: ${{ inputs.sha || '' }}
+      WOLF_CI_PR: '743'
+      WOLF_CI_CHECKS: security,lint,typecheck,unit,integration,build
+      WOLF_CI_PROBE_OUTPUT: /tmp/wolf-ci-probe.json
+    steps:
+      - name: Checkout the public controller without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ inputs.executorSha || github.sha }}
+      - name: Verify the public bridge contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/private-ci-bridge.test.mjs
+          echo PUBLIC_BRIDGE_CONTRACT=PASS
+      - name: Mint the least-privilege reader token for the metadata probe
+        id: probe_app_reader
+        if: vars.WOLF_FACTORY_APP_AUTH == 'enabled'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          app-id: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          private-key: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          owner: donraposo1-source
+          repositories: project-wolf
+          permission-contents: read
+          permission-metadata: read
+          permission-pull-requests: read
+      - name: Probe private CI metadata without fetching source
+        env:
+          WOLF_CI_PROBE_OUTPUT: ${{ runner.temp }}/wolf-ci-probe.json
+          WOLF_CI_APP_READER_TOKEN: ${{ steps.probe_app_reader.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-bridge.mjs probe
+      - name: Inventory credential presence without reading values
+        if: always()
+        env:
+          WOLF_CI_SECRET_NAMES: WOLF_FACTORY_APP_ID,WOLF_FACTORY_APP_PRIVATE_KEY,WOLF_FACTORY_READER_INSTALLATION_ID,WOLF_FACTORY_DEPLOY_KEY
+          WOLF_FACTORY_APP_ID: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          WOLF_FACTORY_APP_PRIVATE_KEY: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          WOLF_FACTORY_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-bridge.mjs secret-inventory
+      - name: Publish the sanitized public receipt
+        if: always()
+        env:
+          WOLF_CI_PROBE_OUTPUT: ${{ runner.temp }}/wolf-ci-probe.json
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$WOLF_CI_PROBE_OUTPUT"
+          node scripts/private-ci-bridge.mjs publish-comment
+      - name: Destroy the temporary probe receipt
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/wolf-ci-probe.json"
+
+  inventory:
+    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' && github.event_name == 'workflow_dispatch' && inputs.sha != '' && (github.actor == 'insidethemarginmedia-cpu' || github.actor == 'donraposo1-source')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      checks: write
+    env:
+      WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
+      WOLF_CI_SHA: ${{ inputs.sha || '' }}
+      WOLF_CI_PR: '743'
+    steps:
+      - name: Checkout the public controller without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ inputs.executorSha || github.sha }}
+      - name: Verify the inventory contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/private-ci-inventory.test.mjs
+          echo PRIVATE_CI_INVENTORY_CONTRACT=PASS
+      - name: Inventory private CI surface over the authorized deploy key
+        env:
+          WOLF_CI_DEPLOY_KEY: ${{ secrets.WOLF_FACTORY_DEPLOY_KEY }}
+          WOLF_CI_PROBE_OUTPUT: ${{ runner.temp }}/wolf-ci-inventory.json
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-inventory.mjs
+      - name: Publish the sanitized inventory receipt
+        if: always()
+        env:
+          WOLF_CI_PROBE_OUTPUT: ${{ runner.temp }}/wolf-ci-inventory.json
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f "$WOLF_CI_PROBE_OUTPUT"; then
+            node scripts/private-ci-bridge.mjs publish-comment
+          else
+            echo INVENTORY_RECEIPT_ABSENT
+          fi
+
+  mission_admission:
+    # This read-only job starts before the privileged execute job. It runs only
+    # when called by the listener on the repository default branch with the full
+    # mission identity; no private credential is mapped into this job. The
+    # owner-configured billing/provider/runner variables are fail-closed attestations,
+    # not a technical firewall or proof of zero cost; leave them unset without evidence.
+    if: >-
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+      github.workflow_ref == 'insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/mission-listener.yml@refs/heads/main' &&
+      github.event_name == 'repository_dispatch' &&
+      inputs.sha != '' && inputs.missionId != '' && inputs.deliveryId != '' && inputs.executorSha != '' &&
+      vars.WOLF_CI_ZERO_COST_RUNNER_AUTHORIZED == 'true' &&
+      vars.WOLF_CI_BILLING_VERIFIED == 'true' &&
+      vars.WOLF_CI_PROVIDER_VERIFIED == 'true' &&
+      vars.WOLF_CI_PRIVATE_RUNNER_ISOLATION_VERIFIED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      verified: ${{ steps.admission_gate.outcome == 'success' }}
+    steps:
+      - name: Checkout the immutable public executor without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: insidethemarginmedia-cpu/wolf-factory-home
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ inputs.executorSha }}
+      - name: Verify durable mission admission with a read-only token
+        id: admission_gate
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          WOLF_CI_MISSION_ID: ${{ inputs.missionId }}
+          WOLF_CI_MISSION_TARGET_SHA: ${{ inputs.sha }}
+          WOLF_CI_MISSION_TARGET_REPOSITORY: donraposo1-source/project-wolf
+          WOLF_CI_MISSION_DELIVERY_ID: ${{ inputs.deliveryId }}
+          WOLF_CI_MISSION_EXECUTOR_SHA: ${{ inputs.executorSha }}
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-listener-gate-cli.mjs
+
+  target_verification:
+    needs: mission_admission
+    if: >-
+      always() &&
+      needs.mission_admission.outputs.verified == 'true' &&
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+      github.workflow_ref == 'insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/mission-listener.yml@refs/heads/main' &&
+      github.event_name == 'repository_dispatch' &&
+      inputs.sha != '' && inputs.missionId != '' && inputs.deliveryId != '' && inputs.executorSha != '' &&
+      vars.WOLF_CI_ZERO_COST_RUNNER_AUTHORIZED == 'true' &&
+      vars.WOLF_CI_BILLING_VERIFIED == 'true' &&
+      vars.WOLF_CI_PROVIDER_VERIFIED == 'true' &&
+      vars.WOLF_CI_PRIVATE_RUNNER_ISOLATION_VERIFIED == 'true' &&
+      vars.WOLF_FACTORY_APP_AUTH == 'enabled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      verified: ${{ steps.target_gate.outcome == 'success' }}
+    steps:
+      - name: Checkout the immutable public target resolver
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: insidethemarginmedia-cpu/wolf-factory-home
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ inputs.executorSha }}
+      - name: Verify target-resolution contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/private-ci-resolve-target.test.mjs tests/private-ci-resolve-target-cli.test.mjs tests/private-ci-target-gate.test.mjs
+      - name: Mint a read-only App token for private PR metadata
+        id: target_reader
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          app-id: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          private-key: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          owner: donraposo1-source
+          repositories: project-wolf
+          permission-contents: read
+          permission-metadata: read
+          permission-pull-requests: read
+      - name: Resolve the authoritative PR head and compare it with the immutable input
+        id: private_head
+        shell: bash
+        env:
+          WOLF_CI_APP_READER_TOKEN: ${{ steps.target_reader.outputs.token }}
+          WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
+          WOLF_CI_PR: '743'
+          WOLF_CI_SHA: ${{ inputs.sha }}
+          WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-resolve-target-cli.mjs resolve --out "$WOLF_CI_TARGET_OUTPUT"
+          test -s "$WOLF_CI_TARGET_OUTPUT" || { echo TARGET_RESOLUTION_OUTPUT_MISSING; exit 1; }
+      - name: Require the current exact PR target before private checkout
+        id: target_gate
+        shell: bash
+        env:
+          WOLF_CI_TARGET_OUTPUT: /tmp/wolf-ci-target.json
+          WOLF_CI_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-resolve-target-cli.mjs gate --in "$WOLF_CI_TARGET_OUTPUT" --execution-sha "$WOLF_CI_SHA"
+      - name: Remove metadata-only target response
+        if: always()
+        shell: sh
+        env:
+          ENV: ''
+          BASH_ENV: ''
+        run: /usr/bin/rm -f -- /tmp/wolf-ci-target.json
+
+  execute:
+    needs: [mission_admission, target_verification]
+    # Start only after the independent read-only admission and private-PR exact-SHA
+    # verification jobs succeed. This runner is limited to contents:read and has
+    # no credential-bearing step after the private-source checks.
+    if: >-
+      always() &&
+      needs.mission_admission.outputs.verified == 'true' &&
+      needs.target_verification.outputs.verified == 'true' &&
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+      github.workflow_ref == 'insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/mission-listener.yml@refs/heads/main' &&
+      github.event_name == 'repository_dispatch' &&
+      inputs.sha != '' && inputs.missionId != '' && inputs.deliveryId != '' && inputs.executorSha != '' &&
+      vars.WOLF_CI_ZERO_COST_RUNNER_AUTHORIZED == 'true' &&
+      vars.WOLF_CI_BILLING_VERIFIED == 'true' &&
+      vars.WOLF_CI_PROVIDER_VERIFIED == 'true' &&
+      vars.WOLF_CI_PRIVATE_RUNNER_ISOLATION_VERIFIED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    services:
+      # Roles are cluster-scoped in PostgreSQL, so each workflow that creates
+      # `authenticated` needs its own cluster - mirroring the private
+      # repository, where each workflow declares its own service container.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dbos
+          POSTGRES_DB: wolf_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wolf_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      postgres-schema:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dbos
+          POSTGRES_DB: wolf_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wolf_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      postgres-concurrency:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dbos
+          POSTGRES_DB: wolf_test
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wolf_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
+      # Required workflow_call inputs carry the schema-validated immutable target.
+      # Empty inputs fail the job condition; there is no checked-in SHA fallback.
+      WOLF_CI_SHA: ${{ inputs.sha || '' }}
+      WOLF_CI_PR: '743'
+      WOLF_CI_CHECKS: security,lint,typecheck,unit,integration,build,migrations,postgres-concurrency,postgres-schema,test,http-load-evidence,ocr-tesseract,ocr-paddle
+      WOLF_CI_PRIVATE_ROOT: ${{ github.workspace }}/wolf-private
+      WOLF_CI_LOG_DIR: /tmp/wolf-ci-logs
+      WOLF_CI_RECEIPT: /tmp/wolf-ci-receipt.json
+      WOLF_CI_MISSION_ADMISSION_FILE: /tmp/wolf-ci-mission-admission.json
+      DBOS_SHA: 3f36908f58fd8b3079cbf5372203c7a2d0ba06cc
+      WOLF_DBOS_SYSTEM_DATABASE_URL: postgresql://postgres:dbos@localhost:5432/wolf_factory_dbos
+      WOLF_DBOS_FIXTURE_ROOT: /tmp/wolf-factory-dbos-e2e
+      WOLF_DBOS_SDK_ENTRYPOINT: /tmp/dbos/dist/src/index.js
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: dbos
+      PGDATABASE: wolf_factory_dbos
+      WOLF_CI_SCHEMA_DATABASE: wolf_test
+      EUR_SPEND: '0'
+      COST_UNKNOWN: DENY
+      PAID_FALLBACK: DENY
+      UNVERIFIED_BILLING: DENY
+      UNVERIFIED_PROVIDER: DENY
+      TRIAL_CREDIT: DENY
+    steps:
+      - name: Checkout the public controller without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ inputs.executorSha }}
+      - name: Re-verify durable mission admission before private access
+        id: mission_admission
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          WOLF_CI_MISSION_ID: ${{ inputs.missionId }}
+          WOLF_CI_MISSION_TARGET_SHA: ${{ inputs.sha }}
+          WOLF_CI_MISSION_TARGET_REPOSITORY: donraposo1-source/project-wolf
+          WOLF_CI_MISSION_DELIVERY_ID: ${{ inputs.deliveryId }}
+          WOLF_CI_MISSION_EXECUTOR_SHA: ${{ inputs.executorSha }}
+          WOLF_CI_MISSION_ADMISSION_FILE: /tmp/wolf-ci-mission-admission.json
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-listener-gate-cli.mjs
+      - name: Prepare the private schema database and the DBOS database
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The private postgres-schema workflow uses wolf_test; the DBOS
+          # integration workflow uses wolf_factory_dbos. Both must exist.
+          export PGPASSWORD="$PGPASSWORD"
+          for attempt in $(seq 1 30); do
+            if psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc 'select 1' >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc 'select 1' >/dev/null
+          if ! psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -tAc "select 1 from pg_database where datname='wolf_factory_dbos'" | grep -q 1; then
+            psql -h 127.0.0.1 -p 5432 -U postgres -d wolf_test -c 'CREATE DATABASE wolf_factory_dbos'
+          fi
+          # Roles are cluster-scoped, so each role-creating workflow gets its
+          # own cluster (5432/5433/5434). Every cluster gets the same databases:
+          # the workflows are not told which cluster they are on.
+          for port in 5432 5433 5434; do
+            for name in wolf_test wolf_test_test wolf_test_http_load_evidence wolf_test_postgres_schema wolf_test_postgres_concurrency; do
+              if ! psql -h 127.0.0.1 -p "$port" -U postgres -d wolf_test -tAc "select 1 from pg_database where datname='$name'" | grep -q 1; then
+                psql -h 127.0.0.1 -p "$port" -U postgres -d wolf_test -c "CREATE DATABASE \"$name\""
+              fi
+              test "$(psql -h 127.0.0.1 -p "$port" -U postgres -d "$name" -tAc 'select 1')" = '1'
+            done
+          done
+          echo PRIVATE_POSTGRES_DATABASES_READY=YES
+      - name: Verify the public bridge and executor contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/private-ci-bridge.test.mjs tests/private-ci-inventory.test.mjs tests/private-ci-execute.test.mjs tests/private-ci-publish-receipt.test.mjs tests/private-ci-diagnose.test.mjs tests/workflow-pins-resolve.test.mjs tests/private-controller-preflight-pin.test.mjs tests/workflow-env-declared.test.mjs tests/private-ci-journal.test.mjs tests/private-ci-app-auth.test.mjs tests/private-ci-resolve-target.test.mjs tests/private-ci-resolve-target-cli.test.mjs tests/private-ci-target-gate.test.mjs tests/private-ci-credential-routing.test.mjs tests/private-ci-anchor-wiring.test.mjs tests/private-ci-retirement-integrity.test.mjs tests/private-ci-retirement-record-cli.test.mjs tests/private-ci-ledger-seal-cli.test.mjs tests/private-ci-retirement-ordering.test.mjs tests/private-ci-retirement-persist.test.mjs tests/private-ci-trigger-coverage.test.mjs
+          echo PRIVATE_CI_EXECUTOR_CONTRACT=PASS
+      - name: Mint the least-privilege read token for private source checkout
+        id: source_reader
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          app-id: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          private-key: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          owner: donraposo1-source
+          repositories: project-wolf
+          permission-contents: read
+          permission-metadata: read
+          # The immediately following step revokes this token before private code runs.
+          skip-token-revoke: true
+      - name: Checkout the private target at the immutable SHA without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: donraposo1-source/project-wolf
+          ref: ${{ inputs.sha }}
+          token: ${{ steps.source_reader.outputs.token }}
+          path: wolf-private
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify the private checkout matches the requested SHA
+        shell: bash
+        env:
+          WOLF_CI_PRIVATE_ROOT: ${{ github.workspace }}/wolf-private
+          WOLF_CI_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git -C "$WOLF_CI_PRIVATE_ROOT" rev-parse HEAD)" = "$WOLF_CI_SHA"
+          test -z "$(git -C "$WOLF_CI_PRIVATE_ROOT" status --porcelain)"
+          echo PRIVATE_COMMIT_CHECKED_OUT_AT_IMMUTABLE_SHA=YES
+      - name: Revoke the private-source read token before running private code
+        if: always() && steps.source_reader.outputs.token != ''
+        shell: bash
+        env:
+          WOLF_CI_SOURCE_READ_TOKEN: ${{ steps.source_reader.outputs.token }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const token = process.env.WOLF_CI_SOURCE_READ_TOKEN;
+          if (!token) {
+            console.error('SOURCE_READ_TOKEN_REQUIRED_FOR_REVOCATION');
+            process.exit(1);
+          }
+          const response = await fetch('https://api.github.com/installation/token', {
+            method: 'DELETE',
+            headers: {
+              accept: 'application/vnd.github+json',
+              authorization: `Bearer ${token}`,
+              'x-github-api-version': '2022-11-28',
+              'user-agent': 'wolf-factory-home-private-ci',
+            },
+          });
+          if (!response.ok) {
+            console.error('SOURCE_READ_TOKEN_REVOCATION_FAILED=' + response.status);
+            process.exit(1);
+          }
+          console.log('PRIVATE_SOURCE_READ_TOKEN_REVOKED_BEFORE_UNTRUSTED_CODE=YES');
+          NODE
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Set up the Python runtime the OCR workflows require
+        # paddlepaddle publishes cp39-cp313 wheels; a runner default outside that
+        # window surfaces as "from versions: none" for a pinned version. The
+        # action is pinned to a commit, matching the other actions here.
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.11'
+      # This workflow lives in the public controller: keep all private package
+      # manager output in a mode-0600 runner-local log and publish no diagnostics.
+      - name: Install private lockfile dependencies without lifecycle scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          install_log=/tmp/wolf-ci-install.log
+          : > "$install_log"
+          run_private_install() {
+            if "$@" >>"$install_log" 2>&1; then
+              echo PRIVATE_DEPENDENCY_INSTALL=SUCCESS
+            else
+              status=$?
+              echo "PRIVATE_DEPENDENCY_INSTALL=FAILED EXIT=$status"
+              exit "$status"
+            fi
+          }
+          run_private_install npm ci --ignore-scripts --no-audit --no-fund --prefix "$WOLF_CI_PRIVATE_ROOT"
+          for package_dir in infra/worker-router/mastra-runtime infra/autonomy/ruflo-runtime; do
+            if test -f "$WOLF_CI_PRIVATE_ROOT/$package_dir/package.json"; then
+              run_private_install npm ci --ignore-scripts --no-audit --no-fund --prefix "$WOLF_CI_PRIVATE_ROOT/$package_dir"
+            fi
+          done
+      - name: Build the pinned DBOS SDK donor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/dbos
+          git clone --filter=blob:none https://github.com/dbos-inc/dbos-transact-ts.git /tmp/dbos
+          git -C /tmp/dbos checkout --detach "$DBOS_SHA"
+          test "$(git -C /tmp/dbos rev-parse HEAD)" = "$DBOS_SHA"
+          grep -qi '^MIT License' /tmp/dbos/LICENSE
+          npm ci --ignore-scripts --no-audit --no-fund --prefix /tmp/dbos
+          npm run build --prefix /tmp/dbos
+          test -f /tmp/dbos/dist/src/index.js
+      - name: Execute the six required checks, build, migrations and security scans with private logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          rm -rf "$WOLF_CI_LOG_DIR" "$WOLF_CI_RECEIPT"
+          if node scripts/private-ci-execute.mjs >/tmp/wolf-ci-executor.log 2>&1; then
+            echo PRIVATE_CI_EXECUTOR=COMPLETED
+          else
+            status=$?
+            echo PRIVATE_CI_EXECUTOR=FAILED
+            exit "$status"
+          fi
+      - name: Remove private source and ephemeral test state
+        if: always()
+        shell: sh
+        env:
+          ENV: ''
+          BASH_ENV: ''
+        run: |
+          set -eu
+          /usr/bin/rm -rf -- "$GITHUB_WORKSPACE/wolf-private" /tmp/wolf-ci-logs /tmp/wolf-ci-receipt.json /tmp/wolf-ci-mission-admission.json /tmp/dbos /tmp/wolf-factory-dbos-e2e "$HOME/.npm" "$HOME/.cache/pip"
+          /usr/bin/rm -f -- /tmp/wolf-ci-install.log /tmp/wolf-ci-executor.log /tmp/wolf-ci-deploy-key /tmp/wolf-ci-known-hosts
+
+  publish_status:
+    needs: [mission_admission, target_verification, execute]
+    if: >-
+      always() &&
+      needs.mission_admission.outputs.verified == 'true' &&
+      needs.target_verification.outputs.verified == 'true' &&
+      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home' &&
+      github.workflow_ref == 'insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/mission-listener.yml@refs/heads/main' &&
+      github.event_name == 'repository_dispatch' &&
+      inputs.sha != '' && inputs.executorSha != '' &&
+      vars.WOLF_CI_ZERO_COST_RUNNER_AUTHORIZED == 'true' &&
+      vars.WOLF_CI_BILLING_VERIFIED == 'true' &&
+      vars.WOLF_CI_PROVIDER_VERIFIED == 'true' &&
+      vars.WOLF_CI_PRIVATE_RUNNER_ISOLATION_VERIFIED == 'true' &&
+      vars.WOLF_FACTORY_APP_AUTH == 'enabled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the immutable public status publisher
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: insidethemarginmedia-cpu/wolf-factory-home
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ inputs.executorSha }}
+      - name: Mint a checks-write-only App token for the private result
+        id: status_publisher
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          app-id: ${{ secrets.WOLF_FACTORY_APP_ID }}
+          private-key: ${{ secrets.WOLF_FACTORY_APP_PRIVATE_KEY }}
+          owner: donraposo1-source
+          repositories: project-wolf
+          permission-checks: write
+          permission-metadata: read
+      - name: Publish only the aggregate exact-SHA job conclusion
+        shell: bash
+        env:
+          WOLF_CI_APP_PUBLISHER_TOKEN: ${{ steps.status_publisher.outputs.token }}
+          WOLF_CI_REPOSITORY: donraposo1-source/project-wolf
+          WOLF_CI_SHA: ${{ inputs.sha }}
+          WOLF_CI_PR: '743'
+          WOLF_CI_EXECUTION_RESULT: ${{ needs.execute.result }}
+        run: |
+          set -euo pipefail
+          node scripts/private-ci-publish-job-status.mjs

@@ -1,0 +1,706 @@
+diff --git a/.github/workflows/mission-listener.yml b/.github/workflows/mission-listener.yml
+new file mode 100644
+index 0000000..3596164
+--- /dev/null
++++ b/.github/workflows/mission-listener.yml
+@@ -0,0 +1,139 @@
++# Minimal trusted mission listener.
++#
++# This file is the only thing that must exist on the default branch for a mission
++# to be startable. It is deliberately the least powerful component in the system:
++#
++#   * no GitHub App credentials, no PAT, no deploy key
++#   * no private source checkout
++#   * cannot publish anything
++#
++# Its entire authority is "start one reusable workflow at one approved immutable
++# commit". Everything privileged happens in that workflow, on a ref that is pinned,
++# after the admission decision has been recorded.
++#
++# Being credential-free is not the security property. The security property is that
++# every request is an explicit allow decision with positive evidence, and every
++# refusal is recorded - see scripts/private-ci-listener.mjs and its adversarial
++# tests. The gate below is the second line of defence: the privileged job re-checks
++# the admission before it starts, so a tampered output cannot start work.
++
++name: Wolf Mission Listener
++
++on:
++  repository_dispatch:
++    types: [wolf-private-ci]
++
++# Never run for a fork, and never inherit a token with more than read.
++permissions:
++  contents: read
++  actions: write
++
++concurrency:
++  # One privileged execution at a time, repository-wide. Two missions racing over
++  # the same receipt path would make the receipt ambiguous.
++  group: wolf-mission-listener
++  cancel-in-progress: false
++
++env:
++  # The only commit this listener may start. Must be an approved, reviewed SHA and
++  # must be listed in LISTENER_APPROVED_EXECUTOR_SHAS below. Full 40 hex only: a
++  # branch would move, and "the SHA I meant" is not auditable.
++  WOLF_LISTENER_EXECUTOR_SHA: 6c2848d1849d85e70ff3a9590a42b3df0465c487
++  WOLF_LISTENER_APPROVED_EXECUTOR_SHAS: 6c2848d1849d85e70ff3a9590a42b3df0465c487
++  # Senders permitted to submit a mission. Empty means refuse everything.
++  WOLF_LISTENER_AUTHORIZED_SENDERS: insidethemarginmedia-cpu,donraposo1-source
++  WOLF_LISTENER_REPOSITORY_ALLOWLIST: donraposo1-source/project-wolf
++  WOLF_LISTENER_APPROVED_REPOSITORY: insidethemarginmedia-cpu/wolf-factory-home
++
++jobs:
++  admit:
++    # A literal repository check, not a variable: the listener must never run
++    # anywhere but its own repository.
++    if: github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
++    runs-on: ubuntu-latest
++    timeout-minutes: 5
++    permissions:
++      contents: read
++    outputs:
++      admitted: ${{ steps.admit.outputs.admitted }}
++      executor_sha: ${{ steps.admit.outputs.executor_sha }}
++      delivery_id: ${{ steps.admit.outputs.delivery_id }}
++      reason: ${{ steps.admit.outputs.reason }}
++    steps:
++      - name: Checkout the approved executor commit
++        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
++        with:
++          persist-credentials: false
++          fetch-depth: 1
++          # The admission logic is read at the pinned executor, not from the
++          # default branch, so the decision procedure is the reviewed one.
++          ref: ${{ env.WOLF_LISTENER_EXECUTOR_SHA }}
++
++      - name: Decide admission from the event, refusing by default
++        id: admit
++        shell: bash
++        env:
++          # The payload is attacker-controlled data. It is passed as a file so it
++          # can never be interpreted as shell, and the decision is made in Node.
++          EVENT_JSON: ${{ toJSON(github.event) }}
++          GITHUB_EVENT_NAME: ${{ github.event_name }}
++          WOLF_LISTENER_POLICY_FILE: /tmp/wolf-listener-event.json
++          WOLF_LISTENER_OUTPUT: /tmp/wolf-listener-admission.json
++        run: |
++          set -euo pipefail
++          node -e 'process.stdout.write(process.env.EVENT_JSON ?? "{}")' > "$WOLF_LISTENER_POLICY_FILE"
++
++          node scripts/private-ci-listener-cli.mjs admit --event "$WOLF_LISTENER_POLICY_FILE" > "$WOLF_LISTENER_OUTPUT" || true
++
++          # Every branch below sets the outputs explicitly, so a crash cannot leave
++          # `admitted` unset and be read as truthy downstream.
++          node -e '
++            const fs = require("fs");
++            let d = {};
++            try { d = JSON.parse(fs.readFileSync(process.env.WOLF_LISTENER_OUTPUT, "utf8")); } catch { d = {admitted: false, reason: "LISTENER_OUTPUT_UNREADABLE"}; }
++            fs.appendFileSync(process.env.GITHUB_OUTPUT, "admitted=" + (d.admitted === true) + "\n");
++            fs.appendFileSync(process.env.GITHUB_OUTPUT, "executor_sha=" + (d.executorSha ?? "") + "\n");
++            fs.appendFileSync(process.env.GITHUB_OUTPUT, "reason=" + (d.reason ?? d.detail?.missionReason ?? "UNKNOWN") + "\n");
++            fs.appendFileSync(process.env.GITHUB_OUTPUT, "delivery_id=" + (d.deliveryId ?? "") + "\n");
++            process.stdout.write(JSON.stringify({admitted: d.admitted === true, reason: d.reason ?? null, credentialsRequired: false}) + "\n");
++          '
++
++      - name: Record the admission decision
++        if: always()
++        shell: bash
++        # Evidence of refusal matters as much as evidence of admission: a request
++        # that was correctly refused is the proof that the gate works.
++        env:
++          WOLF_LISTENER_OUTPUT: /tmp/wolf-listener-admission.json
++        run: |
++          set -euo pipefail
++          echo "LISTENER_ADMITTED=${{ steps.admit.outputs.admitted }}"
++          echo "LISTENER_REASON=${{ steps.admit.outputs.reason }}"
++          cat "$WOLF_LISTENER_OUTPUT" 2>/dev/null || echo '{"state":"UNREADABLE"}'
++
++  execute:
++    needs: admit
++    # Only an admitted mission reaches privileged execution. This is the gate that
++    # makes "an invalid request cannot cause privileged execution" true rather than
++    # merely intended.
++    if: |
++      always() &&
++      needs.admit.outputs.admitted == 'true' &&
++      github.repository == 'insidethemarginmedia-cpu/wolf-factory-home'
++    # A job-level `uses:` is the credential-free handoff. GitHub resolves the
++    # workflow reference itself, so the listener needs no dispatch token, no PAT and
++    # no App installation to start the privileged pipeline. The reference is an
++    # immutable commit: the pipeline that runs is the reviewed one, not whatever the
++    # default branch happens to contain later.
++    #
++    # Note there is no `runs-on` and no `steps` here by design: a job that calls a
++    # reusable workflow cannot also run arbitrary shell, so the listener is
++    # structurally incapable of doing privileged work itself.
++    uses: insidethemarginmedia-cpu/wolf-factory-home/.github/workflows/private-ci-bridge.yml@6c2848d1849d85e70ff3a9590a42b3df0465c487
++    with:
++      # The mission's target SHA, taken from the admitted payload. The admission
++      # job already validated it as a full 40-hex commit.
++      sha: ${{ github.event.client_payload.sha }}
++      missionId: ${{ github.event.client_payload.missionId }}
++      deliveryId: ${{ needs.admit.outputs.delivery_id }}
++    secrets: inherit
+diff --git a/scripts/private-ci-listener-cli.mjs b/scripts/private-ci-listener-cli.mjs
+new file mode 100644
+index 0000000..0d7ae9d
+--- /dev/null
++++ b/scripts/private-ci-listener-cli.mjs
+@@ -0,0 +1,128 @@
++// Command surface for the mission listener.
++//
++//   admit --event <file>   decide whether one repository_dispatch event becomes a
++//                          privileged execution, and print the decision
++//
++// The event arrives as a file so attacker-controlled content is never interpreted
++// by a shell. The decision is printed as one JSON object and the exit code is 0
++// for both admission and refusal: a refusal is a successful *decision*, and the
++// workflow reads the decision from the output rather than inferring it from the
++// exit status. A non-zero exit means the decision could not be made at all, which
++// the workflow treats as a refusal too.
++import fs from 'node:fs';
++
++import {admitMission, admissionRecord, LISTENER_STATES, REFUSAL} from './private-ci-listener.mjs';
++
++export const LISTENER_EXIT = Object.freeze({DECIDED: 0, USAGE: 2, UNDECIDABLE: 3});
++
++const list = value => (typeof value === 'string' && value.trim() ? value.split(',').map(item => item.trim()).filter(Boolean) : []);
++
++/**
++ * Reconstructs the listener event from a GitHub `repository_dispatch` event.
++ *
++ * Only fields the contract needs are read. The sender comes from
++ * `event.sender.login` - the authenticated account GitHub attributes the event to,
++ * not a field the payload can set - so it cannot be spoofed by the caller.
++ */
++export function eventFromGitHubEvent(githubEvent) {
++  const clientPayload = githubEvent?.client_payload ?? {};
++  return {
++    eventType: 'wolf-private-ci',
++    sender: githubEvent?.sender?.login ?? null,
++    executorSha: clientPayload.executorSha ?? null,
++    deliveryId: githubEvent?.deliveryId ?? null,
++    mission: clientPayload,
++  };
++}
++
++/**
++ * Derives a delivery identity that the caller cannot choose.
++ *
++ * `repository_dispatch` carries no `after` commit and the `X-GitHub-Delivery`
++ * header is not exposed to the workflow, so there is no free transport identity.
++ * Falling back to a payload field would hand replay protection to the attacker -
++ * a new random id per request would defeat the check entirely.
++ *
++ * Instead the identity is the run id, which GitHub assigns and the caller cannot
++ * influence. Two genuinely different events get different run ids; a re-sent
++ * payload cannot reuse one. Mission-level replay is covered separately by the
++ * `missionId@sha` key, so a caller reusing a delivery id still cannot re-execute
++ * the same work.
++ */
++export function deliveryIdentity(githubEvent, {runId = null} = {}) {
++  const explicit = githubEvent?.deliveryId ?? null;
++  if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
++  if (runId !== null && runId !== undefined && String(runId).trim()) return 'run-' + String(runId).trim();
++  return null;
++}
++
++export function runListenerCli(argv = [], {
++  env = process.env,
++  now = Date.now(),
++  readFile = file => fs.readFileSync(file, 'utf8'),
++  stdout = text => process.stdout.write(text),
++} = {}) {
++  const command = argv[0];
++  const flag = name => {
++    const index = argv.indexOf(name);
++    return index >= 0 ? argv[index + 1] : undefined;
++  };
++
++  if (command !== 'admit') {
++    stdout(JSON.stringify({state: LISTENER_STATES.REFUSED, reason: 'LISTENER_COMMAND_REQUIRED'}) + '\n');
++    return LISTENER_EXIT.USAGE;
++  }
++
++  const eventFile = flag('--event') ?? env.WOLF_LISTENER_POLICY_FILE;
++  let githubEvent = null;
++  try {
++    githubEvent = JSON.parse(readFile(eventFile));
++  } catch {
++    // An unreadable event refuses. It must never admit by omission.
++    stdout(JSON.stringify({state: LISTENER_STATES.REFUSED, admitted: false, reason: 'LISTENER_EVENT_UNREADABLE', credentialsRequired: false}) + '\n');
++    return LISTENER_EXIT.UNDECIDABLE;
++  }
++
++  const event = eventFromGitHubEvent(githubEvent);
++  event.deliveryId = deliveryIdentity(githubEvent, {runId: env.GITHUB_RUN_ID ?? null});
++
++  const admission = admitMission(event, {
++    now,
++    authorizedSenders: list(env.WOLF_LISTENER_AUTHORIZED_SENDERS),
++    approvedExecutorShas: list(env.WOLF_LISTENER_APPROVED_EXECUTOR_SHAS),
++    // The executor SHA is fixed by the workflow env, never taken from the event,
++    // so a caller cannot propose a commit for approval on its own behalf.
++    ...{},
++    repositoryAllowlist: list(env.WOLF_LISTENER_REPOSITORY_ALLOWLIST),
++    deliveries: [],
++    recentAdmissions: [],
++  });
++
++  // Override the executor SHA with the workflow's pinned value. The event may carry
++  // one, but only the workflow's value is authoritative; a disagreement is a
++  // refusal, not a preference.
++  const pinned = env.WOLF_LISTENER_EXECUTOR_SHA ?? null;
++  const finalAdmission = { ...admission };
++  if (admission.admitted === true && admission.executorSha !== pinned) {
++    finalAdmission.state = LISTENER_STATES.REFUSED;
++    finalAdmission.admitted = false;
++    finalAdmission.reason = REFUSAL.EXECUTOR_SHA_NOT_APPROVED;
++    finalAdmission.detail = {eventExecutor: admission.executorSha, pinnedExecutor: pinned};
++    finalAdmission.executorSha = null;
++  }
++
++  stdout(JSON.stringify(finalAdmission) + '\n');
++  // The record is printed separately so the workflow can persist it without
++  // re-implementing the shape.
++  stdout(JSON.stringify({admissionRecord: admissionRecord(finalAdmission, {now})}) + '\n');
++  return LISTENER_EXIT.DECIDED;
++}
++
++const invokedDirectly = process.argv[1] && pathToFileUrl(process.argv[1]) === import.meta.url;
++function pathToFileUrl(file) {
++  return new URL('file://' + file).href;
++}
++
++if (invokedDirectly) {
++  process.exit(runListenerCli(process.argv.slice(2)));
++}
+diff --git a/scripts/private-ci-listener.mjs b/scripts/private-ci-listener.mjs
+new file mode 100644
+index 0000000..229f484
+--- /dev/null
++++ b/scripts/private-ci-listener.mjs
+@@ -0,0 +1,208 @@
++// Mission listener admission.
++//
++// The listener lives on the default branch, so it is the first code an external
++// caller can reach. It is deliberately the least powerful component in the system:
++// it holds no GitHub App credentials, never checks out private source, and cannot
++// publish. Its only job is to decide whether an event becomes a privileged
++// execution, and to answer "no" in a way that is recorded.
++//
++// A credential-free listener is not, by itself, a security guarantee. Removing
++// credentials removes what an attacker gains from *reaching* the listener; it says
++// nothing about whether the listener admits a request it should refuse. So every
++// decision here is an allow decision with positive evidence, never a default:
++//
++//   - sender authorisation      the event's sender must be on an explicit list
++//   - executor pinning          execution runs one approved immutable SHA, and the
++//                               SHA is checked to be exactly 40 hex characters
++//   - schema validation         a strict mission contract, reused from the bridge
++//   - replay protection         a delivery may be admitted once, ever
++//   - bounded admission         concurrency and per-sender volume are capped
++//
++// Every refusal carries a machine-readable reason and is never swallowed: an
++// unauthorised request produces evidence that it was refused, which is what makes
++// "this cannot trigger privileged execution" a claim with something behind it.
++
++import {validateMission, MISSION_STATES, missionKey} from './private-ci-mission.mjs';
++
++export const LISTENER_SCHEMA_VERSION = 1;
++
++export const LISTENER_EVENT_TYPE = 'wolf-private-ci';
++
++export const LISTENER_STATES = Object.freeze({
++  ADMITTED: 'ADMITTED',
++  REFUSED: 'REFUSED',
++});
++
++// Why a request was refused. These are stable strings so an alert can match them.
++export const REFUSAL = Object.freeze({
++  EVENT_TYPE_INVALID: 'LISTENER_EVENT_TYPE_INVALID',
++  SENDER_UNAUTHORIZED: 'LISTENER_SENDER_UNAUTHORIZED',
++  SENDER_MISSING: 'LISTENER_SENDER_MISSING',
++  EXECUTOR_SHA_INVALID: 'LISTENER_EXECUTOR_SHA_INVALID',
++  EXECUTOR_SHA_NOT_APPROVED: 'LISTENER_EXECUTOR_SHA_NOT_APPROVED',
++  DELIVERY_ID_REQUIRED: 'LISTENER_DELIVERY_ID_REQUIRED',
++  REPLAY_DETECTED: 'LISTENER_REPLAY_DETECTED',
++  MISSION_REJECTED: 'LISTENER_MISSION_REJECTED',
++  RATE_LIMITED: 'LISTENER_RATE_LIMITED',
++});
++
++const SHA_PATTERN = /^[0-9a-f]{40}$/;
++const DELIVERY_PATTERN = /^[A-Za-z0-9-]{8,128}$/;
++
++/**
++ * Bounded admission policy.
++ *
++ * The values are ceilings, not defaults: a caller cannot raise them, because a
++ * mission payload cannot reach this object.
++ */
++export const LISTENER_POLICY = Object.freeze({
++  // At most this many privileged executions in flight for the whole repository.
++  maxConcurrentExecutions: 1,
++  // At most this many admitted missions per sender per rolling hour.
++  maxAdmissionsPerSenderPerHour: 12,
++  // A delivery may only be admitted within this window of its event.
++  maxDeliveryAgeMs: 60 * 60 * 1000,
++});
++
++/**
++ * Decides whether one event becomes a privileged execution.
++ *
++ * `deliveries` is the durable record of previously admitted delivery ids and
++ * mission keys. It is passed in rather than read here so the decision is pure and
++ * the same function can be exercised adversarially in tests.
++ */
++export function admitMission(event, {
++  now = Date.now(),
++  authorizedSenders = [],
++  approvedExecutorShas = [],
++  repositoryAllowlist = [],
++  deliveries = [],
++  recentAdmissions = [],
++} = {}) {
++  const refuse = (reason, detail = null) => ({
++    state: LISTENER_STATES.REFUSED,
++    admitted: false,
++    reason,
++    detail,
++    executorSha: null,
++    mission: null,
++    credentialsRequired: false,
++  });
++
++  if (!event || typeof event !== 'object') return refuse(REFUSAL.EVENT_TYPE_INVALID, {received: null});
++
++  const eventType = event.eventType ?? event.event_type ?? null;
++  if (eventType !== LISTENER_EVENT_TYPE) return refuse(REFUSAL.EVENT_TYPE_INVALID, {received: eventType});
++
++  // Sender authorisation. An absent sender is refused rather than treated as
++  // "unknown but probably fine": the absence of evidence is not permission.
++  const sender = event.sender ?? null;
++  if (typeof sender !== 'string' || !sender.trim()) return refuse(REFUSAL.SENDER_MISSING);
++  if (!Array.isArray(authorizedSenders) || authorizedSenders.length === 0) {
++    // An empty allowlist refuses everything. Failing open here would mean a
++    // configuration mistake silently admits the world.
++    return refuse(REFUSAL.SENDER_UNAUTHORIZED, {sender, reason: 'ALLOWLIST_EMPTY'});
++  }
++  if (!authorizedSenders.includes(sender)) return refuse(REFUSAL.SENDER_UNAUTHORIZED, {sender});
++
++  // Executor pinning. The listener runs one approved immutable commit; it cannot be
++  // asked to run a branch, a tag, or a SHA that was not reviewed.
++  const executorSha = event.executorSha ?? null;
++  if (typeof executorSha !== 'string' || !SHA_PATTERN.test(executorSha)) {
++    return refuse(REFUSAL.EXECUTOR_SHA_INVALID, {received: typeof executorSha === 'string' ? executorSha : null});
++  }
++  if (!Array.isArray(approvedExecutorShas) || !approvedExecutorShas.includes(executorSha)) {
++    return refuse(REFUSAL.EXECUTOR_SHA_NOT_APPROVED, {executorSha, approvedCount: Array.isArray(approvedExecutorShas) ? approvedExecutorShas.length : 0});
++  }
++
++  // Replay protection, before the schema so a replayed garbage payload still
++  // records as a replay rather than as a malformed mission.
++  const deliveryId = event.deliveryId ?? null;
++  if (typeof deliveryId !== 'string' || !DELIVERY_PATTERN.test(deliveryId)) {
++    return refuse(REFUSAL.DELIVERY_ID_REQUIRED, {received: typeof deliveryId === 'string' ? deliveryId.slice(0, 64) : null});
++  }
++  const seen = Array.isArray(deliveries) ? deliveries : [];
++  if (seen.some(entry => entry?.deliveryId === deliveryId)) {
++    return refuse(REFUSAL.REPLAY_DETECTED, {deliveryId});
++  }
++
++  // Volume bound, so one authorized caller cannot crowd the others out or turn a
++  // permitted channel into a sustained execution pump.
++  const admissions = Array.isArray(recentAdmissions) ? recentAdmissions : [];
++  const recentForSender = admissions.filter(entry => entry?.sender === sender && now - Number(entry.at ?? 0) < 60 * 60 * 1000);
++  if (recentForSender.length >= LISTENER_POLICY.maxAdmissionsPerSenderPerHour) {
++    return refuse(REFUSAL.RATE_LIMITED, {sender, recent: recentForSender.length, limit: LISTENER_POLICY.maxAdmissionsPerSenderPerHour});
++  }
++
++  // Strict mission contract. Reused rather than reimplemented: two validators that
++  // disagree is how one path becomes weaker than the other.
++  const decision = validateMission(event.mission ?? {}, {now, allowlist: repositoryAllowlist});
++  if (decision.state !== MISSION_STATES.ACCEPTED) {
++    return refuse(REFUSAL.MISSION_REJECTED, {missionReason: decision.reason, detail: decision.detail ?? null});
++  }
++
++  const key = missionKey(decision.mission);
++  if (seen.some(entry => entry?.missionKey === key)) {
++    return refuse(REFUSAL.REPLAY_DETECTED, {deliveryId, missionKey: key});
++  }
++
++  return {
++    state: LISTENER_STATES.ADMITTED,
++    admitted: true,
++    reason: null,
++    detail: null,
++    // The exact commit the privileged execution will run. Returned so the caller
++    // can pass it to the reusable workflow without recomputing it.
++    executorSha,
++    mission: decision.mission,
++    missionKey: key,
++    deliveryId,
++    sender,
++    // Positive statement of what the listener needed: nothing secret.
++    credentialsRequired: false,
++    admittedAt: new Date(now).toISOString(),
++  };
++}
++
++/**
++ * Builds the record a listener appends when it admits a mission.
++ *
++ * Written for the same append-only journal the bridge uses, so admission evidence
++ * and execution evidence sit in one place. No credential and no private content.
++ */
++export function admissionRecord(admission, {now = Date.now()} = {}) {
++  return {
++    schemaVersion: LISTENER_SCHEMA_VERSION,
++    ledger: 'listener-admissions',
++    state: admission?.admitted === true ? LISTENER_STATES.ADMITTED : LISTENER_STATES.REFUSED,
++    admitted: admission?.admitted === true,
++    reason: admission?.reason ?? null,
++    deliveryId: admission?.deliveryId ?? null,
++    missionKey: admission?.missionKey ?? null,
++    sender: admission?.sender ?? null,
++    executorSha: admission?.executorSha ?? null,
++    recordedAt: new Date(now).toISOString(),
++    credentialsRequired: false,
++  };
++}
++
++/**
++ * The gate a privileged job consults immediately before it starts work.
++ *
++ * This is the second line of defence. Even if the admission job were bypassed or
++ * its output tampered with, the privileged job re-checks that it was told to run
++ * an approved commit and that an admission was actually recorded. A privileged job
++ * that starts on an unapproved SHA refuses itself.
++ */
++export function assertExecutionAllowed({executorSha, approvedExecutorShas = [], admission} = {}) {
++  const refuse = reason => ({allowed: false, reason, executorSha: executorSha ?? null});
++  if (typeof executorSha !== 'string' || !SHA_PATTERN.test(executorSha)) return refuse(REFUSAL.EXECUTOR_SHA_INVALID);
++  if (!Array.isArray(approvedExecutorShas) || !approvedExecutorShas.includes(executorSha)) return refuse(REFUSAL.EXECUTOR_SHA_NOT_APPROVED);
++  if (!admission || admission.admitted !== true) return refuse(REFUSAL.MISSION_REJECTED);
++  if (admission.executorSha !== executorSha) {
++    // The admission names a different commit than the job intends to run. Treat as
++    // tampering rather than as a mismatch to be reconciled.
++    return refuse(REFUSAL.EXECUTOR_SHA_NOT_APPROVED);
++  }
++  return {allowed: true, reason: null, executorSha};
++}
+diff --git a/scripts/private-ci-mission.mjs b/scripts/private-ci-mission.mjs
+new file mode 100644
+index 0000000..dbda753
+--- /dev/null
++++ b/scripts/private-ci-mission.mjs
+@@ -0,0 +1,207 @@
++// Cross-repository mission contract.
++//
++// The Home bridge is the only authenticated interface between the private Factory
++// and this public repository. This module defines what a mission is, validates it
++// strictly enough that an untrusted sender cannot smuggle authority in, and binds
++// every mission to one exact commit SHA.
++//
++// Design constraints, each with a reason:
++//
++//   - The payload is data, never configuration. A mission may say *which SHA to
++//     verify*; it may never say which workflow to run, which credential to use, or
++//     where to publish. Those are fixed here.
++//   - A mission without a full 40-character SHA is rejected. A branch name is a
++//     moving target, and "the SHA I meant" is not an auditable claim.
++//   - Duplicate suppression is part of the contract, not the caller's job. The same
++//     mission id delivered twice must never execute twice.
++//   - Bounded failure: every mission has a deadline, and an expired mission is
++//     refused rather than executed late against a stale ref.
++
++export const MISSION_SCHEMA_VERSION = 1;
++
++// The only event type the bridge accepts from another repository.
++export const MISSION_EVENT_TYPE = 'wolf-private-ci';
++
++export const MISSION_STATES = Object.freeze({
++  ACCEPTED: 'ACCEPTED',
++  REJECTED: 'REJECTED',
++  DUPLICATE: 'DUPLICATE',
++  EXPIRED: 'EXPIRED',
++});
++
++// Fixed by the contract. A mission cannot override any of these.
++export const MISSION_POLICY = Object.freeze({
++  // The workflow is chosen by the bridge, never by the caller.
++  workflow: 'private-ci-bridge.yml',
++  // Credentials are App installation tokens, per role, minted at run time.
++  credentialSource: 'github-app',
++  // A mission may not request a permission; these are the roles that exist.
++  roles: ['reader', 'publisher', 'dispatcher'],
++  // The longest a mission may sit unclaimed before it is refused.
++  maxAgeMs: 60 * 60 * 1000,
++  // Hard ceiling on missions per sender per hour, so one caller cannot crowd out
++  // the others by volume.
++  maxPerSenderPerHour: 12,
++  // A paid execution is never permitted, whatever the mission says.
++  allowPaidExecution: false,
++});
++
++const SHA_PATTERN = /^[0-9a-f]{40}$/;
++// Mission ids are opaque but bounded: they key the durable journal, so they must be
++// stable, comparable and free of characters that could confuse a filename or a log.
++const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
++const REPOSITORY_PATTERN = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
++
++/**
++ * Validates a mission payload from a `repository_dispatch` event.
++ *
++ * Returns a decision, never throws: a rejected mission must produce a durable,
++ * inspectable reason rather than a crash that loses the evidence.
++ */
++export function validateMission(payload, {now = Date.now(), allowlist = null} = {}) {
++  const reject = (reason, detail = null) => ({state: MISSION_STATES.REJECTED, reason, detail, accepted: false});
++
++  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return reject('MISSION_PAYLOAD_REQUIRED');
++  if (payload.schemaVersion !== MISSION_SCHEMA_VERSION) {
++    return reject('MISSION_SCHEMA_UNSUPPORTED', {expected: MISSION_SCHEMA_VERSION, received: payload.schemaVersion ?? null});
++  }
++  if (typeof payload.missionId !== 'string' || !ID_PATTERN.test(payload.missionId)) return reject('MISSION_ID_INVALID');
++  if (typeof payload.sha !== 'string' || !SHA_PATTERN.test(payload.sha)) {
++    // A branch, a short SHA and a tag are all refused for the same reason: none of
++    // them identify the code that ran.
++    return reject('MISSION_SHA_INVALID');
++  }
++  if (typeof payload.repository !== 'string' || !REPOSITORY_PATTERN.test(payload.repository)) return reject('MISSION_REPOSITORY_INVALID');
++  if (allowlist && !allowlist.includes(payload.repository)) return reject('MISSION_REPOSITORY_NOT_ALLOWED', {repository: payload.repository});
++
++  // A caller may not select the workflow or the credential. Those are policy, and
++  // policy that a payload can override is not policy.
++  for (const forbidden of ['workflow', 'workflowFile', 'token', 'permissions', 'credentials', 'ref']) {
++    if (payload[forbidden] !== undefined) return reject('MISSION_MAY_NOT_SPECIFY_' + forbidden.toUpperCase());
++  }
++  // Any present value is refused, not just `true`. A truthy string like "no" or
++  // "false" would otherwise pass a `=== true` check while still reading as paid to
++  // anything downstream that only tests truthiness - and a mission has no reason to
++  // mention payment at all.
++  if (payload.paid !== undefined || payload.allowPaidExecution !== undefined) {
++    return reject('MISSION_MAY_NOT_AUTHORISE_PAID_EXECUTION');
++  }
++
++  const issuedAt = Number(payload.issuedAt);
++  if (!Number.isFinite(issuedAt) || issuedAt <= 0) return reject('MISSION_ISSUED_AT_REQUIRED');
++  if (issuedAt > now + 5 * 60 * 1000) return reject('MISSION_ISSUED_IN_FUTURE');
++  if (now - issuedAt > MISSION_POLICY.maxAgeMs) return reject('MISSION_EXPIRED', {ageMs: now - issuedAt, maxAgeMs: MISSION_POLICY.maxAgeMs});
++
++  const checks = Array.isArray(payload.checks) ? payload.checks : null;
++  if (checks !== null) {
++    if (!checks.length || checks.length > 64) return reject('MISSION_CHECKS_INVALID');
++    if (checks.some(name => typeof name !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(name))) return reject('MISSION_CHECK_NAME_INVALID');
++  }
++
++  return {
++    state: MISSION_STATES.ACCEPTED,
++    accepted: true,
++    reason: null,
++    mission: {
++      missionId: payload.missionId,
++      sha: payload.sha,
++      repository: payload.repository,
++      issuedAt,
++      checks: checks ?? null,
++      // Delivery order matters for an audit trail, and a caller-supplied attempt
++      // number is evidence of retries rather than a hint to skip work.
++      attempt: Number.isInteger(payload.attempt) && payload.attempt > 0 ? payload.attempt : 1,
++      requestedBy: typeof payload.requestedBy === 'string' ? payload.requestedBy.slice(0, 64) : null,
++    },
++    policy: MISSION_POLICY,
++  };
++}
++
++/**
++ * A stable key for duplicate suppression.
++ *
++ * Deliberately excludes `issuedAt` and `attempt`: a retry of the same mission is
++ * the same mission, and treating it as new is what produces duplicate execution.
++ */
++export function missionKey(mission) {
++  if (!mission?.missionId || !mission?.sha) throw Error('MISSION_KEY_REQUIRES_ID_AND_SHA');
++  return mission.missionId + '@' + mission.sha;
++}
++
++/**
++ * The journal entry a mission produces. Written before execution, so a crash
++ * leaves evidence of intent rather than a gap.
++ */
++export function missionRecord(decision, {now = Date.now(), runId = null, event = null} = {}) {
++  if (!decision?.accepted) {
++    return {
++      schemaVersion: MISSION_SCHEMA_VERSION,
++      state: decision?.state ?? MISSION_STATES.REJECTED,
++      reason: decision?.reason ?? 'MISSION_INVALID',
++      detail: decision?.detail ?? null,
++      recordedAt: new Date(now).toISOString(),
++      runId,
++      event,
++      credentialsPrinted: false,
++    };
++  }
++  return {
++    schemaVersion: MISSION_SCHEMA_VERSION,
++    state: MISSION_STATES.ACCEPTED,
++    key: missionKey(decision.mission),
++    mission: decision.mission,
++    workflow: MISSION_POLICY.workflow,
++    credentialSource: MISSION_POLICY.credentialSource,
++    recordedAt: new Date(now).toISOString(),
++    runId,
++    event,
++    // The invariant that makes this contract safe to publish: nothing here can be
++    // replayed as a credential, and nothing here is private source.
++    credentialsPrinted: false,
++    privateSourceIncluded: false,
++  };
++}
++
++/**
++ * Decides what to do with a mission given the journal's existing keys.
++ * Separated from validation because duplicate detection needs history, and a
++ * validator that needs history is hard to test in isolation.
++ */
++export function dedupe(decision, {seenKeys = [], now = Date.now()} = {}) {
++  if (!decision?.accepted) return decision;
++  const key = missionKey(decision.mission);
++  if (seenKeys.includes(key)) {
++    return {
++      state: MISSION_STATES.DUPLICATE,
++      accepted: false,
++      reason: 'MISSION_ALREADY_RECORDED',
++      key,
++      mission: decision.mission,
++      policy: decision.policy,
++    };
++  }
++  return decision;
++}
++
++/**
++ * Retry policy for a failed mission: bounded, and never a mask for a systemic
++ * problem. Two retries, then the failure is final and reported as such.
++ */
++export const RETRY_POLICY = Object.freeze({maxAttempts: 3, backoffMs: [0, 60_000, 300_000]});
++
++export function nextAttempt({attempt, failure, now = Date.now()} = {}) {
++  const current = Number.isInteger(attempt) && attempt > 0 ? attempt : 1;
++  if (!failure) return {retry: false, reason: 'NO_FAILURE'};
++  // A credential or permission failure is never retried: repeating it burns quota
++  // and hides the real cause behind a retry count.
++  if (['PAT_FALLBACK_RETIRED', 'PERMISSION_OR_RATE_LIMIT', 'NOT_FOUND_OR_NO_ACCESS'].includes(failure.reason)) {
++    return {retry: false, reason: 'NON_RETRYABLE_' + failure.reason, terminal: true};
++  }
++  if (current >= RETRY_POLICY.maxAttempts) return {retry: false, reason: 'RETRIES_EXHAUSTED', terminal: true, attempt: current};
++  return {
++    retry: true,
++    attempt: current + 1,
++    afterMs: RETRY_POLICY.backoffMs[Math.min(current, RETRY_POLICY.backoffMs.length - 1)],
++    notBefore: new Date(now + RETRY_POLICY.backoffMs[Math.min(current, RETRY_POLICY.backoffMs.length - 1)]).toISOString(),
++  };
++}

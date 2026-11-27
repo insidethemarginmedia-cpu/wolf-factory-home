@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "checkpoint": "WOLF-P145-FINAL-ACCEPTANCE",
+  "recordedAt": "2026-11-25T15:10:00.000Z",
+  "branch": "arena/38f3a7f7-wolf-factory-home",
+  "head": "7d3d07c",
+  "tests": {"pass": 422, "fail": 0},
+  "economics": {"EUR_SPEND": 0, "COST_UNKNOWN": "DENY", "PAID_FALLBACK": "DENY", "newPats": 0, "newApps": 0, "billingChanges": 0},
+  "reproduced": {"testsClaimed": 384, "testsObserved": 422, "note": "384 reproduced at session start before P1.45 additions"},
+  "correctionsToPreviousClaims": [
+    {
+      "claim": "no wolf-compute surface exists; creating one would be duplicate infrastructure",
+      "reality": "donraposo1-source/wolf-compute EXISTS and is public",
+      "evidence": {"defaultBranch": "main", "head": "f00dd8860edd245e53a11feee24270bc553ded2b", "description": "Project Wolf public-safe EUR0 compute surface", "workflow": "public-safe-canary.yml", "recentRuns": ["37442861797", "36261399860", "36203815796"]},
+      "lesson": "absence from Home was treated as global absence. The founder was right to challenge it.",
+      "status": "DOCUMENTED_NOT_INTEGRATED"
+    }
+  ],
+  "lego": {
+    "resolvedCurrentHead": "4fd43ffebfb87a9fbb74b4de1ded3af9c8bb1ca2",
+    "resolvedBy": "reader App role inside run 45635798669",
+    "corroboratingSource": "LEGO W1.09 report (4fd43ff)",
+    "agreement": true,
+    "pinnedInWorkflow": "8d319fc50be4e4d225e3bb80de963583899c25ec",
+    "relation": "STALE",
+    "treeIdentical": false,
+    "acceptanceValid": false,
+    "confirmedPrivate": "public check-runs on 4fd43ff returns 422 No commit found",
+    "staleAcceptancePublished": false
+  },
+  "ledger": {
+    "liveSealed": true,
+    "legacyMigrated": true,
+    "record": {"seq": 1, "hash": "9372ba2143b3f8561b48fcfa07cf7224b1147a8d087ae3dd06eae7949f039b38", "state": "RETIRED", "migration": "SEALED_FROM_LEGACY"},
+    "anchor": {"head": "9372ba2143b3f8561b48fcfa07cf7224b1147a8d087ae3dd06eae7949f039b38", "sequence": 1, "recordCount": 1},
+    "properties": {
+      "tamperDetection": "SHA-256 chain over predecessor",
+      "rollbackDetection": "external anchor compared before overwrite",
+      "truncationDetection": "anchor sequence; a truncated chain is internally consistent so only the anchor catches it",
+      "deletion": "absent-or-empty blocks fallback only when evidence was expected",
+      "concurrency": "merge by sequence; a ledger ahead of the anchor is a concurrent append, not a rollback",
+      "legacyHandling": "migrated and sealed, never discarded"
+    }
+  },
+  "defectsFoundInP145": [
+    {"defect": "HEAD drift compared the pin to the default branch, which a PR head never equals", "effect": "would report STALE forever on a current pin", "repaired": "resolve the PR head via refs/pull/{n}/head"},
+    {"defect": "resolver CLI had no direct invocation, printed nothing, exited 0", "effect": "receipt published NOT_REPORTED on a green run", "repaired": "invokedDirectly block plus a test asserting output exists"},
+    {"defect": "resolver declared before the reader token was minted", "effect": "NO_READER_CREDENTIAL always", "repaired": "moved after authentication; ordering test added"},
+    {"defect": "target output path declared only in the resolver step", "effect": "receipt builder could not see it", "repaired": "job-level env; test added"},
+    {"defect": "pulls API needs pull_requests:read the reader role does not have", "effect": "BLOCKED PR_UNREADABLE", "repaired": "git ref first, which needs contents:read only; reader NOT widened"},
+    {"defect": "my own test shipped failing: anchored on the probe job's env block", "effect": "guard inspected the wrong job", "repaired": "anchored on the execute job header"},
+    {"defect": "live ledger was legacy format with no hash or seq", "effect": "not tamper-evident despite the verification code existing", "repaired": "seal step migrates and publishes an anchor in the same run"}
+  ],
+  "trustBoundaryAudit": {
+    "inheritedSecrets": "the listener's execute job uses `secrets: inherit` to the pinned reusable workflow; the listener itself holds none",
+    "listenerPermissions": {"admit": ["contents:read"], "execute": "none - job-level uses, no runs-on, no steps"},
+    "senderIdentity": "github.event.sender.login (authenticated envelope), never a payload field",
+    "approvedExecutorSha": "workflow env pin AND approved list; event value cannot override",
+    "untrustedPayload": "passed as a file, never interpolated into shell; strict schema; forbidden keys rejected",
+    "privilegedExecution": "gated by admission output AND a second re-verification step"
+  },
+  "blockers": [
+    {"id": "PIN_IS_STALE_VS_PR743", "status": "OPEN", "detail": "workflow pins 8d319fc; PR head is 4fd43ff; acceptanceValid false", "action": "founder decides whether to move the pin; moving it silently would relabel historical receipts"},
+    {"id": "INDEPENDENT_VERIFICATION_UNPUBLISHED", "status": "OPEN", "detail": "arena/156d9fee-wolf-factor* absent from all remote heads", "findingsClaimedClosed": false},
+    {"id": "DISPATCH_TRIGGER_NOT_ON_DEFAULT_BRANCH", "status": "OPEN", "detail": "Option B packaged, requires founder approval to activate"},
+    {"id": "CORRELATED_LISTENER_RUN_UNPROVEN", "status": "OPEN", "detail": "cannot be shown until the listener exists on the default branch; push-triggered runs are NOT substituted"},
+    {"id": "WOLF_COMPUTE_NOT_INTEGRATED", "status": "OPEN", "detail": "surface exists and is public; sandbox token cannot dispatch (403). Integration requires the dispatcher App role or founder action."}
+  ],
+  "notDone": [
+    "No default-branch change, merge, force push or branch creation",
+    "No new PAT or App; reader role deliberately NOT widened",
+    "No pin change - that decision is the founder's",
+    "No eight-hour shift started or certified",
+    "No claim that independent verification findings are resolved",
+    "No simulated mission presented as acceptance"
+  ]
+}
