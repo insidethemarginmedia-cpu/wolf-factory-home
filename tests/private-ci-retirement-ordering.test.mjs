@@ -64,6 +64,10 @@ test('the read token is scoped to immutable checkout and revoked before untruste
   assert.equal(execute.steps[checkout].with['persist-credentials'], 'false');
   assert.ok(revokeBlock.includes("method: 'DELETE'"));
   assert.ok(revokeBlock.includes('api.github.com/installation/token'));
+  const revokeStart = executeSource.indexOf('      - name: Revoke the private-source read token before running private code');
+  const revokeEnd = executeSource.indexOf('      - name:', revokeStart + 1);
+  const revokeYaml = executeSource.slice(revokeStart, revokeEnd < 0 ? undefined : revokeEnd);
+  assert.ok(revokeYaml.includes("if: always() && steps.source_reader.outputs.token != ''"), 'revoke the scoped token after checkout or verification failure before private code can start');
 });
 
 test('private output stays runner-local and cleanup runs even after a failed check', () => {

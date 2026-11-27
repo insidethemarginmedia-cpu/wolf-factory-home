@@ -609,6 +609,7 @@ jobs:
           test -z "$(git -C "$WOLF_CI_PRIVATE_ROOT" status --porcelain)"
           echo PRIVATE_COMMIT_CHECKED_OUT_AT_IMMUTABLE_SHA=YES
       - name: Revoke the private-source read token before running private code
+        if: always() && steps.source_reader.outputs.token != ''
         shell: bash
         env:
           WOLF_CI_SOURCE_READ_TOKEN: ${{ steps.source_reader.outputs.token }}
