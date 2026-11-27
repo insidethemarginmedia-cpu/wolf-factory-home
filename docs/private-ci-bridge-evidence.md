@@ -7,6 +7,17 @@ code now under review has a different execution path. In particular, the old
 local-journal recovery claim is withdrawn in §4 and the old “live acceptance”
 wording is withdrawn in §10.
 
+### Current PR verification — public controller only
+
+At PR #2 head `3b6b25873a87f0aa38c6aaee1105ac94aab01d99`, the local
+`node --test tests/*.test.mjs` suite passed **510/510**. Public run
+[46016992335](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/46016992335)
+passed `validate` at that exact head; the private-facing jobs were skipped. This
+is not private-source execution, worker output, independent acceptance, or
+permission to activate. PR #4's exact-SHA review also found the current `b3f397f`
+listener pin is incomplete; its proposed `1c135794...` correction is still open
+and unapproved. See `docs/executor-pin-recovery.md` and the integration contract.
+
 This document records public, non-sensitive facts only: workflow names, commit
 SHAs, check names, exit codes, durations and timestamps. No private Wolf source,
 log, credential or configuration value is reproduced here. Historical run results
@@ -331,18 +342,25 @@ The bridge re-reads and verifies the exact commitment before private checkout.
 This code has only fake-GitHub/unit-test evidence so far; no production admission
 or mission run occurred.
 
-The listener and bridge are absent from the default branch `main` (read-only
-GitHub API lookups returned 404 for both workflow files on 2026-11-24). The former
-worktree value `9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve. It is
-now replaced in this candidate by `b3f397fd959f41c1a843e917b35e0a5914f53c11`,
-which resolves through GitHub and whose tree contains the bridge, listener store,
-and admission-gate files. Its reusable interface declares exactly `sha`,
-`missionId`, `deliveryId`, and `executorSha`; the bridge also has a read-only
-pre-job admission and a mandatory execution-time recheck. The older valid
+The listener and bridge were absent from the default branch `main` in the prior
+read-only check (GitHub API lookups returned 404 for both workflow files on
+2026-11-24); `main` has not been changed in this continuation. The former worktree
+value `9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve. The current PR
+#2 branch pins `b3f397fd959f41c1a843e917b35e0a5914f53c11`, which resolves and
+provides the expected workflow inputs, durable admission, and execution-time
+recheck. That did not prove the complete invoked job boundary. PR #4's at-pin
+review found this tree lacks `target_verification` and the isolated
+`publish_status` job and leaves write permissions in `execute`.
+
+PR #4 proposes pinning the listener to `1c13579433540d377d254fda3089216d2925c60f`
+and adds tests of the invoked commit's target, economic/isolation, and publisher
+job gates. PR #4 remains open without approval; its public run
+[45920988656](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45920988656)
+passed `validate`, while private-facing jobs were skipped. The older valid commit
 `6c2848d1849d85e70ff3a9590a42b3df0465c487` predates the current executor input
-and durable gate, so it was not substituted. This is repository-local pin and
-interface verification only; no upstream contract, approval, activation, or
-worker acceptance follows from it. No dispatch command is provided.
+and durable gate, so it was not substituted. Pin resolution and public tests do
+not establish upstream contract, approval, activation, or worker acceptance. No
+dispatch command is provided.
 
 ### 11.1 Non-executable schema sketch
 

@@ -1,29 +1,26 @@
 # Executor Pin Recovery — Integration Candidate Only
 
-Status on 2026-11-24: **SHA and reusable-interface defect resolved for the public PR candidate; not approved for activation or dispatch.**
+Status on 2026-11-24: **BLOCKED — the initially recovered pin is interface-valid but not safe for activation; its replacement remains unapproved.**
 
-## Recovered executor
+## Recovered executor and follow-up pin review
 
-The listener now pins the reusable bridge to the existing full-history commit:
+The original history-recovered candidate was:
 
 ```text
 b3f397fd959f41c1a843e917b35e0a5914f53c11
 ```
 
-This is an existing immutable commit in the public Factory Home PR history, not a new repository or fabricated object. GitHub's commit API resolves it to tree `c61b1bb7f4260880053ae9bb33033a515f958599`; the tree contains:
+It is an existing immutable commit in the public Factory Home history, and its bridge declares the four `workflow_call` inputs (`sha`, `missionId`, `deliveryId`, and `executorSha`) and contains durable admission plus an execution-time recheck. That resolved the missing-SHA/interface question only. It did **not** qualify the actual pinned executor: Home PR #4's at-pin tests and review found that this commit lacks the `target_verification` and isolated `publish_status` jobs and leaves write permissions in `execute`, although newer worktree code contains those protections. The current PR #2 branch still pins `b3f397f`; do not activate or execute it.
 
-- `.github/workflows/private-ci-bridge.yml` (blob `b95a8ef057e4f311edbd1f76306ae630ece8cb95`)
-- `.github/workflows/mission-listener.yml`
-- `scripts/private-ci-listener-store.mjs`
-- `scripts/private-ci-listener-gate-cli.mjs`
+PR #4 proposes the narrowly scoped correction: pin the listener to the exact published commit `1c13579433540d377d254fda3089216d2925c60f` and test the invoked commit's target-verification, economic/isolation gates, and publication permissions. PR #4 is open at head `0ddebd8c3c41b570c7fbfe091b0d6567aca236cb`, with no approval recorded. Its public `validate` run `45920988656` passed; private mission, target, execution, and publication jobs were skipped. This is a review candidate, not approval or activation. Do not merge an experimental branch wholesale or silently move the pin.
 
-The pinned bridge declares the four required `workflow_call` string inputs actually passed by the listener: `sha`, `missionId`, `deliveryId`, and `executorSha`. Its workflow also contains the read-only `mission_admission` job, the exact-PR `target_verification` job, the admission/target-conditioned `execute` job, an aggregate-only `publish_status` job, and a non-optional in-job recheck before private access. This resolves the repository-local missing-SHA and caller/interface mismatch for the candidate; it does not establish private-runner isolation or acceptance.
-
-The prior value `9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve and has been removed. The older valid commit `6c2848d1849d85e70ff3a9590a42b3df0465c487` was not substituted: its workflow predates the `executorSha` input and the current durable admission gate. Tests now inspect the pinned commit's actual tree and gate/interface, and fetch the immutable SHA from `origin` when running in a shallow CI checkout; an unavailable pin still fails closed.
+The earlier value `9679aa76397c7b248c3708be2c063e75a7058ae5` did not resolve. The older valid commit `6c2848d1849d85e70ff3a9590a42b3df0465c487` was not substituted: its workflow predates the `executorSha` input and durable admission gate. The current review test inspects the actual pinned commit's tree and gate/interface, and fetches the immutable SHA from `origin` in a shallow CI checkout; an unavailable pin still fails closed.
 
 ## Verification boundary
 
-At the recovery checkpoint the local suite was **491 passed / 0 failed** and the focused pin/interface suite was **10/10 passed**. The current working tree has since added workspace, credential-isolation, and aggregate-status coverage; its latest `node --test tests/*.test.mjs` run is **502 passed / 0 failed**. These are local regression/mock tests, not a private-source workflow run. A depth-1 clone initially lacked the pinned object and then passed the same **10/10** tests after fetching the immutable pin. Public runs [45901460667](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45901460667) on `64b8446e2ef09c011b81f44a73273d8ce60fa13c` and [45901572224](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45901572224) on `5bec9fb98a2edeef3e685c426bb361bad21545f3` passed `validate`. A later public controller run, [45917702188](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45917702188) on `d4b5596adff4eb22e4f9a4d2e2db8b3254cbf5fd`, passed with all 502 tests; `probe`, `inventory`, `mission_admission`, `target_verification`, `execute`, and `publish_status` were skipped. The earlier run `45889750580` failed its public `validate` step, but GitHub's log download returned EOF, so its exact cause was not established.
+At the earlier recovery checkpoint the local suite was **491 passed / 0 failed**, followed by a historical **502 passed / 0 failed** run. Public runs [45901460667](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45901460667) and [45901572224](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45901572224) passed `validate`; [45917702188](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45917702188) passed the then-current 502-test suite while `probe`, `inventory`, `mission_admission`, `target_verification`, `execute`, and `publish_status` were skipped. The earlier run `45889750580` failed `validate`, but the log download returned EOF and its exact cause was not established.
+
+At the current PR #2 source head `3b6b25873a87f0aa38c6aaee1105ac94aab01d99`, `node --test tests/*.test.mjs` passes **510/510**. Public run [46016992335](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/46016992335) passed `validate` at that exact head; all private-facing jobs were skipped. PR #4's exact head also has a passing public `validate` run ([45920988656](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45920988656)), with private-facing jobs skipped. These are public-controller regression results, not private-source workflow runs or worker acceptance.
 
 The executor recovery proves only that this repository contains a resolvable, interface-compatible candidate commit. It does **not** establish Factory/Build Wolf or Wolf Compute acceptance, callback authenticity, a durable execution queue/lease/recovery owner, required approval, private-worker output, or permission to activate or dispatch. The PR remains inactive and fail-closed.
 

@@ -9,12 +9,17 @@ Status as of 2026-11-24: **BLOCKED — no mission dispatch or worker acceptance 
 claimed.** The older direct-dispatch contract below is superseded where noted;
 its historical run claims were not revalidated in this session. The engineering
 branch contains an authenticated listener and reusable-workflow admission gate,
-but neither is activated on `main`. The former unresolved executor value has been
-replaced with repository-history candidate `b3f397fd959f41c1a843e917b35e0a5914f53c11`,
-whose remote tree contains the exact reusable inputs and durable admission gates;
-this resolves only the local SHA/interface defect, not activation approval.
-Factory/Factory 2 P1.59/P1.47+ contracts have not been reconciled from authoritative
-sources, and no durable execution lease/recovery path is enabled. See
+but neither is activated on `main`. The current PR #2 listener pin is
+`b3f397fd959f41c1a843e917b35e0a5914f53c11`; that immutable commit has the expected
+reusable inputs and durable admission checks, but the exact-SHA review in PR #4
+found it lacks the `target_verification` and isolated `publish_status` jobs and
+leaves write permissions in `execute`. It is **not qualified for activation**.
+PR #4 proposes pinning the published commit
+`1c13579433540d377d254fda3089216d2925c60f` and adds at-pin tests, but remains open
+without approval; do not move the pin or activate until that review is accepted
+through the authorized integration path. Factory/Factory 2 P1.59/P1.47+ contracts
+have not been reconciled from authoritative sources, and no durable execution
+lease/recovery path is enabled. See
 [`executor-pin-recovery.md`](executor-pin-recovery.md) for the verification boundary.
 
 ---
@@ -230,8 +235,8 @@ refusal is not permission to try another transport or credential.
 | Capability | Status on 2026-11-24 | Evidence / boundary |
 | --- | --- | --- |
 | Target SHA fallback | **REPAIRED IN LOCAL CODE; NOT LIVE-ACCEPTED** | `WOLF_CI_SHA` resolves only from typed `inputs.sha`; missing input stays empty and fails closed |
-| Listener executor pin | **RESOLVED FOR PUBLIC CANDIDATE; NOT ACTIVATED** | `b3f397fd959f41c1a843e917b35e0a5914f53c11` resolves via GitHub and its tree contains the required workflow, `workflow_call` inputs, durable pre-job admission and in-job recheck; the former `9679aa...` value was invalid. No activation approval is implied |
-| Regression suite | **502/502 LOCAL AND PUBLIC CONTROLLER VALIDATION; PRIVATE PATHS SKIPPED** | `node --test tests/*.test.mjs`: 502 passed, 0 failed locally and in public run [45917702188](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/45917702188) on `d4b5596adff4eb22e4f9a4d2e2db8b3254cbf5fd`; `probe`, `inventory`, `mission_admission`, `target_verification`, `execute`, and `publish_status` were skipped. This validates the public controller only and does not constitute a private run |
+| Listener executor pin | **CURRENT PIN REJECTED FOR ACTIVATION; PR #4 CORRECTION UNAPPROVED** | Current PR #2 still pins `b3f397fd959f41c1a843e917b35e0a5914f53c11`; its exact tree lacks `target_verification` and isolated `publish_status` and leaves write permissions in `execute`. PR #4 at `0ddebd8c3c41b570c7fbfe091b0d6567aca236cb` proposes published pin `1c13579433540d377d254fda3089216d2925c60f` and at-pin tests. PR #4 has no recorded approval; no activation is authorized |
+| Regression suite | **510/510 LOCAL; CURRENT PUBLIC VALIDATE PASSED; PRIVATE PATHS SKIPPED** | `node --test tests/*.test.mjs`: 510 passed, 0 failed at PR #2 head `3b6b25873a87f0aa38c6aaee1105ac94aab01d99`. Public run [46016992335](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/46016992335) passed `validate` at that exact head; `probe`, `inventory`, `mission_admission`, `target_verification`, `execute`, and `publish_status` were skipped. This validates the public controller only and does not constitute a private run |
 | Private mission entrypoint | **IMPLEMENTED IN THE PR WORKTREE; NOT ACTIVATED** | Fake-GitHub tests exercise admission/anchor logic; the listener is absent from `main`, and no production admission occurred |
 | Exact-SHA private CI and aggregate status | **CANDIDATE CODE ONLY; EXECUTION BLOCKED** | Target metadata, private execution, and status publication are separate jobs; the source token is revoked before code runs and only the aggregate job result is published. The current `ubuntu-latest` runner has outbound network access, so private-code non-disclosure is not established; runner isolation, billing, provider and owner approvals remain unverified |
 | Raw bridge `repository_dispatch` | **REMOVED** | The bridge has no raw dispatch trigger; a read-only pre-job gate and an in-job re-check require the trusted default-branch listener caller and typed mission inputs before private access |
