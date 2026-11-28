@@ -143,10 +143,12 @@ never be widened by accident.
 
 The earlier statement that `scripts/private-ci-journal.mjs` provided a durable
 production queue and that an hourly sweep reclaimed expired leases was incorrect.
-That module and its CLI use a runner-local JSON file; a new GitHub-hosted runner
-cannot read the previous run's file. The bridge also had no schedule-matched
-recovery job. Unit tests of `claimNext` prove only the in-process helper, not
-cross-run persistence, lease renewal, fencing, or automatic recovery.
+The helper now has a checksummed, restartable local-file model with synthetic
+lease, fence, heartbeat, callback and recovery tests, but that still is not a
+production queue: a new GitHub-hosted runner cannot read the previous run's file.
+The bridge also has no schedule-matched recovery job. These tests exercise only
+the local model; they do not establish cross-run durability, an actual worker's
+fencing/idempotency behavior, a production callback, or automatic recovery.
 
 The current bridge therefore no longer declares a raw `repository_dispatch` or
 `schedule` trigger, and it no longer invokes the local mission/journal CLIs. The
@@ -393,10 +395,11 @@ reviewed against it.
 ### 11.2 Recovery and acceptance limits
 
 There is no production durable execution queue, lease/fence settlement, or
-scheduled recovery sweep. `scripts/private-ci-journal.mjs` and its CLI are
-runner-local helpers/fixtures, not cross-run recovery. The admission ledger is
-not an execution queue. A same-run rerun is not automatic recovery and must not
-be used to replay unknown external effects.
+scheduled recovery sweep. `scripts/private-ci-journal.mjs` and its CLI now include
+a restartable local synthetic model, but remain runner-local helpers/fixtures,
+not cross-run recovery. The admission ledger is not an execution queue. A same-run
+rerun is not automatic recovery and must not be used to replay unknown external
+effects.
 
 A local `VERIFIED` receipt, if one is produced later, would only report the
 bridge's exact-SHA checks. Worker acceptance additionally requires a real private

@@ -226,9 +226,11 @@ security defect — report it, do not consume it.
 | Unknown or paid cost | `DENY`; no mission run is authorized by this document |
 
 The policy and fake-GitHub tests establish local admission/ledger behavior only.
-They do not establish upstream nonce compatibility, worker-side idempotency,
-lease renewal, fencing, authenticated callbacks, or a real external effect. A
-refusal is not permission to try another transport or credential.
+The synthetic journal tests exercise a separate local lease/fence/callback model;
+neither proves upstream nonce compatibility, a real worker's idempotency or fence
+enforcement, authenticated production callbacks, durable cross-host recovery, or
+any external effect. A refusal is not permission to try another transport or
+credential.
 
 ## 5. Current status — blocked, no mission executed
 
@@ -236,13 +238,13 @@ refusal is not permission to try another transport or credential.
 | --- | --- | --- |
 | Target SHA fallback | **REPAIRED IN LOCAL CODE; NOT LIVE-ACCEPTED** | `WOLF_CI_SHA` resolves only from typed `inputs.sha`; missing input stays empty and fails closed |
 | Listener executor pin | **CURRENT PIN REJECTED FOR ACTIVATION; PR #4 CORRECTION UNAPPROVED** | Current PR #2 still pins `b3f397fd959f41c1a843e917b35e0a5914f53c11`; its exact tree lacks `target_verification` and isolated `publish_status` and leaves write permissions in `execute`. PR #4 at `0ddebd8c3c41b570c7fbfe091b0d6567aca236cb` proposes published pin `1c13579433540d377d254fda3089216d2925c60f` and at-pin tests. PR #4 has no recorded approval; no activation is authorized |
-| Regression suite | **510/510 LOCAL; CURRENT PUBLIC VALIDATE PASSED; PRIVATE PATHS SKIPPED** | `node --test tests/*.test.mjs`: 510 passed, 0 failed at PR #2 head `3b6b25873a87f0aa38c6aaee1105ac94aab01d99`. Public run [46016992335](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/46016992335) passed `validate` at that exact head; `probe`, `inventory`, `mission_admission`, `target_verification`, `execute`, and `publish_status` were skipped. This validates the public controller only and does not constitute a private run |
+| Regression suite | **523/523 LOCAL ON THIS INCREMENT; LAST PUBLIC VALIDATE PASSED AT PRIOR HEAD; PRIVATE PATHS SKIPPED** | `node --test tests/*.test.mjs`: 523 passed, 0 failed on the current local recovery increment. Public run [46017627024](https://github.com/insidethemarginmedia-cpu/wolf-factory-home/actions/runs/46017627024) passed `validate` at prior PR #2 head `bdcd066ef0c1d8693a35f7401b2230326f95416b`; `probe`, `inventory`, `mission_admission`, `target_verification`, `execute`, and `publish_status` were skipped. A new PR run is needed for this increment. Public validation does not constitute a private run |
 | Private mission entrypoint | **IMPLEMENTED IN THE PR WORKTREE; NOT ACTIVATED** | Fake-GitHub tests exercise admission/anchor logic; the listener is absent from `main`, and no production admission occurred |
 | Exact-SHA private CI and aggregate status | **CANDIDATE CODE ONLY; EXECUTION BLOCKED** | Target metadata, private execution, and status publication are separate jobs; the source token is revoked before code runs and only the aggregate job result is published. The current `ubuntu-latest` runner has outbound network access, so private-code non-disclosure is not established; runner isolation, billing, provider and owner approvals remain unverified |
 | Raw bridge `repository_dispatch` | **REMOVED** | The bridge has no raw dispatch trigger; a read-only pre-job gate and an in-job re-check require the trusted default-branch listener caller and typed mission inputs before private access |
 | Direct manual private execution | **DENIED BY CONDITION** | Full execute job is limited to a `repository_dispatch` call from `mission-listener.yml@refs/heads/main`; manual inputs cannot satisfy it |
 | Durable admission/replay ledger | **UNIT-TESTED, LIVE PERSISTENCE UNKNOWN** | Fake GitHub API exercises anchored append, stale/conflict refusal, replay and gate; no production admission run occurred |
-| Durable execution queue / lease / fence / schedule recovery | **NOT IMPLEMENTED / BLOCKED** | The local JSON journal is test-only; no cron is exposed |
+| Resident lease/fence/recovery model | **SYNTHETIC LOCAL MODEL IMPLEMENTED; PRODUCTION BLOCKED** | The existing `private-ci-journal.mjs` now tests atomic restartable snapshots, lock, exact-SHA executor admission, fencing, heartbeat, timeout, cancellation, callback signature/replay, safe retry, receipts, and terminal reconciliation. It is not wired to production, is not cross-host storage, and cannot establish live acceptance |
 | Factory P1.59 / Factory 2 P1.47+ envelope compatibility | **NOT VERIFIED** | The authoritative versioned contracts were not present in this checkout or independently fetched |
 | Real Compute worker output / authenticated callback | **NOT VERIFIED** | The public-standard-runner canary is not a private worker callback or acceptance receipt |
 | Build Wolf / Wolf Compute contract coordination | **REQUESTED; RESPONSE PENDING** | [Issue #2](https://github.com/donraposo1-source/wolf-compute/issues/2) asks for authoritative admission, callback, recovery, receipt, and zero-cost approval contracts; no schema is inferred |
@@ -291,3 +293,91 @@ requires explicit Founder authorisation before it exists.
 | `DUPLICATE` / replay refusal | Reconcile the existing admission/worker effect; do not mint a new mission id to bypass it |
 | Missing terminal receipt | Treat as UNKNOWN; inspect the existing owner-controlled run and callback evidence before any retry |
 | Worker output is a public canary | Not real worker acceptance; do not mark the mission accepted |
+
+## 9. Proposed public-safe resident callback profile — synthetic only
+
+This section documents the local recovery model added to the existing journal. It
+is a proposal for review, **not** the private Factory, Build Wolf, Compute, or Dyad
+contract. No endpoint or worker is configured, and no production queue or callback
+path is wired. The owner-approved protocol may differ; do not enable this profile
+without owner agreement and independent verification. This model does not provide
+economic admission or provider qualification; it cannot authorize a worker run.
+Production must retain `EUR_SPEND=0`, `COST_UNKNOWN=DENY`, and
+`PAID_FALLBACK=DENY` at the existing admission boundary.
+
+### Request identity
+
+A request is bound to a stable `idempotencyKey`, opaque `requestKey`, opaque
+`targetDigest`, exact `executorSha`, monotonic per-request `fence`, bounded
+`leaseExpiresAt`, and an explicit execution `deadlineAt`. Raw repository/SHA values
+stay inside the trusted controller/worker boundary and are not included in the
+public-safe receipt projection. A worker must durably deduplicate `idempotencyKey`
+and reject any fence lower than the highest fence it has accepted for that request.
+An idempotency key is not a substitute for the fencing check.
+
+### Callback envelope
+
+The local synthetic model accepts only this allowlisted field set:
+
+```json
+{
+  "schema": "wolf.worker.callback/v1",
+  "callbackId": "opaque-unique-id",
+  "requestKey": "32-hex-opaque-key",
+  "idempotencyKey": "64-hex-stable-key",
+  "targetDigest": "64-hex-target-commitment",
+  "executorSha": "40-hex-public-executor-commit",
+  "fence": 1,
+  "outcome": "COMPLETED | FAILED | CANCELLED | NO_EFFECT",
+  "resultDigest": "64-hex-digest",
+  "occurredAt": "UTC timestamp",
+  "workerKeyId": "pinned-public-key-id",
+  "signature": "detached Ed25519 signature over canonical allowlisted fields"
+}
+```
+
+The model verifies the detached signature against explicitly supplied Ed25519
+SPKI **public** keys, rejects private-key material and unknown envelope fields,
+and records a digest of the actual public-key bytes (not just its label). It never
+stores the signature in a receipt; no private signing key is present here. A
+callback is accepted only when the target commitment, executor SHA, idempotency
+key, and fence match the stored request. Replays with the same callback identity
+and signer are idempotent; conflicting reuse is denied. `resultDigest` must commit
+only to an approved non-sensitive result summary; hashing private output is not
+redaction and is not authorized by this proposal.
+
+### Recovery and receipt rules
+
+- A lease expiry before dispatch is safe to requeue with a higher fence.
+- A lease expiry after dispatch has an unknown external outcome: it enters
+  `reconciling`, blocks redispatch, and accepts only a valid callback for the
+  original fence. A confirmed `NO_EFFECT` is the only callback that can release a
+  retry; it retains the same idempotency key and receives a higher fence.
+- Heartbeats require the current owner and exact fence, cannot extend beyond the
+  explicit deadline, and stop extending once cancellation is requested. Cancellation
+  after dispatch is cooperative and is not terminal until a verified worker result
+  arrives.
+- A deadline before dispatch can be terminal. A deadline after dispatch is
+  `UNKNOWN`/`reconciling`, not proof that no effect occurred.
+- Enqueue, lease claim, dispatch intent, cancellation request, recovery, callback,
+  and terminal transitions append to a local SHA-256 hash chain. Receipts contain
+  only opaque request/target digests, executor SHA, fence, event/state/outcome,
+  callback/result digests, signer public-key digest, safe reason code, and
+  timestamp. Heartbeat state remains in the checksummed snapshot. The chain is
+  same-writer integrity, not an independent signature or acceptance proof.
+
+The implementation in `scripts/private-ci-journal.mjs` is a persistent-file
+synthetic harness with atomic snapshots and a local process lock. It is not
+cross-host storage and is not safe as a GitHub-hosted production queue. It is not
+connected to the existing private executor or admission ledger. The synthetic
+worker tests are recovery tests only; they make no live-worker or mission claim.
+
+### Existing systems and future Dyad adapter
+
+No DBOS, KCT, Ruflo, OmniRoute, or Dyad adapter/configuration is present in this
+Home checkout. Nothing was installed, replaced, or activated. Reuse any existing
+owner-controlled adapter only after verifying its API, exact execution identity,
+zero-cost policy, fencing/idempotency guarantees, durable callback/receipt path,
+and isolation. Dyad remains a possible future construction worker only: no
+supported automation API is assumed, no Dyad action was invoked, and its use must
+not duplicate Work's activation mission or the existing controller.
